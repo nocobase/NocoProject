@@ -607,3 +607,235 @@ export interface DaemonEventsResponse {
 /** 每批事件上限与单条正文上限（超出截断并 truncated=true） */
 export const RUN_EVENTS_MAX_BATCH = 200;
 export const RUN_EVENT_MAX_CONTENT_BYTES = 64 * 1024;
+
+// ---------- Phase 1 迭代 1（docs/phase1/iteration-1-contract.md） ----------
+//
+// 只增不改。守护进程的副本 nocoproject-cli/src/protocol.ts 必须同步。
+
+export type MemberRole = 'owner' | 'admin' | 'member';
+export type ProjectVisibility = 'everyone' | 'members';
+export type ProjectStatus =
+  | 'planned'
+  | 'in_progress'
+  | 'paused'
+  | 'completed'
+  | 'cancelled';
+export type ProjectMemberRole = 'lead' | 'member';
+export type LabelColor =
+  | 'gray'
+  | 'red'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'blue'
+  | 'purple';
+export type DependencyType = 'blockedBy' | 'relatedTo';
+export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'autoAccepted';
+export type SubscriptionReason =
+  | 'creator'
+  | 'owner'
+  | 'executor'
+  | 'commenter'
+  | 'mentioned'
+  | 'manual';
+export type InboxKind = 'decision' | 'info';
+export type InboxItemType =
+  | 'review_requested'
+  | 'agent_blocked'
+  | 'proposal_pending'
+  | 'batch_done'
+  | 'dependency_released'
+  | 'run_failed'
+  | 'owner_assigned'
+  | 'executor_assigned'
+  | 'mentioned'
+  | 'commented'
+  | 'status_changed';
+export type AgentAccessLevel = 'ownerOnly' | 'specificUsers' | 'everyone';
+export type TransitionActor = 'user' | 'agent' | 'system';
+
+/** 迭代 1 新增的触发类型；与 RunTriggerType 合并使用 */
+export type Phase1RunTriggerType =
+  | RunTriggerType
+  | 'dependencyReleased'
+  | 'childBatchDone'
+  | 'proposalAccepted';
+
+export interface WorkflowStatusDefinition {
+  readonly key: string;
+  readonly name: string;
+  readonly category: StatusCategory;
+  readonly color: LabelColor;
+  readonly builtIn: boolean;
+}
+
+export interface WorkflowTransitionDefinition {
+  /** '*' 表示任意 */
+  readonly from: string;
+  readonly to: string;
+  readonly actors: readonly TransitionActor[];
+}
+
+export interface WorkflowDefinition {
+  readonly statuses: readonly WorkflowStatusDefinition[];
+  readonly transitions: readonly WorkflowTransitionDefinition[];
+  readonly childBatchDoneWakesParentExecutor: boolean;
+}
+
+export interface Workflow {
+  readonly id: string;
+  readonly name: string;
+  readonly isDefault: boolean;
+  readonly definition: WorkflowDefinition;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface Label {
+  readonly id: string;
+  readonly name: string;
+  readonly color: LabelColor;
+}
+
+export interface IssueDependency {
+  readonly dependencyId: string;
+  readonly issueId: string;
+  readonly identifier: string;
+  readonly title: string;
+  readonly statusKey: string;
+  readonly type: DependencyType;
+}
+
+export interface ExecutorProposal {
+  readonly id: string;
+  readonly issueId: string;
+  readonly issueIdentifier: string;
+  readonly issueTitle: string;
+  readonly proposedAgentId: string;
+  readonly proposedAgentName: string;
+  readonly proposedByAgentId: string;
+  readonly proposedByAgentName: string;
+  readonly sourceRunId: string | null;
+  readonly status: ProposalStatus;
+  readonly decidedById: string | null;
+  readonly decidedAt: string | null;
+  readonly reason: string | null;
+  readonly createdAt: string;
+}
+
+export interface InboxItem {
+  readonly id: string;
+  readonly kind: InboxKind;
+  readonly type: InboxItemType;
+  readonly issueId: string | null;
+  readonly issueIdentifier: string | null;
+  readonly title: string;
+  readonly body: string;
+  readonly actorType: ActorType | null;
+  readonly actorName: string | null;
+  readonly count: number;
+  readonly readAt: string | null;
+  readonly archivedAt: string | null;
+  readonly resolvedAt: string | null;
+  readonly payload: Readonly<Record<string, unknown>> | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ProjectResource {
+  readonly id: string;
+  readonly projectId: string;
+  readonly type: 'gitRepo';
+  readonly url: string;
+  readonly defaultRef: string | null;
+  readonly label: string | null;
+  readonly position: number;
+}
+
+export interface ProjectMember {
+  readonly userId: string;
+  readonly name: string;
+  readonly role: ProjectMemberRole;
+}
+
+export interface Member {
+  readonly userId: string;
+  readonly name: string;
+  readonly email: string | null;
+  readonly role: MemberRole;
+}
+
+export interface SubtaskSummary {
+  readonly id: string;
+  readonly identifier: string;
+  readonly title: string;
+  readonly statusKey: string;
+  readonly stage: number | null;
+  readonly executorType: ExecutorType;
+  readonly executorName: string | null;
+  readonly blockedCount: number;
+}
+
+/** Agent 回写接口：POST /np/agent/issues */
+export interface AgentCreateIssueRequest {
+  readonly title: string;
+  readonly description?: string;
+  readonly parentIssueId?: string;
+  readonly stage?: number;
+  readonly blockedBy?: readonly string[];
+  readonly priority?: IssuePriority;
+  readonly labels?: readonly string[];
+  readonly executor?: 'self' | 'none' | (string & {});
+}
+
+export interface ClaimedProject {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly resources: readonly {
+    readonly type: 'gitRepo';
+    readonly url: string;
+    readonly defaultRef: string | null;
+  }[];
+}
+
+/** ClaimedRun 在迭代 1 追加的字段（服务端合并进 ClaimedRun；守护进程按可选读取） */
+export interface ClaimedRunPhase1Extras {
+  readonly project: ClaimedProject | null;
+  readonly issue: {
+    readonly parent: { readonly id: string; readonly identifier: string; readonly title: string } | null;
+    readonly stage: number | null;
+    readonly autoExecuteSubtasks: boolean;
+    readonly projectId: string | null;
+  };
+  readonly agent: {
+    readonly delegationTargets: readonly { readonly id: string; readonly name: string }[];
+  };
+  readonly session: {
+    readonly branchName: string | null;
+    readonly repoUrl: string | null;
+  };
+}
+
+export interface CheckoutRecord {
+  readonly url: string;
+  readonly ref: string | null;
+  readonly branchName: string;
+  readonly path: string;
+}
+
+/** DaemonCompleteRequest / DaemonFailRequest 在迭代 1 追加的可选字段 */
+export interface DaemonReportPhase1Extras {
+  readonly branchName?: string;
+  readonly repoUrl?: string;
+}
+
+export const RUN_ENV_PHASE1 = {
+  ...RUN_ENV,
+  workDir: 'NOCOPROJECT_WORKDIR',
+} as const;
+
+export const REALTIME_TOPICS_PHASE1 = {
+  ...REALTIME_TOPICS,
+  inbox: 'np:inbox',
+} as const;
