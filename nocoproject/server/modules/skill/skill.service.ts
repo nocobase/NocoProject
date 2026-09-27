@@ -311,8 +311,9 @@ export function createSkillService(deps: SkillDeps): SkillService {
       // put equal or case-different names in different orders. `localeCompare` is the same everywhere Node runs.
       rows.sort(
         (a, b) =>
-          String(a.name).localeCompare(String(b.name), 'en') ||
-          String(a.slug).localeCompare(String(b.slug), 'en'),
+          String(a.name).localeCompare(String(b.name), 'en', {
+            sensitivity: 'base',
+          }) || String(a.slug).localeCompare(String(b.slug), 'en'),
       );
       return decorate(deps, conn, viewer, rows);
     },
