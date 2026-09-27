@@ -52,10 +52,12 @@ export function RouteChildPage({
     };
   });
 
+  // Above everything the covered page positions itself — a sticky table header or board column header carries
+  // `z-10`, and without a stacking level of its own this layer would paint underneath it.
   return (
     <div
       className={cn(
-        'absolute inset-0 overflow-hidden overflow-y-auto bg-background',
+        'absolute inset-0 z-20 overflow-hidden overflow-y-auto bg-background',
         className,
       )}
       ref={layerRef}
