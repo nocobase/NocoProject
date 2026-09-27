@@ -310,6 +310,7 @@ export function createSkillService(deps: SkillDeps): SkillService {
         .selectFrom('skills')
         .selectAll()
         .orderBy('name', 'asc')
+        .orderBy('slug', 'asc')
         .execute();
       return decorate(deps, conn, viewer, rows);
     },
