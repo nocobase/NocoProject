@@ -4,10 +4,44 @@ import { configPath, loadConfig, normalizeServerUrl, readStoredConfig, writeStor
 import { registerSecret } from '../util/redact.js';
 import { CliError, EXIT, failAndExit, printJson, printLine } from './output.js';
 
+/**
+ * The API key from stdin. Piped input is read to EOF (`printf '%s' "$KEY" | nocoproject login --api-key-stdin`);
+ * on a terminal the command prompts and reads one line without echoing it, so the key never lands in the
+ * shell history or on screen.
+ */
 async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) return readSecretLine('Paste the API key and press Enter: ');
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString('utf8').trim();
+}
+
+function readSecretLine(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const stdin = process.stdin;
+    process.stderr.write(prompt);
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    let value = '';
+    const finish = (error?: Error) => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.removeListener('data', onData);
+      process.stderr.write('\n');
+      if (error) reject(error);
+      else resolve(value.trim());
+    };
+    const onData = (chunk: string) => {
+      for (const char of chunk) {
+        if (char === '\r' || char === '\n') return finish();
+        if (char === '\u0003') return finish(new CliError('cancelled', EXIT.validation, 'CANCELLED'));
+        if (char === '\u007f' || char === '\b') value = value.slice(0, -1);
+        else if (char >= ' ') value += char;
+      }
+    };
+    stdin.on('data', onData);
+  });
 }
 
 async function healthy(serverUrl: string): Promise<boolean> {

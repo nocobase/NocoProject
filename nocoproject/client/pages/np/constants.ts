@@ -291,4 +291,4 @@ export const LABEL_DOT_CLASS: Readonly<Record<LabelColor, string>> = {
  * pulls the tarball attached to the GitHub release (`gh` must be signed in to the repository).
  */
 export const CLI_INSTALL_COMMAND =
-  "gh release download cli-v0.1.0 --repo zhouyanliang/NocoProject --pattern '*.tgz' && npm i -g ./nocoproject-cli-0.1.0.tgz";
+  "gh release download cli-v0.1.1 --repo zhouyanliang/NocoProject --pattern '*.tgz' && npm i -g ./nocoproject-cli-0.1.1.tgz";

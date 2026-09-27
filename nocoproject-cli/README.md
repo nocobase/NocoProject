@@ -26,7 +26,7 @@ nocoproject login --server http://127.0.0.1:13000/main --api-key <NocoBase API k
 ```
 
 - `--server` is the application URL **including its mount path** (`APP_BASE_PATH`, `/main` by default). If you give only an origin, login probes `<origin>/api/healthz` and then `<origin>/main/api/healthz`.
-- The key is verified with `GET /api/np/me`. Use `--no-verify` to save the key without contacting the server, or `--api-key-stdin` to keep the key out of shell history.
+- The key is verified with `GET /api/np/me`. Use `--no-verify` to save the key without contacting the server. `--api-key-stdin` keeps the key out of the shell history: on a terminal it prompts and reads one line without echoing; from a pipe it reads to EOF (`printf '%s' "$KEY" | nocoproject login --server <url> --api-key-stdin`).
 - The config is saved to `~/.nocoproject/config.json` with mode 0600: `{ serverUrl, apiKey, daemonId, deviceName }`. `daemonId` is a UUID generated once per machine.
 
 ## Run the daemon
