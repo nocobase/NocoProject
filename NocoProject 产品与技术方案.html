@@ -162,11 +162,11 @@ pre code { background: none; padding: 0; font-size: inherit; }
   <main class="doc">
 
 <div class="legend">
-  <span>v0.7，2026-09-27</span>
+  <span>v0.8，2026-09-28</span>
   <span><span class="tag tag-temp">临时实现</span> 待替换为 NocoBase 官方能力</span>
   <span><span class="tag tag-no">不做</span> 明确不在范围内</span>
 </div>
-<h1>NocoProject 产品与技术方案</h1><aside class="meta"><p>版本：v0.7，2026-09-27
+<h1>NocoProject 产品与技术方案</h1><aside class="meta"><p>版本：v0.8，2026-09-28
 依据：《Multica 调研》、Multica 仓库（v0.5.x，只读，不复用代码）、NocoBase 3 应用模板与 19 份底座技能文档
 阅读建议：第 1–3 章是产品层，不需要技术背景；第 4–6 章是技术层，供研发评审；第 7 章是已定决策与待办；第 8 章是临时实现清单。
 同步规则：本文档是唯一来源，网页版由 <code>scripts/build-doc.mjs</code> 从本文件生成，每次修改后重新生成并发布。</p>
@@ -209,6 +209,11 @@ pre code { background: none; padding: 0; font-size: inherit; }
 <td>v0.7</td>
 <td>2026-09-27</td>
 <td>Phase 1 迭代 3（打磨与自用前置）交付，知识库 v0 提前到 Phase 1，真实 DeepSeek 与 GitHub 接入，见 6.4 节</td>
+</tr>
+<tr>
+<td>v0.8</td>
+<td>2026-09-28</td>
+<td>进入 dogfooding；迭代 4：设计先行流程、项目经理 Agent、统一新建任务，两份前端标准，见 6.5 节</td>
 </tr>
 </tbody></table></div><hr>
 <h2 id="s-1"><a class="anchor" href="#s-1">0. 一页总览</a></h2><p><strong>NocoProject 是什么</strong>：基于 NocoBase 3 的&quot;人与 Agent 协同&quot;的项目管理产品。人定方向、拍板、验收，Agent 在开发者的电脑或团队服务器上跑编码工具（Claude Code、Codex 等）把任务做出来，全过程记录在任务上。第一阶段服务软件开发团队。</p>
@@ -1325,6 +1330,24 @@ Agent
 <td>DeepSeek V4.1 Flash 已接入批量录入（直接模型调用 + JSON 校验，弃用插件的工具式结构化输出）；GitHub 令牌已配置，Webhook 用 <code>gh webhook forward</code> 转发到本机</td>
 </tr>
 </tbody></table></div><p>测试规模：应用 743 个用例、CLI 158 个用例。workspace 化在仓库副本上验证可行但涉及停服务与 lockfile 迁移，推迟到 dogfooding 期间单独执行（<code>docs/phase1/workspace.md</code>）。Phase 1 自此进入 dogfooding。</p>
+<h4 id="s-7-2-4"><a class="anchor" href="#s-7-2-4">6.5 Dogfooding 第一周：迭代 4（2026-09-28）</a></h4><p>开发已迁入 NocoProject 自身（<code>nocoproject/docs/dogfooding.md</code>：launchd 常驻服务、GitHub CI 与 webhook 转发、知识库与技能的初始内容、Agent 配置、dev 机器经 Tailscale 接入）。产品负责人在使用中提出的三项能力在迭代 4 交付：</p>
+<div class="tablewrap"><table><thead><tr>
+<th>能力</th>
+<th>设计</th>
+</tr>
+</thead><tbody><tr>
+<td>设计先行流程</td>
+<td>任务级 <code>process</code>（直接开发 / 先出方案），新建时可选、默认由分类器判定（启发式优先，只有中等长度且无规则命中的才问模型）。先出方案的任务走 <code>分析中 → 方案待审 → 进行中</code>：Agent 提交方案评论后停在方案待审，负责人在决定卡上&quot;批准进入开发 / 打回修改&quot;；批准前服务端拒绝 Agent 进入开发。</td>
+</tr>
+<tr>
+<td>项目经理 Agent</td>
+<td>系统内 <code>kind = manager</code> 的 Agent（本期跑在 dev 机器的 OpenCode 上，DeepSeek V4.1 Flash，high 推理），不能做普通任务的执行者。每个成员有一条会话式对话任务（侧栏&quot;项目经理&quot;），所有跨项目读取按提问者的可见范围过滤。任务完成后自动触发总结运行，写一条内部备注并用 <code>kb propose</code> 建议沉淀。</td>
+</tr>
+<tr>
+<td>统一新建任务</td>
+<td>一个对话框两个标签：AI 整理（描述或粘贴 → 草稿表 → 一次创建一条或多条）与手动；独立的批量录入页撤销。</td>
+</tr>
+</tbody></table></div><p>同时交付《NocoBase 3 应用前端交互最佳实践》与《NocoSolution 前端标准》（<code>nocoproject/docs/design/</code>）。发现并记录的一个边界：Agent 与守护进程同一操作系统用户运行，模型在工具缺失时会自行读取守护进程的 API key 直接调接口；对策是简报禁令、各机器 CLI 同版本升级，根本隔离留给 Phase 2 的服务器运行时。测试规模：应用 815 个用例、CLI 183 个用例。</p>
 <h3 id="s-7-3"><a class="anchor" href="#s-7-3">Phase 2：对外发布 1.0（第 14–24 周）</a></h3><ul>
 <li>集成分支模式：子任务分支合入父任务分支，父任务统一提 PR。</li>
 <li>自定义工作流模板编辑器与阶段动作（含&quot;进入某阶段由某 Agent 执行&quot;）。</li>
