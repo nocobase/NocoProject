@@ -1,4 +1,5 @@
 import type { AppResource } from './en-US.js';
+import npCollabZhCN from './np-zh-CN.js';
 
 const zhCN: AppResource = {
   'auth.welcome': '欢迎回来',
@@ -121,9 +122,12 @@ const zhCN: AppResource = {
   },
   navigation: {
     home: '首页',
+    inbox: '收件箱',
     issues: '任务',
+    projects: '项目',
     agents: 'Agent',
     runtimes: '运行时',
+    members: '成员',
     open: '打开导航',
     close: '关闭导航',
     expand: '展开导航',
@@ -151,6 +155,7 @@ const zhCN: AppResource = {
     rangePlaceholder: '选择日期范围',
   },
   np: {
+    ...npCollabZhCN,
     common: {
       online: '在线',
       offline: '离线',
@@ -162,6 +167,11 @@ const zhCN: AppResource = {
       create: '创建',
       creating: '正在创建…',
       saving: '正在保存',
+      save: '保存',
+      reset: '重置',
+      adding: '正在添加…',
+      createNamed: '新建“{{name}}”',
+      noOptions: '没有可选项',
     },
     status: {
       backlog: '待规划',
@@ -195,12 +205,16 @@ const zhCN: AppResource = {
       reply: '回复',
       comment: '评论',
       retry: '重试',
+      dependencyReleased: '阻塞解除',
+      childBatchDone: '子任务完成',
+      proposalAccepted: '建议已确认',
     },
     executor: {
       none: '未指派',
       person: '成员',
       agentMarker: 'Agent',
       working: '工作中',
+      noAccess: '无权限',
     },
     issues: {
       title: '任务',
@@ -246,6 +260,7 @@ const zhCN: AppResource = {
       editDescription: '编辑描述',
       noDescription: '暂无描述。',
       conflict: '任务已被修改，正在重新加载。',
+      parent: '父任务',
     },
     properties: {
       title: '属性',
@@ -258,6 +273,9 @@ const zhCN: AppResource = {
       details: '详情',
       created: '创建时间',
       updated: '更新时间',
+      labels: '标签',
+      project: '项目',
+      autoExecute: '自动执行子任务',
     },
     activity: {
       title: '动态',
@@ -271,6 +289,14 @@ const zhCN: AppResource = {
         ownerChanged: '修改了负责人',
         titleChanged: '修改了标题',
         descriptionChanged: '编辑了描述',
+        runDeferredBlocked: '推迟了运行，等待前置任务完成',
+        dependencyChanged: '修改了依赖',
+        labelsChanged: '修改了标签',
+        proposalDecided: '处理了执行者建议',
+        projectChanged: '把任务移到了其他项目',
+        parentChanged: '修改了父任务',
+        stageChanged: '修改了阶段',
+        datesChanged: '修改了日期',
         updated: '更新了任务',
       },
       run: {
@@ -313,6 +339,7 @@ const zhCN: AppResource = {
       finished: '结束',
       attempt: '第几次',
       failure: '失败原因',
+      branch: '分支',
       viewTranscript: '查看运行记录',
       stop: '停止',
       stopping: '正在停止…',
@@ -359,7 +386,8 @@ const zhCN: AppResource = {
         access: '可见范围',
       },
       access: {
-        ownerOnly: '仅自己',
+        ownerOnly: '仅所有者',
+        specificUsers: '指定成员',
         everyone: '所有人',
       },
     },

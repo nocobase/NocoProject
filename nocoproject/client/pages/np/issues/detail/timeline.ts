@@ -65,6 +65,14 @@ export type ActivityLabel =
   | 'ownerChanged'
   | 'titleChanged'
   | 'descriptionChanged'
+  | 'runDeferredBlocked'
+  | 'dependencyChanged'
+  | 'labelsChanged'
+  | 'proposalDecided'
+  | 'projectChanged'
+  | 'parentChanged'
+  | 'stageChanged'
+  | 'datesChanged'
   | 'updated';
 
 /**
@@ -73,6 +81,15 @@ export type ActivityLabel =
  */
 export function activityLabel(action: string): ActivityLabel {
   const normalized = action.toLowerCase().replace(/[^a-z]/gu, '');
+  // Iteration 1 actions (§D): a run held back by open blockers, dependencies, labels, proposals and the new fields.
+  if (normalized.includes('deferred')) return 'runDeferredBlocked';
+  if (normalized.includes('dependenc')) return 'dependencyChanged';
+  if (normalized.includes('proposal')) return 'proposalDecided';
+  if (normalized.includes('label')) return 'labelsChanged';
+  if (normalized.includes('project')) return 'projectChanged';
+  if (normalized.includes('parent')) return 'parentChanged';
+  if (normalized.includes('stage')) return 'stageChanged';
+  if (/startdate|duedate|dates/u.test(normalized)) return 'datesChanged';
   if (normalized.includes('status')) return 'statusChanged';
   if (normalized.includes('priority')) return 'priorityChanged';
   if (normalized.includes('executor') || normalized.includes('assign')) {

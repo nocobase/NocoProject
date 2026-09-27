@@ -138,7 +138,95 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const COLLAB_DETAIL = {
+  ...DETAIL,
+  parent: { id: '100', identifier: 'NP-0', title: 'Ship Phase 1' },
+  subtasks: [
+    {
+      id: 's2',
+      identifier: 'NP-3',
+      title: 'Write the UI',
+      statusKey: 'todo',
+      stage: 2,
+      executorType: 'none',
+      executorName: null,
+      blockedCount: 1,
+    },
+    {
+      id: 's1',
+      identifier: 'NP-2',
+      title: 'Write the API',
+      statusKey: 'done',
+      stage: 1,
+      executorType: 'agent',
+      executorName: 'Claude Coder',
+      blockedCount: 0,
+    },
+  ],
+  blockedBy: [
+    {
+      dependencyId: 'd1',
+      issueId: '90',
+      identifier: 'NP-90',
+      title: 'Agree on the schema',
+      statusKey: 'in_review',
+    },
+  ],
+  blocks: [],
+  subscribers: [{ userId: 'u1', name: 'Zhou', reason: 'creator' }],
+  labels: [{ id: 'l1', name: 'backend', color: 'blue' }],
+};
+
 describe('issue detail', () => {
+  it('shows the parent, sub-issues by stage, blockers and subscription', async () => {
+    const user = userEvent.setup();
+    api.request.mockImplementation(
+      (options: { path: string; method?: string }) => {
+        if (options.path === 'np/issues/101' && !options.method) {
+          return Promise.resolve({ data: COLLAB_DETAIL });
+        }
+        if (options.path === 'np/issues/101/unsubscribe') {
+          return Promise.resolve({ data: { subscribed: false } });
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+
+    const parent = await screen.findByRole('link', { name: /NP-0/ });
+    expect(parent).toHaveAttribute('href', '/issues/100');
+
+    const subtasks = screen.getByRole('region', { name: /Sub-issues/ });
+    const stages = within(subtasks).getAllByText(/^Stage \d$/u);
+    expect(stages.map((node) => node.textContent)).toEqual([
+      'Stage 1',
+      'Stage 2',
+    ]);
+    expect(within(subtasks).getByText('Waiting for 1')).toBeVisible();
+    expect(
+      within(subtasks).getByText('New sub-issue').closest('a'),
+    ).toHaveAttribute('href', '/issues/101/new-subtask');
+
+    const dependencies = screen.getByRole('region', { name: 'Dependencies' });
+    expect(within(dependencies).getByText('Agree on the schema')).toBeVisible();
+    expect(
+      within(dependencies).getByRole('button', {
+        name: 'Remove NP-90 as a blocker',
+      }),
+    ).toBeVisible();
+
+    expect(screen.getByText('backend')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: /Unsubscribe/ }));
+    await waitFor(() =>
+      expect(api.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'np/issues/101/unsubscribe',
+          method: 'POST',
+        }),
+      ),
+    );
+  });
+
   it('renders the description, threaded comments with mention chips, and the execution log', async () => {
     await renderDetail();
 
@@ -155,7 +243,8 @@ describe('issue detail', () => {
 
     const log = screen.getByRole('region', { name: 'Execution log' });
     expect(within(log).getByText('Failed')).toBeVisible();
-    expect(within(log).getByText('runtimeOffline')).toBeVisible();
+    // Failure reasons read as words, not codes (iteration 1 §J 7).
+    expect(within(log).getByText('Runtime offline')).toBeVisible();
     expect(within(log).getByRole('button', { name: /Retry/ })).toBeVisible();
     expect(within(log).queryByRole('button', { name: /Stop/ })).toBeNull();
     expect(

@@ -18,10 +18,18 @@ export {
   npServicesToken,
   npSweeperServiceToken,
   npTriggerServiceToken,
+  npWorkflowServiceToken,
+  npMemberServiceToken,
+  npLabelServiceToken,
+  npDependencyServiceToken,
+  npProposalServiceToken,
+  npAgentIssueServiceToken,
+  npInboxServiceToken,
+  NP_MEMBERS_SETTINGS_ID,
 } from './np.js';
 
 const serviceProviders: readonly ApplicationServiceProviderConstructor[] = [
-  // NocoProject Phase 0 modules (server/modules/*): services, realtime topics, run sweeper.
+  // NocoProject modules (server/modules/*): services, realtime topics, np-members settings item, run sweeper.
   NpProvider,
 ];
 

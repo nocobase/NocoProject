@@ -6,7 +6,8 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { ClaimedRun, CommentForAgent, IssueForAgent, RunStatus } from '../../src/protocol.js';
+import type { ClaimedProject, CommentForAgent, IssueForAgent, RunStatus } from '../../src/protocol.js';
+import type { ClaimedRunV1 as ClaimedRun } from '../../src/run-context.js';
 
 export const API_KEY = 'test-api-key-0123456789';
 export const BASE = '/main';
@@ -23,6 +24,33 @@ interface RunState {
   cancelRequested: boolean;
   claimed: ClaimedRun;
   events: any[];
+}
+
+/** Phase 1 bookkeeping for issues created or linked through the agent API. */
+export interface IssueMeta {
+  parentIssueId: string | null;
+  stage: number | null;
+  executor: string | null;
+  labels: string[];
+  priority: string | null;
+  createdByRunId: string | null;
+}
+
+export interface Dependency {
+  readonly dependencyId: string;
+  readonly issueId: string;
+  readonly dependsOnIssueId: string;
+  readonly type: string;
+}
+
+export interface EnqueueOptions {
+  provider?: string;
+  triggerComment?: string;
+  triggerType?: ClaimedRun['triggers'][number]['type'];
+  session?: ClaimedRun['session'];
+  project?: ClaimedProject | null;
+  issueExtras?: Partial<ClaimedRun['issue']>;
+  agentExtras?: Partial<ClaimedRun['agent']>;
 }
 
 export interface MockOptions {
@@ -46,6 +74,8 @@ export class MockServer {
   readonly queue: ClaimedRun[] = [];
   readonly tokens = new Map<string, string>();
   readonly runtimes = new Map<string, { id: string; provider: string }>();
+  readonly meta = new Map<string, IssueMeta>();
+  readonly dependencies: Dependency[] = [];
   private readonly sockets = new Set<WebSocket>();
   private server: Server;
   private wss: WebSocketServer;
@@ -117,20 +147,21 @@ export class MockServer {
   }
 
   /** Queues a run for the given issue and publishes `workAvailable`. */
-  enqueue(issueId: string, opts: { provider?: string; triggerComment?: string; session?: ClaimedRun['session'] } = {}): string {
+  enqueue(issueId: string, opts: EnqueueOptions = {}): string {
     const issue = this.issues.get(issueId);
     if (!issue) throw new Error(`no issue ${issueId}`);
     const provider = opts.provider ?? 'echo';
     const runtime = [...this.runtimes.values()].find((r) => r.provider === provider);
     const runId = String(++this.seq);
     const triggers: ClaimedRun['triggers'] = opts.triggerComment
-      ? [{ type: 'mention', comment: this.addHumanComment(issueId, opts.triggerComment) }]
-      : [{ type: 'assign' }];
+      ? [{ type: opts.triggerType ?? 'mention', comment: this.addHumanComment(issueId, opts.triggerComment) }]
+      : [{ type: opts.triggerType ?? 'assign' }];
     this.queue.push({
       run: { id: runId, agentId: 'agent-1', runtimeId: runtime?.id ?? 'rt-missing', attempt: 1, priority: 0, createdAt: new Date().toISOString() },
       token: `npr_${randomBytes(20).toString('hex')}`,
-      agent: { id: 'agent-1', name: 'Echo Bot', instructions: 'Be brief.', provider: provider as any, model: null },
-      issue: { id: issue.id, identifier: issue.identifier, title: issue.title, statusKey: issue.statusKey, ownerName: issue.ownerName },
+      agent: { id: 'agent-1', name: 'Echo Bot', instructions: 'Be brief.', provider: provider as any, model: null, ...opts.agentExtras },
+      issue: { id: issue.id, identifier: issue.identifier, title: issue.title, statusKey: issue.statusKey, ownerName: issue.ownerName, ...opts.issueExtras },
+      ...(opts.project !== undefined ? { project: opts.project } : {}),
       statusCatalog: [],
       agentTransitions: TRANSITIONS,
       triggers,
@@ -150,8 +181,8 @@ export class MockServer {
   }
 
   /** Creates a running run for the issue (as if claimed) and returns its token. */
-  issueToken(issueId: string): string {
-    const runId = this.enqueue(issueId);
+  issueToken(issueId: string, opts: EnqueueOptions = {}): string {
+    const runId = this.enqueue(issueId, opts);
     const idx = this.queue.findIndex((q) => q.run.id === runId);
     const [run] = this.queue.splice(idx, 1);
     if (!run) throw new Error('enqueue failed');
@@ -250,12 +281,16 @@ export class MockServer {
     if (!run || ['completed', 'failed', 'cancelled'].includes(run.status)) return send(401, { code: 'INVALID_RUN_TOKEN', message: 'bad token' });
     if (path === '/np/agent/context') {
       const issue = this.issues.get(run.claimed.issue.id);
-      return send(200, { data: { run: { id: runId }, agent: { id: 'agent-1', name: 'Echo Bot' }, issue, statusCatalog: [], agentTransitions: TRANSITIONS } });
+      const project = run.claimed.project ?? null;
+      return send(200, { data: { run: { id: runId }, agent: { id: 'agent-1', name: 'Echo Bot' }, issue, statusCatalog: [], agentTransitions: TRANSITIONS, project } });
     }
-    const m = path.match(/^\/np\/agent\/issues\/([^/]+)(?:\/(comments|status))?$/);
-    const issue = m ? this.issues.get(decodeURIComponent(m[1] as string)) : undefined;
+    if (path === '/np/agent/issues' && method === 'POST') return this.createIssue(body, run.claimed, send);
+    const m = path.match(/^\/np\/agent\/issues\/([^/]+)(?:\/(comments|status|children|dependencies))?$/);
+    const issue = m ? this.findIssue(decodeURIComponent(m[1] as string)) : undefined;
     if (!m || !issue) return send(404, { code: 'ISSUE_NOT_FOUND', message: path });
     if (!m[2]) return send(200, { data: issue });
+    if (m[2] === 'children') return send(200, { data: this.children(issue.id) });
+    if (m[2] === 'dependencies') return this.dependencyRoute(method, issue.id, url, body, send);
     if (m[2] === 'comments' && method === 'GET') return send(200, { data: this.comments.get(issue.id) ?? [] });
     if (m[2] === 'comments') {
       const id = `c${++this.seq}`;
@@ -276,5 +311,54 @@ export class MockServer {
     if (!allowed) return send(403, { code: 'TRANSITION_NOT_ALLOWED', message: `${issue.statusKey} → ${body.statusKey}` });
     this.issues.set(issue.id, { ...issue, statusKey: body.statusKey });
     return send(200, { data: { issue: { id: issue.id, statusKey: body.statusKey } } });
+  }
+
+  findIssue(ref: string): IssueForAgent | undefined {
+    return this.issues.get(ref) ?? [...this.issues.values()].find((i) => i.identifier.toUpperCase() === ref.toUpperCase());
+  }
+
+  private createIssue(body: any, claimed: ClaimedRun, send: (s: number, p: unknown) => void): void {
+    if (!body?.title) return send(400, { code: 'VALIDATION_ERROR', message: 'title is required' });
+    const n = ++this.seq;
+    const parentIssueId = body.parentIssueId ?? claimed.issue.id;
+    if (!this.findIssue(parentIssueId)) return send(404, { code: 'ISSUE_NOT_FOUND', message: parentIssueId });
+    const executor = body.executor ?? 'none';
+    const issue = this.addIssue({
+      id: `i${n}`,
+      identifier: `NP-${n}`,
+      title: body.title,
+      description: body.description ?? '',
+      executor: executor === 'self' ? { type: 'agent', id: claimed.agent.id, name: claimed.agent.name } : { type: 'none', id: null, name: null },
+    });
+    this.meta.set(issue.id, { parentIssueId, stage: body.stage ?? null, executor, labels: body.labels ?? [], priority: body.priority ?? null, createdByRunId: claimed.run.id });
+    for (const dep of body.blockedBy ?? []) this.dependencies.push({ dependencyId: `d${++this.seq}`, issueId: issue.id, dependsOnIssueId: dep, type: 'blockedBy' });
+    return send(201, { data: { ...issue, parentIssueId, stage: body.stage ?? null } });
+  }
+
+  private children(parentId: string) {
+    return [...this.meta.entries()]
+      .filter(([, m]) => m.parentIssueId === parentId)
+      .map(([id, m]) => {
+        const child = this.issues.get(id) as IssueForAgent;
+        const blockedCount = this.dependencies.filter((d) => d.issueId === id && this.issues.get(d.dependsOnIssueId)?.statusKey !== 'done').length;
+        return { id, identifier: child.identifier, title: child.title, statusKey: child.statusKey, stage: m.stage, executorType: child.executor.type, executorName: child.executor.name, blockedCount };
+      });
+  }
+
+  private dependencyRoute(method: string, issueId: string, url: URL, body: any, send: (s: number, p: unknown) => void): void {
+    if (method === 'POST') {
+      if (!this.issues.has(body?.dependsOnIssueId)) return send(404, { code: 'ISSUE_NOT_FOUND', message: String(body?.dependsOnIssueId) });
+      const dep = { dependencyId: `d${++this.seq}`, issueId, dependsOnIssueId: body.dependsOnIssueId, type: body.type ?? 'blockedBy' };
+      this.dependencies.push(dep);
+      return send(201, { data: dep });
+    }
+    if (method === 'DELETE') {
+      const other = url.searchParams.get('dependsOnIssueId');
+      const idx = this.dependencies.findIndex((d) => d.issueId === issueId && d.dependsOnIssueId === other);
+      if (idx < 0) return send(404, { code: 'DEPENDENCY_NOT_FOUND', message: String(other) });
+      const [removed] = this.dependencies.splice(idx, 1);
+      return send(200, { data: removed });
+    }
+    return send(405, { code: 'METHOD_NOT_ALLOWED', message: method });
   }
 }

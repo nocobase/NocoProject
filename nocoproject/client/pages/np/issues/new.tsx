@@ -3,6 +3,7 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircleIcon } from 'lucide-react';
 import { type FormEvent, type ReactElement, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 
 import { NpExecutorSelect } from '@/components/np-executor-select';
 import { RouteDialog } from '@/components/route-dialog';
@@ -80,7 +81,11 @@ function NewIssueBody({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<IssuePriority>('none');
-  const [projectId, setProjectId] = useState('none');
+  // Opened from a project, or from the list filtered by one, the new issue starts in that project.
+  const [searchParams] = useSearchParams();
+  const [projectId, setProjectId] = useState(
+    searchParams.get('project') ?? 'none',
+  );
   const [executor, setExecutor] = useState<ExecutorRef>({
     type: 'none',
     id: null,

@@ -13,9 +13,16 @@ import type { MiddlewareHandler } from 'hono';
 
 import { conflict } from '../../server/modules/shared/errors.ts';
 import {
+  npAgentIssueServiceToken,
   npAgentServiceToken,
   npClaimServiceToken,
   npCommentServiceToken,
+  npDependencyServiceToken,
+  npInboxServiceToken,
+  npLabelServiceToken,
+  npMemberServiceToken,
+  npProposalServiceToken,
+  npWorkflowServiceToken,
   npIssueQueriesToken,
   npIssueServiceToken,
   npProjectServiceToken,
@@ -107,7 +114,41 @@ function createDoubles() {
     ),
   };
   const claims = { claim: vi.fn(async () => ({ runs: [] })) };
-  return { issues, issueQueries, comments, runtimes, runs, runTokens, claims };
+  const members = {
+    ensure: vi.fn(async () => 'member'),
+    list: vi.fn(async () => []),
+    updateRole: vi.fn(),
+  };
+  const agentIssues = {
+    create: vi.fn(async () => ({ issue: { id: 'i9' }, proposal: null })),
+    children: vi.fn(async () => []),
+    addDependency: vi.fn(async () => ({ dependencyId: 'd1' })),
+    removeDependency: vi.fn(async () => undefined),
+  };
+  const inbox = {
+    list: vi.fn(async () => ({
+      data: [],
+      unread: { decision: 0, info: 0 },
+      nextCursor: null,
+    })),
+    unreadCount: vi.fn(async () => ({ decision: 1, info: 2 })),
+    mark: vi.fn(),
+    readAll: vi.fn(),
+    subscribe: vi.fn(),
+    unsubscribe: vi.fn(),
+  };
+  return {
+    issues,
+    issueQueries,
+    comments,
+    runtimes,
+    runs,
+    runTokens,
+    claims,
+    members,
+    agentIssues,
+    inbox,
+  };
 }
 
 async function build(
@@ -133,6 +174,13 @@ async function build(
   container.instance(npRunRecoveryServiceToken, {} as never);
   container.instance(npClaimServiceToken, doubles.claims as never);
   container.instance(npRunTokenServiceToken, doubles.runTokens as never);
+  container.instance(npMemberServiceToken, doubles.members as never);
+  container.instance(npAgentIssueServiceToken, doubles.agentIssues as never);
+  container.instance(npInboxServiceToken, doubles.inbox as never);
+  container.instance(npWorkflowServiceToken, { list: async () => [] } as never);
+  container.instance(npLabelServiceToken, { list: async () => [] } as never);
+  container.instance(npDependencyServiceToken, {} as never);
+  container.instance(npProposalServiceToken, {} as never);
   const router = await contribution.createRouter({
     container,
     publicBasePath: '/main',
@@ -167,6 +215,11 @@ describe('browser API /np/*', () => {
     '/np/agents',
     '/np/runtimes',
     '/np/runs/r1',
+    '/np/members',
+    '/np/workflows',
+    '/np/labels',
+    '/np/inbox',
+    '/np/inbox/unread-count',
   ])('answers 401 to an anonymous GET %s', async (path) => {
     const { router } = await build(npApiRoutes);
     const response = await router.request(path);
@@ -202,11 +255,20 @@ describe('browser API /np/*', () => {
       headers: signedIn,
     });
     expect(list.status).toBe(200);
-    expect(doubles.issueQueries.list).toHaveBeenCalledWith({
-      statusKey: 'todo',
-      projectId: null,
-      q: 'bug',
-    });
+    expect(doubles.issueQueries.list).toHaveBeenCalledWith(
+      { type: 'user', id: 'u1' },
+      {
+        statusKey: 'todo',
+        projectId: null,
+        q: 'bug',
+        labelId: null,
+        ownerUserId: null,
+        executorId: null,
+        parentIssueId: null,
+      },
+    );
+    // Every signed-in request bootstraps the caller's members row first.
+    expect(doubles.members.ensure).toHaveBeenCalledWith('u1');
 
     const patch = await router.request('/np/issues/i1', {
       method: 'PATCH',
@@ -245,6 +307,29 @@ describe('browser API /np/*', () => {
       'NP-1',
       { content: 'hi' },
     );
+  });
+
+  it('answers the inbox with unread counts beside data', async () => {
+    const { router, doubles } = await build(npApiRoutes);
+    const list = await router.request('/np/inbox?kind=decision', {
+      headers: signedIn,
+    });
+    expect(list.status).toBe(200);
+    await expect(list.json()).resolves.toEqual({
+      data: [],
+      unread: { decision: 0, info: 0 },
+      nextCursor: null,
+    });
+    expect(doubles.inbox.list).toHaveBeenCalledWith(
+      { type: 'user', id: 'u1' },
+      { kind: 'decision', archived: null, resolved: null, cursor: null },
+    );
+    const count = await router.request('/np/inbox/unread-count', {
+      headers: signedIn,
+    });
+    await expect(count.json()).resolves.toEqual({
+      data: { decision: 1, info: 2 },
+    });
   });
 });
 
@@ -360,6 +445,30 @@ describe('agent API /np/agent/*', () => {
     await expect(other.json()).resolves.toMatchObject({
       code: 'ISSUE_NOT_IN_RUN',
     });
+  });
+
+  it('creates sub-issues and removes dependencies the CLI way', async () => {
+    const { router, doubles } = await build(npAgentRoutes);
+    const created = await router.request(
+      '/np/agent/issues',
+      json({ title: 'Child', executor: 'self' }, withRunToken),
+    );
+    expect(created.status).toBe(201);
+    expect(doubles.agentIssues.create).toHaveBeenCalledWith(
+      { runId: 'r1', agentId: 'a1', actorUserId: 'u1', issueId: 'i1' },
+      { title: 'Child', executor: 'self' },
+    );
+    const removed = await router.request(
+      '/np/agent/issues/NP-2/dependencies?dependsOnIssueId=i7&type=blockedBy',
+      { method: 'DELETE', headers: withRunToken },
+    );
+    expect(removed.status).toBe(200);
+    expect(doubles.agentIssues.removeDependency).toHaveBeenCalledWith(
+      { runId: 'r1', agentId: 'a1', actorUserId: 'u1', issueId: 'i1' },
+      'NP-2',
+      'i7',
+      'blockedBy',
+    );
   });
 
   it('does not leak its middleware onto /np/agents', async () => {

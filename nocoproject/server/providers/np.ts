@@ -1,7 +1,11 @@
 /**
- * NocoProject Phase 0 provider: binds every module service to its token, connects domain events to realtime topics,
- * and runs the run sweeper every 30 seconds.
+ * NocoProject provider: binds every module service to its token, connects domain events to realtime topics, registers
+ * the `np-members` settings item with the authorization plugin, and runs the run sweeper every 30 seconds.
+ *
+ * Page grants for the NocoProject pages (and `read` on `np-members`) are given to the default `member` permission set
+ * once, by the seed `2026092800003_np_member_page_grants`, so administrators can still edit them.
  */
+import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
 import type { Application } from '@nocobase/app-server/application';
 import { idGeneratorToken } from '@nocobase/app-server/id-generator';
 import { loggingToken } from '@nocobase/app-server/logging';
@@ -18,6 +22,13 @@ import type { AgentService } from '../modules/agent/agent.service.js';
 import type { CommentService } from '../modules/collaboration/comment.service.js';
 import type { IssueQueries } from '../modules/issue/issue.queries.js';
 import type { IssueService } from '../modules/issue/issue.service.js';
+import type { LabelService } from '../modules/label/label.service.js';
+import type { MemberService } from '../modules/member/member.service.js';
+import type { InboxService } from '../modules/notification/inbox.service.js';
+import type { AgentIssueService } from '../modules/subtask/agent-issue.service.js';
+import type { DependencyService } from '../modules/subtask/dependency.service.js';
+import type { ProposalService } from '../modules/subtask/proposal.service.js';
+import type { WorkflowService } from '../modules/workflow/workflow.service.js';
 import type { ProjectService } from '../modules/project/project.service.js';
 import type { ClaimService } from '../modules/run/claim.service.js';
 import type { RunRecoveryService } from '../modules/run/failure.js';
@@ -68,6 +79,23 @@ export const npRunTokenServiceToken: ServiceToken<RunTokenService> =
   createServiceToken<RunTokenService>('nocoproject/run-token-service');
 export const npSweeperServiceToken: ServiceToken<SweeperService> =
   createServiceToken<SweeperService>('nocoproject/sweeper-service');
+export const npWorkflowServiceToken: ServiceToken<WorkflowService> =
+  createServiceToken<WorkflowService>('nocoproject/workflow-service');
+export const npMemberServiceToken: ServiceToken<MemberService> =
+  createServiceToken<MemberService>('nocoproject/member-service');
+export const npLabelServiceToken: ServiceToken<LabelService> =
+  createServiceToken<LabelService>('nocoproject/label-service');
+export const npDependencyServiceToken: ServiceToken<DependencyService> =
+  createServiceToken<DependencyService>('nocoproject/dependency-service');
+export const npProposalServiceToken: ServiceToken<ProposalService> =
+  createServiceToken<ProposalService>('nocoproject/proposal-service');
+export const npAgentIssueServiceToken: ServiceToken<AgentIssueService> =
+  createServiceToken<AgentIssueService>('nocoproject/agent-issue-service');
+export const npInboxServiceToken: ServiceToken<InboxService> =
+  createServiceToken<InboxService>('nocoproject/inbox-service');
+
+/** The settings item the members settings page declares (`settings:np-members`). */
+export const NP_MEMBERS_SETTINGS_ID = 'np-members';
 
 /** Binds a module token to the member of `NpServices` it exposes. */
 function bindModule<K extends keyof NpServices>(
@@ -113,14 +141,47 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npClaimServiceToken, 'claims');
     bindModule(container, npRunTokenServiceToken, 'runTokens');
     bindModule(container, npSweeperServiceToken, 'sweeper');
+    bindModule(container, npWorkflowServiceToken, 'workflows');
+    bindModule(container, npMemberServiceToken, 'members');
+    bindModule(container, npLabelServiceToken, 'labels');
+    bindModule(container, npDependencyServiceToken, 'dependencies');
+    bindModule(container, npProposalServiceToken, 'proposals');
+    bindModule(container, npAgentIssueServiceToken, 'agentIssues');
+    bindModule(container, npInboxServiceToken, 'inbox');
   }
 
   public override async boot(): Promise<void> {
     const { container } = this.app;
+    this.registerSettingsItem();
     if (!container.has(realtimeServiceToken)) return;
     this.topics = connectRealtime(
       container.resolve(realtimeServiceToken),
       container.resolve(npServicesToken).bus,
+    );
+  }
+
+  /**
+   * `settings:np-members` (contract §B): every member may open the page (granted by the seed); the members API
+   * itself only lets owners and admins change roles. Re-registering an identical item is a no-op.
+   */
+  private registerSettingsItem(): void {
+    const { container } = this.app;
+    if (!container.has(authorizationToken)) return;
+    const authz = container.resolve(authorizationToken);
+    if (!authz.ui.sections.has('nocoproject'))
+      authz.ui.sections.add({
+        name: 'nocoproject',
+        title: 'NocoProject',
+        parent: 'administration',
+      });
+    authz.settings.add({
+      id: NP_MEMBERS_SETTINGS_ID,
+      title: 'Members',
+      actions: [{ name: 'read', title: 'Open' }],
+    });
+    authz.ui.place(
+      { type: 'settings', id: NP_MEMBERS_SETTINGS_ID },
+      { section: 'nocoproject' },
     );
   }
 

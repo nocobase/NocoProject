@@ -418,6 +418,9 @@ export interface RunSummary {
   readonly createdAt: string;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
+  /** Phase 1：Agent 工作分支（守护进程回报），无 checkout 时为 null */
+  readonly branchName: string | null;
+  readonly repoUrl: string | null;
 }
 
 export interface IssueDetail {

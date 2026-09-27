@@ -117,7 +117,8 @@ describe('run transcript', () => {
 
     expect(await screen.findByText('Reading the issue')).toBeVisible();
     expect(screen.getByText('Bash')).toBeVisible();
-    expect(screen.getByText(/nocoproject issue get NP-1/)).toBeInTheDocument();
+    // The command is readable without expanding the tool call (iteration 1 §J 7).
+    expect(screen.getByText('$ nocoproject issue get NP-1')).toBeVisible();
     expect(screen.getByText('Claude Coder')).toBeVisible();
 
     const listener = realtime.listeners.get('np:run:run-1');

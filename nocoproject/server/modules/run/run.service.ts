@@ -11,11 +11,12 @@ import type { IdSource } from '../shared/ids.js';
 import {
   CLAIM_LEASE_SECONDS,
   type DaemonCompleteRequest,
+  type DaemonReportPhase1Extras,
   type DaemonRunStatusResponse,
   type DaemonStartRequest,
+  type Phase1RunTriggerType,
   type Run,
   type RunStatus,
-  type RunTriggerType,
 } from '../shared/protocol.js';
 import {
   ACTIVE_STATUSES,
@@ -29,7 +30,7 @@ import {
 import { upsertSession } from './sessions.js';
 
 export interface TriggerRecordInput {
-  readonly type: RunTriggerType;
+  readonly type: Phase1RunTriggerType;
   readonly commentId?: string | null;
   readonly payload?: Readonly<Record<string, unknown>> | null;
   readonly createdById?: string | null;
@@ -65,7 +66,10 @@ export interface RunService {
   extendLease(runId: string): Promise<Run>;
   start(runId: string, input: DaemonStartRequest): Promise<Run>;
   daemonStatus(runId: string): Promise<DaemonRunStatusResponse>;
-  complete(runId: string, input: DaemonCompleteRequest): Promise<Run>;
+  complete(
+    runId: string,
+    input: DaemonCompleteRequest & DaemonReportPhase1Extras,
+  ): Promise<Run>;
   requestCancel(actor: Actor, runId: string): Promise<Run>;
   cancelAck(runId: string): Promise<Run>;
 }
@@ -272,16 +276,30 @@ async function start(
   });
 }
 
+/** `branchName` / `repoUrl` reported by the daemon (contract §I), trimmed to their column sizes. */
+export function checkoutReport(input: DaemonReportPhase1Extras): {
+  branchName?: string | null;
+  repoUrl?: string | null;
+} {
+  const result: { branchName?: string | null; repoUrl?: string | null } = {};
+  if (typeof input?.branchName === 'string' && input.branchName.trim())
+    result.branchName = input.branchName.trim().slice(0, 255);
+  if (typeof input?.repoUrl === 'string' && input.repoUrl.trim())
+    result.repoUrl = input.repoUrl.trim().slice(0, 2000);
+  return result;
+}
+
 async function complete(
   deps: RunServiceDeps,
   runId: string,
-  input: DaemonCompleteRequest,
+  input: DaemonCompleteRequest & DaemonReportPhase1Extras,
 ): Promise<Run> {
   return deps.tx.run(async (tx) => {
     const run = await findRun(tx.conn, runId);
     if (!run) throw notFound('Run');
     if (run.status === 'completed') return run;
     const providerSessionId = input.providerSessionId ?? run.providerSessionId;
+    const checkout = checkoutReport(input);
     const moved = await transitionRun(tx.conn, runId, EXECUTING_STATUSES, {
       status: 'completed',
       finishedAt: now(),
@@ -289,6 +307,7 @@ async function complete(
       resultSummary: input.summary ?? null,
       providerSessionId,
       workDir: input.workDir ?? run.workDir,
+      ...checkout,
     });
     if (!moved) notInState(run, 'dispatched or running');
     await revokeRunTokens(tx.conn, runId);
@@ -296,6 +315,7 @@ async function complete(
       providerSessionId,
       workDir: input.workDir ?? run.workDir,
       poisoned: false,
+      ...checkout,
     });
     if (input.usage) {
       await tx.conn.query

@@ -162,11 +162,11 @@ pre code { background: none; padding: 0; font-size: inherit; }
   <main class="doc">
 
 <div class="legend">
-  <span>v0.4，2026-09-27</span>
+  <span>v0.5，2026-09-27</span>
   <span><span class="tag tag-temp">临时实现</span> 待替换为 NocoBase 官方能力</span>
   <span><span class="tag tag-no">不做</span> 明确不在范围内</span>
 </div>
-<h1>NocoProject 产品与技术方案</h1><aside class="meta"><p>版本：v0.4，2026-09-27
+<h1>NocoProject 产品与技术方案</h1><aside class="meta"><p>版本：v0.5，2026-09-27
 依据：《Multica 调研》、Multica 仓库（v0.5.x，只读，不复用代码）、NocoBase 3 应用模板与 19 份底座技能文档
 阅读建议：第 1–3 章是产品层，不需要技术背景；第 4–6 章是技术层，供研发评审；第 7 章是已定决策与待办；第 8 章是临时实现清单。
 同步规则：本文档是唯一来源，网页版由 <code>scripts/build-doc.mjs</code> 从本文件生成，每次修改后重新生成并发布。</p>
@@ -194,6 +194,11 @@ pre code { background: none; padding: 0; font-size: inherit; }
 <td>v0.4</td>
 <td>2026-09-27</td>
 <td>Phase 0 技术验证完成：三个风险全部跑通，结论见 6.1 节；4.6 节认领协议补充按运行时的事务级咨询锁；4.7 节记录 OpenCode 的两个真实坑</td>
+</tr>
+<tr>
+<td>v0.5</td>
+<td>2026-09-27</td>
+<td>Phase 1 迭代 1（协作骨架）交付并联调通过，见 6.2 节</td>
 </tr>
 </tbody></table></div><hr>
 <h2 id="s-1"><a class="anchor" href="#s-1">0. 一页总览</a></h2><p><strong>NocoProject 是什么</strong>：基于 NocoBase 3 的&quot;人与 Agent 协同&quot;的项目管理产品。人定方向、拍板、验收，Agent 在开发者的电脑或团队服务器上跑编码工具（Claude Code、Codex 等）把任务做出来，全过程记录在任务上。第一阶段服务软件开发团队。</p>
@@ -1193,6 +1198,37 @@ Agent
 <li>GitHub：PR 自动关联、PR 卡片、合并后改状态。</li>
 <li>验收标准：团队连续两周用它派活，至少 50 条任务由 Agent 交付，认领延迟中位数 &lt; 3 秒，无丢运行。</li>
 </ul>
+<h4 id="s-7-2-1"><a class="anchor" href="#s-7-2-1">6.2 Phase 1 进展：迭代 1 协作骨架（2026-09-27 完成）</a></h4><p>Phase 1 拆成三轮迭代（应用仓库 <code>docs/phase1/plan.md</code>）：迭代 1 协作骨架、迭代 2 交付链路（GitHub、批量录入、审批门禁、环境变量加密、用量统计）、迭代 3 打磨与自用。每轮先写契约，再由服务端、守护进程与 CLI、前端三个子任务并行实现，最后集成联调。</p>
+<p>迭代 1 已交付并联调通过（记录在 <code>docs/phase1/iteration-1-integration.md</code>）：</p>
+<div class="tablewrap"><table><thead><tr>
+<th>范围</th>
+<th>内容</th>
+</tr>
+</thead><tbody><tr>
+<td>成员与权限</td>
+<td>首个用户成 owner，其余 member；应用层规则统一在 <code>shared/authz.ts</code>：私有项目对非成员 404、负责人 / 终态 / Agent 访问权 / 项目管理各有规则；普通用户经种子获得页面权限</td>
+</tr>
+<tr>
+<td>项目</td>
+<td>可见性、lead、状态、日期、成员、gitRepo 资源、按状态计数；默认工作流模板&quot;软件开发&quot;驱动状态目录与 Agent 转换</td>
+</tr>
+<tr>
+<td>子任务与协调</td>
+<td>阶段批次、<code>blockedBy</code> 依赖（环检测）、阻塞门控（不入队、记 <code>run_deferred_blocked</code>）、终态放行 <code>dependencyReleased</code>、批次完成唤醒父执行者 <code>childBatchDone</code>、执行者建议与委派名单、<code>start:false</code></td>
+</tr>
+<tr>
+<td>收件箱与订阅</td>
+<td>自动订阅、11 种通知、待我决定 / 通知两栏、合并与自动解决、实时主题 <code>np:inbox</code>；通知在事务内由领域事件产生（临时实现，见第 8 章）</td>
+</tr>
+<tr>
+<td>守护进程与 CLI</td>
+<td>仓库 checkout（裸仓缓存 + worktree + <code>agent/&lt;slug&gt;/&lt;np-n&gt;</code> 分支）、Codex 适配器真机闭环、<code>issue create/children/dependency</code>、<code>project get</code>、简报新增仓库 / 项目 / 子任务 / 父任务协调章节、完成回报带分支</td>
+</tr>
+<tr>
+<td>界面</td>
+<td>看板（拖拽、确认开始弹窗）、任务详情升级（子任务、依赖、标签、日期、建议卡、订阅）、收件箱、项目列表与详情、Agent 详情（访问范围、委派名单）、成员设置</td>
+</tr>
+</tbody></table></div><p>联调验证了三条关键链路：普通成员的权限边界；Agent 拆子任务后阻塞不入队、前置完成自动放行、批次完成唤醒父执行者并进入待验收；执行者建议进入负责人&quot;待我决定&quot;，确认后才运行。测试规模：应用 479 个用例、CLI 126 个用例。留给后续迭代的缺口（Agent 读接口的可见性、依赖新增不撤回排队运行、协议类型拆包等）列在集成记录第 4 节。</p>
 <h3 id="s-7-3"><a class="anchor" href="#s-7-3">Phase 2：对外发布 1.0（第 14–24 周）</a></h3><ul>
 <li>集成分支模式：子任务分支合入父任务分支，父任务统一提 PR。</li>
 <li>自定义工作流模板编辑器与阶段动作（含&quot;进入某阶段由某 Agent 执行&quot;）。</li>

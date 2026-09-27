@@ -185,7 +185,7 @@ export function registerDaemonCommands(program: Command): void {
     .command('start')
     .description('Start the daemon (in the background unless --foreground)')
     .option('--foreground', 'run in the foreground and log to stderr')
-    .option('--providers <list>', 'comma-separated providers to register (claude,opencode,echo)')
+    .option('--providers <list>', 'comma-separated providers to register (claude,opencode,codex,echo)')
     .option('--max-concurrent <n>', 'maximum concurrent runs (default 20)')
     .option('--json', 'JSON output')
     .action(async (opts: StartOpts) => {

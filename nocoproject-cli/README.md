@@ -1,11 +1,11 @@
 # nocoproject-cli
 
-Local daemon and agent CLI for NocoProject (Phase 0, protocol version 1).
+Local daemon and agent CLI for NocoProject (Phase 1 iteration 1, protocol version 1).
 
-- The **daemon** registers the coding tools installed on this machine (Claude Code, OpenCode) as runtimes, wakes up on the `np:daemon` realtime topic (with polling as a fallback), claims queued runs, prepares a workspace, launches the tool, streams its events back and reports the result.
-- The **agent CLI** (`nocoproject issue ...`) is what the agent runs inside a run to read the issue, post comments and change the status. It authenticates with the per-run token the daemon injects.
+- The **daemon** registers the coding tools installed on this machine (Claude Code, OpenCode, Codex) as runtimes, wakes up on the `np:daemon` realtime topic (with polling as a fallback), claims queued runs, prepares a workspace, launches the tool, streams its events back and reports the result.
+- The **agent CLI** (`nocoproject issue ...`, `project get`, `repo checkout`) is what the agent runs inside a run to read the issue, post comments, change the status, create sub-issues and check out project repositories. It authenticates with the per-run token the daemon injects.
 
-The contract lives in `nocoproject/docs/phase0/protocol.md`; `src/protocol.ts` is a verbatim copy of the shared types.
+The contract lives in `nocoproject/docs/phase0/protocol.md` and `nocoproject/docs/phase1/iteration-1-contract.md` (§I); `src/protocol.ts` is a verbatim copy of the shared types.
 
 ## Install
 
@@ -39,7 +39,7 @@ nocoproject daemon logs [-n 100] [-f]
 nocoproject daemon stop
 ```
 
-Options for `start`: `--providers claude,opencode,echo` (the default is `claude,opencode`; tools that are not installed are skipped) and `--max-concurrent <n>` (the default is 20).
+Options for `start`: `--providers claude,opencode,codex,echo` (the default is `claude,opencode,codex`; tools that are not installed are skipped) and `--max-concurrent <n>` (the default is 20).
 
 What it does:
 
@@ -47,11 +47,12 @@ What it does:
 2. Subscribes to `np:daemon` over `<serverUrl>/ws`, authenticated with the `x-api-key` header. It reconnects with exponential backoff and jitter and pings every 30 s. It also polls for work every `pollIntervalMs` (15 s from the server).
 3. Claims runs in batches for all runtimes, within a shared slot limit. It renews each lease every 15 s until the run starts.
 4. For each run, creates `~/.nocoproject/workspaces/<issueKey>-<runKey>/{workdir,logs}`. It reuses the previous `workDir` and resumes the provider session when the server hands them back and `fresh` is false.
-5. Writes the runtime brief as a marker block in `CLAUDE.md` (claude) or `AGENTS.md` (opencode, echo). Content outside the markers is left untouched.
-6. Launches the tool with the per-turn prompt and streams events in batches (every 500 ms, and immediately on the first visible event). Events are redacted and truncated to 64 KB, with increasing `seq` numbers.
-7. Checks for cancellation every 5 s and also reacts to WebSocket `cancelRequested`, killing the whole process tree. An idle watchdog kills an agent that produces no output for 2 h.
-8. Reports `complete` (with session id, summary and usage), `fail` (with a classified `FailureReason`) or `cancel-ack`.
-9. On SIGINT or SIGTERM, kills running agents and reports them as `runtimeRecovery`, which the server retries. It then deregisters.
+5. Writes `<workDir>/.nocoproject/context.json` (mode 0600, never contains the run token) from the Phase 1 claim extras: project and repositories, parent issue, stage, `autoExecuteSubtasks`, delegation targets and the previous session's `branchName` / `repoUrl`.
+6. Writes the runtime brief as a marker block in `CLAUDE.md` (claude) or `AGENTS.md` (opencode, codex, echo). Content outside the markers is left untouched.
+7. Launches the tool with the per-turn prompt and streams events in batches (every 500 ms, and immediately on the first visible event). Events are redacted and truncated to 64 KB, with increasing `seq` numbers.
+8. Checks for cancellation every 5 s and also reacts to WebSocket `cancelRequested`, killing the whole process tree. An idle watchdog kills an agent that produces no output for 2 h.
+9. Reports `complete` (with session id, summary and usage), `fail` (with a classified `FailureReason`) or `cancel-ack`. When the agent checked out a repository, `complete` and `fail` also carry `branchName` and `repoUrl` from `<workDir>/.nocoproject/checkout.json`.
+10. On SIGINT or SIGTERM, kills running agents and reports them as `runtimeRecovery`, which the server retries. It then deregisters.
 
 A `426 PROTOCOL_MISMATCH` stops claiming and logs a loud upgrade message.
 
@@ -67,14 +68,14 @@ A `426 PROTOCOL_MISMATCH` stops claiming and logs a loud upgrade message.
 | `NOCOPROJECT_POLL_INTERVAL` | Override the claim poll interval (`15s`, `1m`, ...) |
 | `NOCOPROJECT_AGENT_IDLE_WATCHDOG` | Kill an agent after this long without output (default `2h`, `0` disables) |
 | `NOCOPROJECT_WORKSPACES_ROOT` | Workspace root (default `$NOCOPROJECT_HOME/workspaces`) |
-| `NOCOPROJECT_CLAUDE_PATH` / `NOCOPROJECT_OPENCODE_PATH` | Tool executables (default: looked up on `PATH`, plus `~/.opencode/bin`) |
+| `NOCOPROJECT_CLAUDE_PATH` / `NOCOPROJECT_OPENCODE_PATH` / `NOCOPROJECT_CODEX_PATH` | Tool executables (default: looked up on `PATH`, plus `~/.opencode/bin`, `/opt/homebrew/bin`) |
 | `NOCOPROJECT_LOG_LEVEL` | `debug`, `info`, `warn` or `error` |
 
 The API key and run tokens are never written to logs: every log line and every event goes through redaction. Agents never receive `NOCOPROJECT_API_KEY`.
 
 ## Run-token mode (agent commands)
 
-The daemon injects `NOCOPROJECT_SERVER_URL`, `NOCOPROJECT_TOKEN` (`npr_...`), `NOCOPROJECT_RUN_ID`, `NOCOPROJECT_AGENT_ID`, `NOCOPROJECT_ISSUE_ID` and `NOCOPROJECT_ISSUE_KEY` into the agent process. When the token and URL are present, `issue` commands call the agent API (`/api/np/agent/*`) with `Authorization: Bearer <token>`:
+The daemon injects `NOCOPROJECT_SERVER_URL`, `NOCOPROJECT_TOKEN` (`npr_...`), `NOCOPROJECT_RUN_ID`, `NOCOPROJECT_AGENT_ID`, `NOCOPROJECT_ISSUE_ID`, `NOCOPROJECT_ISSUE_KEY`, `NOCOPROJECT_WORKDIR` (the run's workDir) and `NOCOPROJECT_HOME` (the daemon's state directory, so the agent's `repo checkout` shares the daemon's repository cache) into the agent process. When the token and URL are present, `issue` commands call the agent API (`/api/np/agent/*`) with `Authorization: Bearer <token>`:
 
 ```bash
 nocoproject issue get NP-12 --json
@@ -82,24 +83,55 @@ nocoproject issue comment list NP-12 [--thread <rootId>] [--tail 20] [--since <i
 nocoproject issue comment add NP-12 --content-file ./reply.md [--parent <rootId>] [--json]
 nocoproject issue status in_progress                 # the run's own issue
 nocoproject issue status NP-12 in_review
+
+# Phase 1: sub-issues, dependencies, project, repositories
+nocoproject issue create --title T [--description-file F | --description D] [--parent NP-12] [--stage N] \
+  [--blocked-by NP-3,NP-4] [--executor self|none|<agentId>] [--priority p] [--label a,b] --json
+nocoproject issue children [NP-12] --json          # stage, statusKey, executorName, blockedCount
+nocoproject issue dependency add [NP-12] --blocked-by NP-3[,NP-4] --json
+nocoproject issue dependency remove [NP-12] --blocked-by NP-3 --json
+nocoproject project get --json                      # project + resources from context.json
+nocoproject repo checkout <url> [--ref <ref>] [--fresh] [--json]
 ```
 
 - Issue arguments can be identifiers (`NP-12`) or raw ids. An identifier is resolved through `NOCOPROJECT_ISSUE_KEY`/`NOCOPROJECT_ISSUE_ID` or `GET /np/agent/context`. Any other value is passed through as a raw id. With no argument, the run's own issue is used.
-- `comment add` requires exactly one of `--content-file` or `--content`.
+- `comment add` requires exactly one of `--content-file` or `--content`; `issue create` takes at most one of `--description-file` or `--description`.
+- In request bodies (`--parent`, `--blocked-by`) identifiers are resolved to ids: the run's issue and its parent locally, others with `GET /np/agent/issues/<identifier>` (unknown → exit 4). `--executor` also accepts the name of one of the agent's delegation targets. Only flags that are given are sent; the server defaults `parentIssueId` to the run's issue and `executor` to `none`.
+- `issue dependency remove` calls `DELETE /np/agent/issues/:id/dependencies?dependsOnIssueId=<id>&type=blockedBy` (the agent knows the blocking issue, not the dependency row id). `add` posts `{ dependsOnIssueId, type: 'blockedBy' }`.
+- `project get` reads `context.json` and falls back to `GET /np/agent/context` (`project`) outside a daemon workDir.
 - Every command accepts `--json`. Errors are printed as `{"error":{"code","message","exitCode"}}`.
-- Exit codes: `0` ok, `1` other, `2` network, `3` auth (missing or invalid token, 401/403), `4` not found, `5` validation (bad input, 400/409/422, `TRANSITION_NOT_ALLOWED`).
+- Exit codes: `0` ok, `1` other (including git failures), `2` network, `3` auth (missing or invalid token, 401/403), `4` not found, `5` validation (bad input, 400/409/422, `TRANSITION_NOT_ALLOWED`, `REPO_NOT_ALLOWED`, `CONTEXT_MISSING`).
+
+## Repository checkout
+
+`nocoproject repo checkout <url>` runs in the agent process, not through the daemon:
+
+- The URL must be one of the project's `gitRepo` resources in `$NOCOPROJECT_WORKDIR/.nocoproject/context.json` (compared case-insensitively, ignoring a trailing `/` or `.git`); otherwise exit 5 `REPO_NOT_ALLOWED`. The resource's own URL is what gets cloned.
+- Bare cache: `$NOCOPROJECT_HOME/repos/<sha1(normalized url)>.git` (`git clone --bare`, then `git fetch --prune` on later checkouts; a failed fetch falls back to the cached copy with a warning). The cache uses the remote-tracking refspec `+refs/heads/*:refs/remotes/origin/*`, so remote branches never collide with agent branches. A `mkdir` lock next to the cache serializes concurrent checkouts.
+- Worktree: `$NOCOPROJECT_WORKDIR/<repoName>/` via `git worktree add`, on `agent/<agentSlug>/<issue identifier, lower case>`. Base: `--ref`, else the resource's `defaultRef`, else the remote default branch (`origin/HEAD`, then `main`/`master`).
+- Resuming: the same workDir reuses its worktree; a new workDir checks out `session.branchName` when the server handed one back for the same repository (from the local branch, or from `origin/<branch>` if the cache was rebuilt). A branch held by an older, dormant worktree is detached there (its files stay). Then it tries `git merge --ff-only <base>`; if that fails it leaves the branch alone and prints a note.
+- A same-named branch that the session does not own (a foreign branch) gets a short run-key suffix, e.g. `agent/coder/np-12-67890123`.
+- `--fresh` removes this workDir's worktree and restarts the branch from the base (`worktree add -B`).
+- Git identity: global config is never changed. If the worktree has no `user.name`/`user.email`, it sets `NocoProject Agent <agent@nocoproject.local>` with `git config --worktree` (enabling `extensions.worktreeConfig` on the cache and moving `core.bare` to the cache's `config.worktree`, as git requires).
+- It writes `$NOCOPROJECT_WORKDIR/.nocoproject/checkout.json` = `{ url, ref, branchName, path }`, prints the path (or the same object with `--json`) and prints progress notes on stderr.
+- Worktrees and caches are never deleted by the daemon in this iteration (no GC yet).
 
 ## Adapters
 
 | Provider | Launch | Brief |
 |---|---|---|
 | `claude` | `claude -p --output-format stream-json --input-format stream-json --verbose --permission-mode bypassPermissions [--model m] [--resume id]`, with the prompt sent on stdin as one stream-json user message. `control_request` frames are auto-approved, and stdin is closed after `result`. | `CLAUDE.md` |
+| `codex` | `codex exec --json --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -C <workDir> [-m model] <prompt>`; resume with `codex exec resume --json --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox [-m model] <sessionId> <prompt>`. stdin is closed at once. JSONL events: `thread.started` (session id), `item.*` (`agent_message` → text, `reasoning` → thinking, `command_execution` / `file_change` / `mcp_tool_call` / `web_search` → toolUse + toolResult, `todo_list` → status, `error` item → warning status), `turn.completed` (usage; cached tokens are reported as `cacheReadTokens` and subtracted from `inputTokens`), `turn.failed` / `error`. Codex writes MCP and login noise (even 401s) to stderr on successful runs, so stderr is only used when the JSON stream has no error. | `AGENTS.md` |
 | `opencode` | `opencode run --format json --auto --thinking --print-logs --log-level WARN --dir <workDir> [--session id] [--model provider/model] <prompt>` (with `PWD` reset to the workDir) | `AGENTS.md` |
 | `echo` | `node dist/echo-agent.js <prompt>`: a scripted fake agent that runs the real `issue get` / `status` / `comment add` commands | `AGENTS.md` |
 
 If the provider rejects `--resume` for an unknown session, the run is retried once with a fresh session inside the same run.
 
-The echo agent accepts test directives in the issue title or description: `[echo:sleep=<ms>]` to exercise cancellation and the watchdog, and `[echo:fail=<text>]` to exercise failure classification (for example `[echo:fail=API Error: 429]` is reported as `agentError.providerRateLimit`).
+The echo agent accepts test directives in the issue title or description: `[echo:sleep=<ms>]` to exercise cancellation and the watchdog, `[echo:fail=<text>]` to exercise failure classification (for example `[echo:fail=API Error: 429]` is reported as `agentError.providerRateLimit`), `[echo:subtasks=<n>]` to create n sub-issues with `issue create --executor self --stage <i>` (the parent then stays `in_progress`), and `[echo:checkout=<url>]` to run `repo checkout <url>`, write a file in the worktree and commit it on the agent branch.
+
+### Brief (Phase 1 additions)
+
+Besides the Phase 0 sections the brief has `## Project Context` (project name and description, parent issue and stage), `## Repositories` (resources, the checkout command, the branch rule, the previous branch, PRs with `gh pr create` and the issue identifier in the title), `## Sub-issues` (when to split, `--stage` / `--blocked-by`, what `--executor self` does given the issue's `autoExecuteSubtasks`, other agents become proposals unless they are in the delegation list, never @-mention agents) and `## Parent coordination` (what to do when woken by `childBatchDone`). The per-turn prompt names the parent issue and opens `childBatchDone`, `dependencyReleased` and `proposalAccepted` turns with a matching sentence.
 
 ## Development
 
@@ -107,7 +139,8 @@ The echo agent accepts test directives in the issue title or description: `[echo
 pnpm typecheck
 pnpm test                 # builds dist/ first (vitest global setup), then runs all suites
 NOCOPROJECT_LIVE_OPENCODE=1 pnpm vitest run tests/opencode.live.test.ts   # real OpenCode run (costs tokens)
+NOCOPROJECT_LIVE_CODEX=1 pnpm vitest run tests/codex.live.test.ts         # real Codex run (costs tokens)
 npm pack --dry-run
 ```
 
-The tests use an in-process mock server (`tests/helpers/mock-server.ts`) that implements the daemon API, the agent API and the realtime socket.
+The tests use an in-process mock server (`tests/helpers/mock-server.ts`) that implements the daemon API, the agent API (including the Phase 1 endpoints and claim extras) and the realtime socket. Repository checkout is tested against local bare repositories in temp directories (no network). The Codex fixtures in `tests/fixtures/codex/` are real `codex-cli 0.154.0` captures.

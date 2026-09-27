@@ -3,11 +3,32 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applyBriefBlock, BRIEF_BEGIN, BRIEF_END, buildBrief, buildTurnPrompt, writeBrief } from '../src/daemon/brief.js';
-import { claimedRun } from './helpers/fixtures.js';
+import { claimedRun, phase1Run } from './helpers/fixtures.js';
 
 describe('brief', () => {
   it('renders the runtime block', () => {
     expect(buildBrief(claimedRun())).toMatchSnapshot();
+  });
+
+  it('renders the Phase 1 sections with a project, repositories, a parent and delegation targets', () => {
+    const brief = buildBrief(phase1Run());
+    expect(brief).toMatchSnapshot();
+    expect(brief).toContain('## Repositories');
+    expect(brief).toContain('`https://github.com/nocobase/nocoproject.git` (default ref `main`)');
+    expect(brief).toContain('on the branch `agent/coder/np-12`');
+    expect(brief).toContain('`gh pr create`; the title must contain NP-12');
+    expect(brief).toContain('worked on branch `agent/coder/np-12`');
+    expect(brief).toContain('Auto-execute sub-issues is **on** for NP-12');
+    expect(brief).toContain('Reviewer (`a7`)');
+    expect(brief).toContain('NP-12 is a sub-issue (stage 2) of NP-10 "Login overhaul"');
+  });
+
+  it('explains missing projects and repositories', () => {
+    const brief = buildBrief(claimedRun());
+    expect(brief).toContain('This issue is not in a project.');
+    expect(brief).toContain('`repo checkout` is not available');
+    expect(brief).toContain('Auto-execute sub-issues is **off**');
+    expect(brief).toContain('## Parent coordination');
   });
 
   it('lists only agent transitions', () => {
@@ -66,5 +87,21 @@ describe('turn prompt', () => {
     expect(prompt).toContain('[NEW COMMENT] from Bob (reply with --parent c1):\n> first');
     expect(prompt).toContain('[NEW COMMENT] from Carol (reply with --parent c2):\n> second');
     expect(prompt).toContain('--content-file ./reply.md --parent c2`.');
+  });
+});
+
+describe('Phase 1 turn prompts', () => {
+  it('opens a childBatchDone turn for a sub-issue', () => {
+    const prompt = buildTurnPrompt(phase1Run({ triggers: [{ type: 'childBatchDone' }] }), { resumed: true });
+    expect(prompt).toMatchSnapshot();
+    expect(prompt).toContain('It is a sub-issue (stage 2) of NP-10 "Login overhaul".');
+    expect(prompt).toContain("A batch of NP-12's sub-issues has finished. Review them with `nocoproject issue children NP-12 --json`");
+  });
+
+  it('opens dependencyReleased and proposalAccepted turns', () => {
+    const released = buildTurnPrompt(phase1Run({ triggers: [{ type: 'dependencyReleased' }] }), { resumed: false });
+    expect(released).toContain('The issues this one was waiting for are done: it is unblocked and ready to be worked on.');
+    const accepted = buildTurnPrompt(phase1Run({ triggers: [{ type: 'proposalAccepted' }] }), { resumed: false });
+    expect(accepted).toContain('The owner accepted the proposal to make you the executor of this issue.');
   });
 });

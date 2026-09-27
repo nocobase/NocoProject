@@ -1,5 +1,7 @@
 import type { LocaleResource } from '@nocobase/i18n';
 
+import npCollabEnUS from './np-en-US.js';
+
 const enUS = {
   'auth.welcome': 'Welcome back',
   'auth.loginDescription': 'Sign in with your username or email and password.',
@@ -130,9 +132,12 @@ const enUS = {
   },
   navigation: {
     home: 'Home',
+    inbox: 'Inbox',
     issues: 'Issues',
+    projects: 'Projects',
     agents: 'Agents',
     runtimes: 'Runtimes',
+    members: 'Members',
     open: 'Open navigation',
     close: 'Close navigation',
     expand: 'Expand navigation',
@@ -160,6 +165,7 @@ const enUS = {
     rangePlaceholder: 'Pick a date range',
   },
   np: {
+    ...npCollabEnUS,
     common: {
       online: 'Online',
       offline: 'Offline',
@@ -171,6 +177,11 @@ const enUS = {
       create: 'Create',
       creating: 'Creating…',
       saving: 'Saving',
+      save: 'Save',
+      reset: 'Reset',
+      adding: 'Adding…',
+      createNamed: 'Create “{{name}}”',
+      noOptions: 'No options',
     },
     status: {
       backlog: 'Backlog',
@@ -204,12 +215,16 @@ const enUS = {
       reply: 'Reply',
       comment: 'Comment',
       retry: 'Retry',
+      dependencyReleased: 'Unblocked',
+      childBatchDone: 'Sub-issues done',
+      proposalAccepted: 'Proposal accepted',
     },
     executor: {
       none: 'Unassigned',
       person: 'Person',
       agentMarker: 'Agent',
       working: 'Working',
+      noAccess: 'No access',
     },
     issues: {
       title: 'Issues',
@@ -258,6 +273,7 @@ const enUS = {
       editDescription: 'Edit description',
       noDescription: 'No description.',
       conflict: 'This issue changed, reloading.',
+      parent: 'Sub-issue of',
     },
     properties: {
       title: 'Properties',
@@ -270,6 +286,9 @@ const enUS = {
       details: 'Details',
       created: 'Created',
       updated: 'Updated',
+      labels: 'Labels',
+      project: 'Project',
+      autoExecute: 'Auto-run sub-issues',
     },
     activity: {
       title: 'Activity',
@@ -283,6 +302,14 @@ const enUS = {
         ownerChanged: 'changed the owner',
         titleChanged: 'renamed the issue',
         descriptionChanged: 'edited the description',
+        runDeferredBlocked: 'held a run back until its blockers are done',
+        dependencyChanged: 'changed the dependencies',
+        labelsChanged: 'changed the labels',
+        proposalDecided: 'decided an executor proposal',
+        projectChanged: 'moved the issue to another project',
+        parentChanged: 'changed the parent issue',
+        stageChanged: 'changed the stage',
+        datesChanged: 'changed the dates',
         updated: 'updated the issue',
       },
       run: {
@@ -325,6 +352,7 @@ const enUS = {
       finished: 'Finished',
       attempt: 'Attempt',
       failure: 'Failure',
+      branch: 'Branch',
       viewTranscript: 'View transcript',
       stop: 'Stop',
       stopping: 'Stopping…',
@@ -374,7 +402,8 @@ const enUS = {
         access: 'Access',
       },
       access: {
-        ownerOnly: 'Only me',
+        ownerOnly: 'Only the owner',
+        specificUsers: 'Specific people',
         everyone: 'Everyone',
       },
     },

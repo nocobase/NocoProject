@@ -1,20 +1,97 @@
 import type { AuthEnv } from '@nocobase/app-plugin-authentication';
 import type { Hono } from 'hono';
 
-import { npRouter, readJson } from '../shared/http.js';
-import type { CreateProjectInput, ProjectService } from './project.service.js';
+import { npRouter, readJson, sessionActor } from '../shared/http.js';
+import type {
+  AddProjectMemberRequest,
+  CreateProjectRequest,
+  CreateProjectResourceRequest,
+  UpdateProjectRequest,
+  UpdateProjectResourceRequest,
+} from '../shared/protocol.js';
+import type { ProjectService } from './project.service.js';
 
-/** `/np/projects` (browser). Authentication is installed by the owning contribution. */
+/** `/np/projects` (browser, contract §F). Authentication is installed by the owning contribution. */
 export function createProjectRoutes(projects: ProjectService): Hono<AuthEnv> {
   const routes = npRouter<AuthEnv>();
   routes.get('/', async (context) =>
-    context.json({ data: await projects.list() }),
+    context.json({ data: await projects.list(sessionActor(context)) }),
   );
   routes.post('/', async (context) => {
     const project = await projects.create(
-      await readJson<CreateProjectInput>(context),
+      sessionActor(context),
+      await readJson<CreateProjectRequest>(context),
     );
     return context.json({ data: project }, 201);
+  });
+  routes.get('/:id', async (context) =>
+    context.json({
+      data: await projects.get(sessionActor(context), context.req.param('id')),
+    }),
+  );
+  routes.patch('/:id', async (context) =>
+    context.json({
+      data: await projects.update(
+        sessionActor(context),
+        context.req.param('id'),
+        await readJson<UpdateProjectRequest>(context),
+      ),
+    }),
+  );
+  routes.delete('/:id', async (context) => {
+    await projects.remove(sessionActor(context), context.req.param('id'));
+    return context.json({ data: { ok: true } });
+  });
+  routes.post('/:id/members', async (context) =>
+    context.json(
+      {
+        data: await projects.addMember(
+          sessionActor(context),
+          context.req.param('id'),
+          await readJson<AddProjectMemberRequest>(context),
+        ),
+      },
+      201,
+    ),
+  );
+  routes.delete('/:id/members/:userId', async (context) =>
+    context.json({
+      data: await projects.removeMember(
+        sessionActor(context),
+        context.req.param('id'),
+        context.req.param('userId'),
+      ),
+    }),
+  );
+  routes.post('/:id/resources', async (context) =>
+    context.json(
+      {
+        data: await projects.addResource(
+          sessionActor(context),
+          context.req.param('id'),
+          await readJson<CreateProjectResourceRequest>(context),
+        ),
+      },
+      201,
+    ),
+  );
+  routes.patch('/:id/resources/:rid', async (context) =>
+    context.json({
+      data: await projects.updateResource(
+        sessionActor(context),
+        context.req.param('id'),
+        context.req.param('rid'),
+        await readJson<UpdateProjectResourceRequest>(context),
+      ),
+    }),
+  );
+  routes.delete('/:id/resources/:rid', async (context) => {
+    await projects.removeResource(
+      sessionActor(context),
+      context.req.param('id'),
+      context.req.param('rid'),
+    );
+    return context.json({ data: { ok: true } });
   });
   return routes;
 }

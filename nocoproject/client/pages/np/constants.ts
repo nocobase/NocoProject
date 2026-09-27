@@ -1,9 +1,13 @@
 import type {
   AgentListItem,
+  InboxKind,
+  IssueFilters,
   IssuePriority,
+  LabelColor,
   RunStatus,
   StatusCatalogEntry,
   StatusCategory,
+  Workflow,
 } from './types.js';
 
 /**
@@ -97,11 +101,80 @@ export const npKeys = {
   all: ['np'] as const,
   me: ['np', 'me'] as const,
   projects: ['np', 'projects'] as const,
+  project: (id: string) => ['np', 'projects', id] as const,
   issues: ['np', 'issues'] as const,
-  issueList: (filters: { readonly statusKey?: string; readonly q?: string }) =>
-    ['np', 'issues', filters] as const,
+  issueList: (filters: IssueFilters) =>
+    ['np', 'issues', 'list', filters] as const,
+  board: (filters: IssueFilters) => ['np', 'issues', 'board', filters] as const,
   issue: (id: string) => ['np', 'issue', id] as const,
   agents: ['np', 'agents'] as const,
   runtimes: ['np', 'runtimes'] as const,
   run: (id: string) => ['np', 'run', id] as const,
+  members: ['np', 'members'] as const,
+  labels: ['np', 'labels'] as const,
+  workflows: ['np', 'workflows'] as const,
+  inbox: ['np', 'inbox'] as const,
+  inboxList: (kind: InboxKind, archived: boolean) =>
+    ['np', 'inbox', 'list', kind, archived] as const,
+  inboxUnread: ['np', 'inbox', 'unread'] as const,
+};
+
+/** Dormant statuses (§ terminology): backlog, or any status whose category is done or closed. */
+export function isDormantStatus(
+  statusKey: string,
+  catalog: readonly StatusCatalogEntry[] = DEFAULT_STATUS_CATALOG,
+): boolean {
+  if (statusKey === 'backlog') return true;
+  const category = statusCategory(statusKey, catalog);
+  return category === 'done' || category === 'closed';
+}
+
+export function isTerminalStatus(
+  statusKey: string,
+  catalog: readonly StatusCatalogEntry[] = DEFAULT_STATUS_CATALOG,
+): boolean {
+  const category = statusCategory(statusKey, catalog);
+  return category === 'done' || category === 'closed';
+}
+
+/**
+ * A workflow's statuses as a catalog. `agentWritable` is not part of the workflow definition (the transitions say
+ * who may move where), so it is carried over from the built-in catalog and defaults to false.
+ */
+export function catalogFromWorkflow(
+  workflow: Workflow | null | undefined,
+): readonly StatusCatalogEntry[] {
+  const statuses = workflow?.definition.statuses;
+  if (!statuses || statuses.length === 0) return DEFAULT_STATUS_CATALOG;
+  return statuses.map((status) => ({
+    key: status.key,
+    category: status.category,
+    agentWritable:
+      DEFAULT_STATUS_CATALOG.find((entry) => entry.key === status.key)
+        ?.agentWritable ?? false,
+  }));
+}
+
+export const LABEL_COLORS: readonly LabelColor[] = [
+  'gray',
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'blue',
+  'purple',
+];
+
+/**
+ * Label color names mapped onto theme tokens, so a label follows light, dark and every preset. The name beside the
+ * dot carries the meaning; the color only helps scanning.
+ */
+export const LABEL_DOT_CLASS: Readonly<Record<LabelColor, string>> = {
+  gray: 'bg-muted-foreground',
+  red: 'bg-destructive',
+  orange: 'bg-chart-1',
+  yellow: 'bg-chart-4',
+  green: 'bg-chart-2',
+  blue: 'bg-chart-3',
+  purple: 'bg-chart-5',
 };

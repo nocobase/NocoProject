@@ -3,7 +3,8 @@
  *
  * The provider (`server/providers/np.ts`) binds these to container tokens; tests build them directly against a real
  * database. Cross-module references that would form a cycle (issue → trigger → run → trigger for retries) are
- * resolved lazily through the `services` object.
+ * resolved lazily through the `services` object. The transaction runner hands every transaction's domain events to
+ * the notification module before commit (`shared/db.ts`).
  */
 import type { DatabaseManager } from '@nocobase/db';
 import type { IdGeneratorService } from '@nocobase/snowflake';
@@ -16,6 +17,38 @@ import {
   createCommentService,
   type CommentService,
 } from './collaboration/comment.service.js';
+import {
+  createLabelService,
+  type LabelService,
+} from './label/label.service.js';
+import {
+  createMemberService,
+  type MemberService,
+} from './member/member.service.js';
+import {
+  createInboxService,
+  type InboxService,
+} from './notification/inbox.service.js';
+import {
+  createNotificationService,
+  type NotificationService,
+} from './notification/notification.service.js';
+import {
+  createAgentIssueService,
+  type AgentIssueService,
+} from './subtask/agent-issue.service.js';
+import {
+  createDependencyService,
+  type DependencyService,
+} from './subtask/dependency.service.js';
+import {
+  createProposalService,
+  type ProposalService,
+} from './subtask/proposal.service.js';
+import {
+  createWorkflowService,
+  type WorkflowService,
+} from './workflow/workflow.service.js';
 import {
   createIssueQueries,
   type IssueQueries,
@@ -64,6 +97,14 @@ export interface NpServices {
   readonly bus: DomainEventBus;
   readonly tx: TxRunner;
   readonly settings: SettingsService;
+  readonly workflows: WorkflowService;
+  readonly members: MemberService;
+  readonly labels: LabelService;
+  readonly dependencies: DependencyService;
+  readonly proposals: ProposalService;
+  readonly agentIssues: AgentIssueService;
+  readonly inbox: InboxService;
+  readonly notifications: NotificationService;
   readonly projects: ProjectService;
   readonly issues: IssueService;
   readonly issueQueries: IssueQueries;
@@ -87,15 +128,18 @@ export interface NpServiceDeps {
 }
 
 export function createNpServices(deps: NpServiceDeps): NpServices {
+  // Filled in below; the lazy getters are only called at request time, after construction completes.
+  const services = {} as { -readonly [K in keyof NpServices]: NpServices[K] };
+
   const bus = deps.bus ?? createDomainEventBus();
-  const tx = createTxRunner(deps.database, bus);
+  const tx = createTxRunner(deps.database, bus, (unit, events) =>
+    services.notifications.process(unit, events),
+  );
   const ids = createIdSource(deps.idGenerator);
   const users = createUserDirectory();
   const activity = createActivityRecorder(ids);
   const settings = createSettingsService();
-
-  // Filled in below; the lazy getters are only called at request time, after construction completes.
-  const services = {} as { -readonly [K in keyof NpServices]: NpServices[K] };
+  const workflows = createWorkflowService({ tx });
 
   const failureDeps: FailureDeps = {
     tx,
@@ -112,18 +156,46 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
     bus,
     tx,
     settings,
-    projects: createProjectService({ tx, ids }),
+    workflows,
+    members: createMemberService({ tx, ids }),
+    labels: createLabelService({ tx, ids }),
+    dependencies: createDependencyService({
+      tx,
+      ids,
+      activity,
+      triggers: () => services.triggers,
+    }),
+    proposals: createProposalService({
+      tx,
+      ids,
+      activity,
+      issues: () => services.issues,
+    }),
+    agentIssues: createAgentIssueService({
+      tx,
+      ids,
+      activity,
+      workflows,
+      issues: () => services.issues,
+      queries: () => services.issueQueries,
+      triggers: () => services.triggers,
+    }),
+    inbox: createInboxService({ tx, ids }),
+    notifications: createNotificationService({ ids, users, workflows }),
+    projects: createProjectService({ tx, ids, users, activity, workflows }),
     issues: createIssueService({
       tx,
       ids,
       users,
       activity,
       settings,
+      workflows,
       triggers: () => services.triggers,
     }),
     issueQueries: createIssueQueries({
       tx,
       users,
+      workflows,
       comments: () => services.comments,
     }),
     comments: createCommentService({
@@ -133,9 +205,13 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       activity,
       triggers: () => services.triggers,
     }),
-    agents: createAgentService({ tx, ids }),
+    agents: createAgentService({ tx, ids, users }),
     runtimes: createRuntimeService({ tx, ids, users }),
-    triggers: createTriggerService({ runs: () => services.runs }),
+    triggers: createTriggerService({
+      runs: () => services.runs,
+      workflows,
+      activity,
+    }),
     runs: createRunService({ tx, ids }),
     runRecovery: createRunRecoveryService({
       ...failureDeps,
@@ -144,7 +220,7 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
     }),
     runEvents: createRunEventService({ tx, ids }),
     runQueries: createRunQueries({ tx }),
-    claims: createClaimService({ tx, ids, users }),
+    claims: createClaimService({ tx, ids, users, workflows }),
     runTokens: createRunTokenService({ tx }),
     sweeper: createSweeperService(failureDeps),
   } satisfies NpServices);

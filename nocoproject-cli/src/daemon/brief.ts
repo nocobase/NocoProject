@@ -4,12 +4,13 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ClaimedRun } from '../protocol.js';
+import type { ClaimedRunV1 } from '../run-context.js';
+import { parentCoordinationSection, phase1Commands, projectSection, repositoriesSection, subIssuesSection } from './brief-sections.js';
 
 export const BRIEF_BEGIN = '<!-- BEGIN NOCOPROJECT-RUNTIME (auto-managed; do not edit) -->';
 export const BRIEF_END = '<!-- END NOCOPROJECT-RUNTIME -->';
 
-export type BriefInput = Pick<ClaimedRun, 'agent' | 'issue' | 'agentTransitions' | 'statusCatalog'>;
+export type BriefInput = Pick<ClaimedRunV1, 'agent' | 'issue' | 'agentTransitions' | 'statusCatalog' | 'project' | 'session'>;
 
 function statusRules(input: BriefInput): string[] {
   if (input.agentTransitions.length === 0) return ['You may not change the issue status in this workspace.'];
@@ -49,6 +50,11 @@ export function buildBrief(input: BriefInput): string {
     `- \`nocoproject issue comment list ${key} --json\` — read the comments (\`--thread <rootId>\`, \`--tail <n>\`, \`--since <iso>\`)`,
     `- \`nocoproject issue comment add ${key} --content-file ./reply.md [--parent <rootId>]\` — post a comment`,
     `- \`nocoproject issue status ${key} <statusKey>\` — change the issue status`,
+    ...phase1Commands(key),
+    '',
+    ...projectSection(input),
+    '',
+    ...repositoriesSection(input),
     '',
     '## Workflow',
     '',
@@ -58,6 +64,10 @@ export function buildBrief(input: BriefInput): string {
     '4. Deliver your result as a comment with `comment add`, replying to the triggering thread with `--parent <rootId>`.',
     '5. After delivering, set the status to `in_review`. If you are stuck, set `blocked` and leave a comment explaining what you need.',
     '6. If you were only asked a question, answer it with a comment and do not change the status.',
+    '',
+    ...subIssuesSection(input),
+    '',
+    ...parentCoordinationSection(key),
     '',
     '## Status Rules',
     '',
@@ -88,7 +98,7 @@ export function writeBrief(workDir: string, fileName: string, block: string): st
   return path;
 }
 
-export type PromptInput = Pick<ClaimedRun, 'run' | 'issue' | 'triggers'>;
+export type PromptInput = Pick<ClaimedRunV1, 'run' | 'issue' | 'triggers'>;
 
 function quote(text: string): string {
   return text
@@ -98,17 +108,29 @@ function quote(text: string): string {
     .join('\n');
 }
 
-const TRIGGER_NOTES: Record<string, string> = {
-  assign: 'You were assigned to this issue.',
-  statusChange: 'The issue was moved out of backlog and is ready to be worked on.',
-  retry: 'This is a retry of a previous run that failed.',
+const TRIGGER_NOTES: Record<string, (key: string) => string> = {
+  assign: () => 'You were assigned to this issue.',
+  statusChange: () => 'The issue was moved out of backlog and is ready to be worked on.',
+  retry: () => 'This is a retry of a previous run that failed.',
+  dependencyReleased: () => 'The issues this one was waiting for are done: it is unblocked and ready to be worked on.',
+  childBatchDone: (key) =>
+    `A batch of ${key}'s sub-issues has finished. Review them with \`nocoproject issue children ${key} --json\` and continue as described under "Parent coordination".`,
+  proposalAccepted: () => 'The owner accepted the proposal to make you the executor of this issue.',
 };
+
+function parentLine(input: PromptInput): string[] {
+  const parent = input.issue.parent;
+  if (!parent) return [];
+  const stage = input.issue.stage === null || input.issue.stage === undefined ? '' : ` (stage ${input.issue.stage})`;
+  return [`It is a sub-issue${stage} of ${parent.identifier} "${parent.title}".`];
+}
 
 /** The per-turn user message (§7). */
 export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: boolean }): string {
   const key = input.issue.identifier;
   const lines = [
     `You are working on issue ${key} "${input.issue.title}".`,
+    ...parentLine(input),
     `Run: ${input.run.id}. Read the issue first: \`nocoproject issue get ${key} --json\``,
     `Then catch up on comments: \`nocoproject issue comment list ${key} --json\``,
   ];
@@ -118,8 +140,9 @@ export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: bo
       rootId = trigger.comment.rootId;
       lines.push(`[NEW COMMENT] from ${trigger.comment.authorName} (reply with --parent ${trigger.comment.rootId}):`);
       lines.push(quote(trigger.comment.content));
-    } else if (TRIGGER_NOTES[trigger.type]) {
-      lines.push(TRIGGER_NOTES[trigger.type] as string);
+    } else {
+      const note = TRIGGER_NOTES[trigger.type];
+      if (note) lines.push(note(key));
     }
   }
   lines.push(`Session: ${opts.resumed ? 'resumed' : 'fresh'}.`);

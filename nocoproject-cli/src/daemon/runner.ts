@@ -4,8 +4,8 @@
  */
 import { HttpError, isTransient } from '../api/client.js';
 import type {
-  ClaimedRun,
   DaemonCompleteRequest,
+  DaemonReportPhase1Extras,
   DaemonFailRequest,
   DaemonRunStatusResponse,
   DaemonStartRequest,
@@ -15,6 +15,7 @@ import type {
 import { SESSION_POISONING_FAILURE_REASONS } from '../protocol.js';
 import { withRetry } from '../util/backoff.js';
 import type { Logger } from '../util/log.js';
+import { type ClaimedRunV1, readCheckoutRecord, writeRunContext } from '../run-context.js';
 import { forgetSecret, redactText, registerSecret } from '../util/redact.js';
 import type { AgentAdapter, RunResult, RunSpec } from './adapters/types.js';
 import { nowIso } from './adapters/types.js';
@@ -40,6 +41,8 @@ export interface RunnerDeps {
   readonly serverUrl: string;
   readonly workspacesRoot: string;
   readonly binDir?: string;
+  /** Daemon state dir, passed to agents as NOCOPROJECT_HOME (shared repo cache). */
+  readonly home?: string;
   readonly idleWatchdogMs: number;
   readonly leaseIntervalMs?: number;
   readonly cancelPollMs?: number;
@@ -139,12 +142,13 @@ function decideFailure(attempt: AgentAttempt): FailureReason | null {
   });
 }
 
-async function prepare(deps: RunnerDeps, claimed: ClaimedRun): Promise<{ env: RunEnvironment; spec: RunSpec }> {
+async function prepare(deps: RunnerDeps, claimed: ClaimedRunV1): Promise<{ env: RunEnvironment; spec: RunSpec }> {
   const caps = deps.adapter.capabilities();
   const env = prepareRunEnvironment(deps.workspacesRoot, claimed, caps.resume);
+  writeRunContext(env.workDir, claimed);
   writeBrief(env.workDir, caps.briefFile, buildBrief(claimed));
   const prompt = buildTurnPrompt(claimed, { resumed: Boolean(env.resumeSessionId) });
-  const agentEnv = buildAgentEnv({ serverUrl: deps.serverUrl, token: claimed.token, claimed, binDir: deps.binDir });
+  const agentEnv = buildAgentEnv({ serverUrl: deps.serverUrl, token: claimed.token, claimed, binDir: deps.binDir, workDir: env.workDir, home: deps.home });
   const spec: RunSpec = {
     runId: claimed.run.id,
     workDir: env.workDir,
@@ -158,7 +162,7 @@ async function prepare(deps: RunnerDeps, claimed: ClaimedRun): Promise<{ env: Ru
 }
 
 /** Executes a claimed run end to end. Never throws. */
-export async function executeRun(claimed: ClaimedRun, deps: RunnerDeps): Promise<RunOutcome> {
+export async function executeRun(claimed: ClaimedRunV1, deps: RunnerDeps): Promise<RunOutcome> {
   const runId = claimed.run.id;
   const log = deps.logger.child(`run:${runId}`);
   registerSecret(claimed.token);
@@ -188,7 +192,7 @@ export async function executeRun(claimed: ClaimedRun, deps: RunnerDeps): Promise
   }
 }
 
-async function runAndReport(deps: RunnerDeps, log: Logger, claimed: ClaimedRun, env: RunEnvironment, spec: RunSpec): Promise<RunOutcome> {
+async function runAndReport(deps: RunnerDeps, log: Logger, claimed: ClaimedRunV1, env: RunEnvironment, spec: RunSpec): Promise<RunOutcome> {
   const runId = claimed.run.id;
   const streamer = new EventStreamer(deps.api, runId, { logger: log, flushIntervalMs: deps.flushIntervalMs });
   streamer.push({ type: 'status', content: `Starting ${deps.adapter.provider} in ${env.workDir}${spec.resumeSessionId ? ` (resuming ${spec.resumeSessionId})` : ''}`, at: nowIso() });
@@ -200,6 +204,7 @@ async function runAndReport(deps: RunnerDeps, log: Logger, claimed: ClaimedRun, 
   }
   const r = attempt.result;
   const failure = attempt.stopReason ? null : decideFailure(attempt);
+  const branch = checkoutExtras(env.workDir);
   streamer.push({ type: 'status', content: `Agent exited (code ${r.exitCode ?? 'none'}${r.signal ? `, signal ${r.signal}` : ''})`, at: nowIso() });
   await streamer.close();
 
@@ -209,27 +214,34 @@ async function runAndReport(deps: RunnerDeps, log: Logger, claimed: ClaimedRun, 
   }
   if (attempt.stopReason === 'runTerminal') return { kind: 'abandoned', why: 'run became terminal on the server' };
   if (attempt.stopReason === 'shutdown') {
-    const body = { reason: 'runtimeRecovery' as const, detail: 'daemon shut down while the agent was running', providerSessionId: r.sessionId, workDir: env.workDir };
+    const body = { reason: 'runtimeRecovery' as const, detail: 'daemon shut down while the agent was running', providerSessionId: r.sessionId, workDir: env.workDir, ...branch };
     await report(deps, log, runId, 'fail', body);
     return { kind: 'failed', reason: 'runtimeRecovery' };
   }
   if (!failure) {
     const summary = r.summary ? redactText(r.summary).slice(0, MAX_SUMMARY) : undefined;
-    await report(deps, log, runId, 'complete', { providerSessionId: r.sessionId, workDir: env.workDir, summary, usage: r.usage });
+    await report(deps, log, runId, 'complete', { providerSessionId: r.sessionId, workDir: env.workDir, summary, usage: r.usage, ...branch });
     log.info('run completed');
     return { kind: 'completed' };
   }
   const detail = redactText(r.errorText || (attempt.idle ? `no agent output for ${deps.idleWatchdogMs}ms` : 'agent produced no output')).slice(-MAX_DETAIL);
-  const body: DaemonFailRequest = {
+  const body: DaemonFailRequest & DaemonReportPhase1Extras = {
     reason: failure,
     detail,
     providerSessionId: r.sessionId,
     workDir: env.workDir,
     sessionPoisoned: SESSION_POISONING_FAILURE_REASONS.includes(failure),
+    ...branch,
   };
   await report(deps, log, runId, 'fail', body);
   log.warn('run failed', { reason: failure });
   return { kind: 'failed', reason: failure };
+}
+
+/** `branchName` / `repoUrl` from `<workDir>/.nocoproject/checkout.json`, when the agent checked out a repo. */
+export function checkoutExtras(workDir: string): DaemonReportPhase1Extras {
+  const record = readCheckoutRecord(workDir);
+  return record ? { branchName: record.branchName, repoUrl: record.url } : {};
 }
 
 type ReportKind = 'complete' | 'fail' | 'cancelAck';

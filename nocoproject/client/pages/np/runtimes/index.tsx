@@ -204,6 +204,7 @@ export default function RuntimesPage(): ReactElement {
         data={runtimes.data}
         getRowId={(runtime) => runtime.id}
         pageSize={20}
+        showSelectedCount={false}
       />
     );
   }

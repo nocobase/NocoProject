@@ -1,12 +1,18 @@
 import { DEFAULT_STATUS_CATALOG } from './constants.js';
 import type {
   CommentThread,
+  ExecutorProposal,
   Issue,
   IssueActivity,
   IssueComment,
+  IssueDependency,
   IssueDetail,
+  IssueRef,
+  IssueSubscriber,
+  Label,
   RunSummary,
   StatusCatalogEntry,
+  SubtaskSummary,
 } from './types.js';
 
 /**
@@ -20,6 +26,14 @@ export interface RawIssueDetail extends Partial<Issue> {
   readonly activities?: readonly IssueActivity[];
   readonly runs?: readonly RunSummary[];
   readonly statusCatalog?: readonly StatusCatalogEntry[];
+  readonly subtasks?: readonly SubtaskSummary[];
+  readonly blockedBy?: readonly IssueDependency[];
+  readonly blocks?: readonly IssueDependency[];
+  readonly proposals?: readonly ExecutorProposal[];
+  readonly subscribers?: readonly IssueSubscriber[];
+  readonly labels?: readonly Label[];
+  readonly parent?: IssueRef | null;
+  readonly project?: { readonly id: string; readonly name: string } | null;
 }
 
 function byCreatedAt(
@@ -91,6 +105,15 @@ export function normalizeComments(
 export function normalizeIssueDetail(raw: RawIssueDetail): IssueDetail {
   const issue = (raw.issue ?? raw) as Issue;
   return {
+    // Iteration 1 additions (§D) sit beside `issue`; labels may also arrive on the issue row itself.
+    subtasks: raw.subtasks ?? [],
+    blockedBy: raw.blockedBy ?? [],
+    blocks: raw.blocks ?? [],
+    proposals: raw.proposals ?? [],
+    subscribers: raw.subscribers ?? [],
+    labels: raw.labels ?? issue.labels ?? [],
+    parent: raw.parent ?? null,
+    project: raw.project ?? null,
     issue,
     threads: normalizeComments(raw.comments ?? []),
     activities: [...(raw.activities ?? [])].sort(byCreatedAt),

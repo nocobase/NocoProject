@@ -31,6 +31,7 @@ describe('redaction', () => {
     ['run token', `NOCOPROJECT_TOKEN=npr_${'0f'.repeat(20)}`, 'NOCOPROJECT_TOKEN=[REDACTED RUN TOKEN]'],
     ['bearer', 'Authorization: Bearer abc.def-ghi', 'Authorization: Bearer [REDACTED]'],
     ['x-api-key', '{"x-api-key": "abcdef123456"}', '{"x-api-key": "[REDACTED]"}'],
+    ['url credentials', 'fatal: https://x-access-token:s3cret@github.com/o/r.git', 'fatal: https://[REDACTED]@github.com/o/r.git'],
   ])('%s', (_n, input, expected) => {
     expect(redactText(input)).toBe(expected);
   });

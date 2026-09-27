@@ -1,6 +1,6 @@
 # NocoProject 协议（Phase 0 版）
 
-本文档是服务端、守护进程 / CLI、前端三方的共同契约。类型定义见 `server/modules/shared/protocol.ts`（守护进程包中有一份同内容的副本 `nocoproject-cli/src/protocol.ts`）。
+本文档是服务端、守护进程 / CLI、前端三方的共同契约。Phase 1 迭代 1 的追加与改动见 [`../phase1/protocol-iteration-1.md`](../phase1/protocol-iteration-1.md)（服务端实现，权威）。类型定义见 `server/modules/shared/protocol.ts`（守护进程包中有一份同内容的副本 `nocoproject-cli/src/protocol.ts`）。
 
 所有接口挂在应用 `/api` 下，路径前缀 `np`（例如 `<APP_BASE_PATH>/api/np/issues`）。JSON 请求与响应；成功返回 `{ data: ... }`，失败返回 `{ code: 'SOME_CODE', message: '...' }` 与相应状态码。ID 是字符串（NocoBase 雪花 ID）。时间是 ISO 8601 字符串。
 

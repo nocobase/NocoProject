@@ -10,13 +10,16 @@ import type {
   CreateCommentResult,
   CreateIssueInput,
   Issue,
+  BoardGroup,
   IssueDetail,
+  IssueFilters,
   IssueListItem,
   Me,
-  Project,
+  ProjectListItem,
   RunEventsResponse,
   RunSummary,
   Runtime,
+  UpdateAgentInput,
   UpdateIssueInput,
 } from './types.js';
 
@@ -32,27 +35,76 @@ export async function fetchMe(api: ApiClient): Promise<Me> {
   return data;
 }
 
-export async function fetchProjects(api: ApiClient): Promise<Project[]> {
-  const { data } = await api.request<{ data: Project[] }>({
+export async function fetchProjects(
+  api: ApiClient,
+): Promise<ProjectListItem[]> {
+  const { data } = await api.request<{ data: ProjectListItem[] }>({
     path: 'np/projects',
   });
   return data;
 }
 
+function issueQuery(filters: IssueFilters): Record<string, string | undefined> {
+  return {
+    q: filters.q || undefined,
+    statusKey: filters.statusKey || undefined,
+    projectId: filters.projectId || undefined,
+    labelId: filters.labelId || undefined,
+    ownerUserId: filters.ownerUserId || undefined,
+    executorId: filters.executorId || undefined,
+    parentIssueId: filters.parentIssueId || undefined,
+  };
+}
+
 export async function fetchIssues(
   api: ApiClient,
-  filters: { readonly statusKey?: string; readonly q?: string },
+  filters: IssueFilters,
   signal?: AbortSignal,
 ): Promise<IssueListItem[]> {
   const { data } = await api.request<{ data: IssueListItem[] }>({
     path: 'np/issues',
-    query: {
-      statusKey: filters.statusKey || undefined,
-      q: filters.q || undefined,
-    },
+    query: issueQuery(filters),
     signal,
   });
   return data;
+}
+
+/**
+ * `GET /np/issues?view=board` (§F). The contract gives the grouped body as `{ groups }` without saying whether it
+ * sits under `data`; a flat list (an older server ignoring `view`) is accepted too and grouped by status here.
+ */
+export async function fetchBoard(
+  api: ApiClient,
+  filters: IssueFilters,
+  signal?: AbortSignal,
+): Promise<BoardGroup[]> {
+  const body = await api.request<unknown>({
+    path: 'np/issues',
+    query: { ...issueQuery(filters), view: 'board' },
+    signal,
+  });
+  return normalizeBoardBody(body);
+}
+
+export function normalizeBoardBody(body: unknown): BoardGroup[] {
+  const record = (body ?? {}) as { data?: unknown; groups?: unknown };
+  const nested =
+    record.data && !Array.isArray(record.data)
+      ? (record.data as { groups?: unknown }).groups
+      : undefined;
+  const groups = record.groups ?? nested;
+  if (Array.isArray(groups)) return [...(groups as BoardGroup[])];
+  const flat = Array.isArray(record.data)
+    ? (record.data as readonly IssueListItem[])
+    : [];
+  const byStatus = new Map<string, IssueListItem[]>();
+  for (const issue of flat) {
+    byStatus.set(issue.statusKey, [
+      ...(byStatus.get(issue.statusKey) ?? []),
+      issue,
+    ]);
+  }
+  return [...byStatus].map(([statusKey, issues]) => ({ statusKey, issues }));
 }
 
 export async function createIssue(
@@ -126,6 +178,17 @@ export async function createAgent(
 ): Promise<AgentListItem> {
   const { data } = await api.request<{ data: AgentListItem }, CreateAgentInput>(
     { path: 'np/agents', method: 'POST', json: input },
+  );
+  return data;
+}
+
+export async function updateAgent(
+  api: ApiClient,
+  agentId: string,
+  changes: UpdateAgentInput,
+): Promise<AgentListItem> {
+  const { data } = await api.request<{ data: AgentListItem }, UpdateAgentInput>(
+    { path: `np/agents/${id(agentId)}`, method: 'PATCH', json: changes },
   );
   return data;
 }

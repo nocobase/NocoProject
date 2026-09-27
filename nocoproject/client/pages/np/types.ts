@@ -12,6 +12,18 @@
  * the page keeps working while the server contract settles.
  */
 
+import type {
+  AgentAccessLevel,
+  ExecutorProposal,
+  IssueDependency,
+  IssueRef,
+  IssueSubscriber,
+  Label,
+  SubtaskSummary,
+} from './types-collab.js';
+
+export type * from './types-collab.js';
+
 // ---------- copied from server/modules/shared/protocol.ts ----------
 
 export type StatusCategory = 'unstarted' | 'started' | 'done' | 'closed';
@@ -38,7 +50,15 @@ export type RunStatus =
   | 'cancelled';
 
 export type RunTriggerType =
-  'assign' | 'statusChange' | 'mention' | 'reply' | 'comment' | 'retry';
+  | 'assign'
+  | 'statusChange'
+  | 'mention'
+  | 'reply'
+  | 'comment'
+  | 'retry'
+  | 'dependencyReleased'
+  | 'childBatchDone'
+  | 'proposalAccepted';
 
 export type RunEventType =
   'text' | 'thinking' | 'toolUse' | 'toolResult' | 'status' | 'error';
@@ -91,6 +111,18 @@ export interface IssueListItem {
   readonly lastActivityAt?: string | null;
   readonly createdAt?: string;
   readonly updatedAt: string;
+  // Phase 1 iteration 1 (§A, §G)
+  readonly stage?: number | null;
+  readonly startDate?: string | null;
+  readonly dueDate?: string | null;
+  readonly parentIssueId?: string | null;
+  readonly autoExecuteSubtasks?: boolean;
+  readonly suggestedExecutorAgentId?: string | null;
+  readonly labels?: readonly Label[];
+  readonly projectName?: string | null;
+  readonly subtaskCount?: number;
+  /** Open `blockedBy` blockers plus unfinished siblings in lower stages (§D). */
+  readonly blockedCount?: number;
 }
 
 /** The issue record inside `GET /np/issues/:id`. */
@@ -161,6 +193,8 @@ export interface RunSummary {
   readonly dispatchedAt?: string | null;
   readonly startedAt?: string | null;
   readonly finishedAt?: string | null;
+  readonly branchName?: string | null;
+  readonly repoUrl?: string | null;
 }
 
 /** `GET /np/issues/:id`, normalized. */
@@ -170,6 +204,15 @@ export interface IssueDetail {
   readonly activities: readonly IssueActivity[];
   readonly runs: readonly RunSummary[];
   readonly statusCatalog: readonly StatusCatalogEntry[];
+  // Phase 1 iteration 1 (§D): always present after normalization, empty when the server omits them.
+  readonly subtasks: readonly SubtaskSummary[];
+  readonly blockedBy: readonly IssueDependency[];
+  readonly blocks: readonly IssueDependency[];
+  readonly proposals: readonly ExecutorProposal[];
+  readonly subscribers: readonly IssueSubscriber[];
+  readonly labels: readonly Label[];
+  readonly parent: IssueRef | null;
+  readonly project: { readonly id: string; readonly name: string } | null;
 }
 
 export interface AgentListItem {
@@ -187,8 +230,18 @@ export interface AgentListItem {
   readonly provider: string;
   readonly model?: string | null;
   readonly maxConcurrentRuns?: number;
-  readonly access?: 'ownerOnly' | 'everyone';
+  readonly access?: AgentAccessLevel;
   readonly activeRunCount?: number;
+  // Phase 1 iteration 1 (§H)
+  readonly canInvoke?: boolean;
+  /** Whether the viewer may edit it (its owner, or owner/admin). */
+  readonly canEdit?: boolean;
+  readonly ownerName?: string | null;
+  readonly delegationTargets?: readonly {
+    readonly id: string;
+    readonly name: string;
+  }[];
+  readonly accessUserIds?: readonly string[];
   readonly archivedAt?: string | null;
   readonly createdAt?: string;
   readonly updatedAt?: string;
@@ -236,6 +289,16 @@ export interface CreateIssueInput {
   readonly projectId?: string;
   readonly ownerUserId?: string;
   readonly executor?: ExecutorRef;
+  // Phase 1 iteration 1 (§G)
+  readonly statusKey?: string;
+  readonly parentIssueId?: string;
+  readonly stage?: number;
+  readonly blockedBy?: readonly string[];
+  readonly labelIds?: readonly string[];
+  readonly startDate?: string | null;
+  readonly dueDate?: string | null;
+  readonly autoExecuteSubtasks?: boolean;
+  readonly start?: boolean;
 }
 
 export interface UpdateIssueInput {
@@ -245,6 +308,16 @@ export interface UpdateIssueInput {
   readonly priority?: IssuePriority;
   readonly ownerUserId?: string;
   readonly executor?: ExecutorRef;
+  // Phase 1 iteration 1 (§G)
+  readonly stage?: number | null;
+  readonly startDate?: string | null;
+  readonly dueDate?: string | null;
+  readonly labelIds?: readonly string[];
+  readonly autoExecuteSubtasks?: boolean;
+  readonly parentIssueId?: string | null;
+  readonly projectId?: string | null;
+  /** `false` changes the fields without queueing a run ("don't start now"); the server defaults to `true`. */
+  readonly start?: boolean;
 }
 
 export interface CreateCommentResult {
@@ -263,5 +336,20 @@ export interface CreateAgentInput {
   readonly provider: string;
   readonly model?: string;
   readonly maxConcurrentRuns?: number;
-  readonly access?: 'ownerOnly' | 'everyone';
+  readonly access?: AgentAccessLevel;
+}
+
+/** `PATCH /np/agents/:id` (§H). */
+export interface UpdateAgentInput {
+  readonly name?: string;
+  readonly description?: string | null;
+  readonly instructions?: string;
+  readonly runtimeId?: string;
+  readonly provider?: string;
+  readonly model?: string | null;
+  readonly maxConcurrentRuns?: number;
+  readonly access?: AgentAccessLevel;
+  readonly accessUserIds?: readonly string[];
+  readonly delegationTargetIds?: readonly string[];
+  readonly archived?: boolean;
 }

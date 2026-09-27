@@ -2,9 +2,16 @@
  * Runtimes: one row per (daemon, provider). The daemon registers with its owner's API key, heartbeats every 15s, and
  * the sweeper marks silent runtimes offline.
  */
+import type { Actor } from '../shared/activity.js';
+import { forbid } from '../shared/authz.js';
 import type { TxRunner } from '../shared/db.js';
 import { isArrayValue, now, str, toJson } from '../shared/db.js';
-import { invalid, NpError, runtimeNotFound } from '../shared/errors.js';
+import {
+  invalid,
+  notFound,
+  NpError,
+  runtimeNotFound,
+} from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type { UserDirectory } from '../shared/users.js';
 import {
@@ -32,6 +39,12 @@ export interface RuntimeService {
   ): Promise<number>;
   deregister(ownerUserId: string, daemonId: string): Promise<number>;
   list(): Promise<Runtime[]>;
+  /** Only the runtime owner may change its visibility (contract §B). */
+  setVisibility(
+    actor: Actor,
+    runtimeId: string,
+    visibility: unknown,
+  ): Promise<Runtime>;
   /** Whether a daemon authenticated as `userId` may act on `runId` (it must own the run's runtime). */
   runAccess(runId: string, userId: string): Promise<RunAccess>;
 }
@@ -243,6 +256,40 @@ async function listRuntimes(deps: RuntimeDeps): Promise<Runtime[]> {
   }));
 }
 
+async function setVisibility(
+  deps: RuntimeDeps,
+  actor: Actor,
+  runtimeId: string,
+  visibility: unknown,
+): Promise<Runtime> {
+  if (visibility !== 'private' && visibility !== 'public')
+    throw invalid(
+      'INVALID_VISIBILITY',
+      'visibility must be private or public.',
+    );
+  await deps.tx.run(async (tx) => {
+    const row = await tx.conn.query
+      .selectFrom('runtimes')
+      .select(['id', 'ownerUserId'])
+      .where('id', '=', runtimeId)
+      .executeTakeFirst();
+    if (!row) throw notFound('Runtime');
+    if (row.ownerUserId !== actor.id)
+      forbid('Only the runtime owner may change its visibility.');
+    await tx.conn.query
+      .updateTable('runtimes')
+      .set({ visibility, updatedAt: now() })
+      .where('id', '=', runtimeId)
+      .execute();
+    tx.emit({ type: 'agents.changed' });
+  });
+  const runtime = (await listRuntimes(deps)).find(
+    (item) => item.id === runtimeId,
+  );
+  if (!runtime) throw notFound('Runtime');
+  return runtime;
+}
+
 async function runAccess(
   deps: RuntimeDeps,
   runId: string,
@@ -273,6 +320,8 @@ export function createRuntimeService(deps: RuntimeDeps): RuntimeService {
     deregister: (ownerUserId, daemonId) =>
       deregister(deps, ownerUserId, daemonId),
     list: () => listRuntimes(deps),
+    setVisibility: (actor, runtimeId, visibility) =>
+      setVisibility(deps, actor, runtimeId, visibility),
     runAccess: (runId, userId) => runAccess(deps, runId, userId),
   };
 }

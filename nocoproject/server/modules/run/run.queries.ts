@@ -98,6 +98,8 @@ export async function runSummariesForIssue(
     createdAt: run.createdAt,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
+    branchName: run.branchName,
+    repoUrl: run.repoUrl,
   }));
 }
 

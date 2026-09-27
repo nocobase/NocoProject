@@ -31,17 +31,45 @@ export interface TxRunner {
   read(): DatabaseConnection;
 }
 
+/**
+ * Called once `fn` of the outermost transaction has finished and before it commits, with the domain events emitted
+ * so far. It runs in the same transaction, so what it writes commits or rolls back with the change that caused it
+ * (the notification module turns events into inbox items this way). Events it emits are handed to it again in a
+ * further round, up to a fixed bound.
+ */
+export type BeforeCommitHook = (
+  tx: Tx,
+  events: readonly DomainEvent[],
+) => Promise<void>;
+
+const MAX_BEFORE_COMMIT_ROUNDS = 5;
+
 export function createTxRunner(
   database: DatabaseManager,
   bus: DomainEventBus,
+  beforeCommit?: BeforeCommitHook,
 ): TxRunner {
   return {
     async run(fn, outer) {
       if (outer) return fn(outer);
       const pending: DomainEvent[] = [];
-      const result = await database.transaction((conn) =>
-        fn({ conn, emit: (event) => pending.push(event) }),
-      );
+      const result = await database.transaction(async (conn) => {
+        const tx: Tx = { conn, emit: (event) => pending.push(event) };
+        const value = await fn(tx);
+        let processed = 0;
+        for (
+          let round = 0;
+          beforeCommit &&
+          processed < pending.length &&
+          round < MAX_BEFORE_COMMIT_ROUNDS;
+          round += 1
+        ) {
+          const batch = pending.slice(processed);
+          processed = pending.length;
+          await beforeCommit(tx, batch);
+        }
+        return value;
+      });
       for (const event of pending) bus.emit(event);
       return result;
     },

@@ -4,6 +4,8 @@
  */
 import type {
   AgentContextResponse,
+  AgentCreateIssueRequest,
+  ClaimedProject,
   CommentForAgent,
   DaemonClaimRequest,
   DaemonClaimResponse,
@@ -15,7 +17,9 @@ import type {
   DaemonRegisterResponse,
   DaemonRunStatusResponse,
   DaemonStartRequest,
+  DependencyType,
   IssueForAgent,
+  SubtaskSummary,
 } from '../protocol.js';
 import { redactText } from '../util/redact.js';
 
@@ -172,7 +176,8 @@ export class AgentApi {
   constructor(serverUrl: string, token: string, timeoutMs?: number) {
     this.http = new HttpClient(serverUrl, { kind: 'runToken', token }, timeoutMs);
   }
-  context(): Promise<AgentContextResponse> {
+  /** Phase 1 servers add `project` (contract §I); older servers omit it. */
+  context(): Promise<AgentContextResponse & { readonly project?: ClaimedProject | null }> {
     return this.http.data('GET', '/np/agent/context');
   }
   issue(id: string): Promise<IssueForAgent> {
@@ -188,5 +193,22 @@ export class AgentApi {
   }
   setStatus(id: string, statusKey: string): Promise<unknown> {
     return this.http.data('POST', `/np/agent/issues/${enc(id)}/status`, { body: { statusKey } });
+  }
+  /** POST /np/agent/issues (contract §D). The response is passed through as-is. */
+  createIssue(body: AgentCreateIssueRequest): Promise<unknown> {
+    return this.http.data('POST', '/np/agent/issues', { body });
+  }
+  children(id: string): Promise<SubtaskSummary[]> {
+    return this.http.data('GET', `/np/agent/issues/${enc(id)}/children`);
+  }
+  addDependency(id: string, dependsOnIssueId: string, type: DependencyType = 'blockedBy'): Promise<unknown> {
+    return this.http.data('POST', `/np/agent/issues/${enc(id)}/dependencies`, { body: { dependsOnIssueId, type } });
+  }
+  /**
+   * DELETE /np/agent/issues/:id/dependencies?dependsOnIssueId=&type= — the agent knows the other
+   * issue, not the dependency row id (contract §I leaves the shape open; see README).
+   */
+  removeDependency(id: string, dependsOnIssueId: string, type: DependencyType = 'blockedBy'): Promise<unknown> {
+    return this.http.data('DELETE', `/np/agent/issues/${enc(id)}/dependencies`, { query: { dependsOnIssueId, type } });
   }
 }

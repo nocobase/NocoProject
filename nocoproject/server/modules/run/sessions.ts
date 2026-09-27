@@ -11,12 +11,17 @@ export interface SessionUpdate {
   readonly providerSessionId?: string | null;
   readonly workDir?: string | null;
   readonly poisoned: boolean;
+  /** Checkout reported by the daemon (iteration 1); left unchanged when absent. */
+  readonly branchName?: string | null;
+  readonly repoUrl?: string | null;
 }
 
 export interface StoredSession {
   readonly providerSessionId: string | null;
   readonly workDir: string | null;
   readonly poisoned: boolean;
+  readonly branchName: string | null;
+  readonly repoUrl: string | null;
 }
 
 export async function findSession(
@@ -30,7 +35,13 @@ export async function findSession(
 ): Promise<StoredSession | null> {
   const row = await conn.query
     .selectFrom('runSessions')
-    .select(['providerSessionId', 'workDir', 'poisoned'])
+    .select([
+      'providerSessionId',
+      'workDir',
+      'poisoned',
+      'branchName',
+      'repoUrl',
+    ])
     .where('agentId', '=', key.agentId)
     .where('runtimeId', '=', key.runtimeId)
     .where('subjectType', '=', key.subjectType)
@@ -41,6 +52,8 @@ export async function findSession(
     providerSessionId: str(row.providerSessionId),
     workDir: str(row.workDir),
     poisoned: bool(row.poisoned),
+    branchName: str(row.branchName),
+    repoUrl: str(row.repoUrl),
   };
 }
 
@@ -70,6 +83,8 @@ export async function upsertSession(
   if (update.providerSessionId !== undefined)
     values.providerSessionId = update.providerSessionId;
   if (update.workDir !== undefined) values.workDir = update.workDir;
+  if (update.branchName !== undefined) values.branchName = update.branchName;
+  if (update.repoUrl !== undefined) values.repoUrl = update.repoUrl;
 
   const existing = await findSession(conn, key);
   if (existing) {

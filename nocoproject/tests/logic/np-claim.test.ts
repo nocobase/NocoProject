@@ -114,6 +114,8 @@ describe.skipIf(!db)('claim concurrency (PostgreSQL)', () => {
         providerSessionId: null,
         workDir: null,
         fresh: true,
+        branchName: null,
+        repoUrl: null,
       });
       expect(run.server).toEqual({
         url: 'http://test/main',
@@ -296,6 +298,8 @@ describe.skipIf(!db)('claim ordering and sessions (PostgreSQL)', () => {
       providerSessionId: 'sess-A',
       workDir: '/w',
       fresh: false,
+      branchName: null,
+      repoUrl: null,
     });
   });
 });

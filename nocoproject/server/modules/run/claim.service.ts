@@ -21,14 +21,16 @@ import {
   PROTOCOL_VERSION,
   type AgentProvider,
   type ClaimedRun,
+  type ClaimedRunPhase1Extras,
   type ClaimedTriggerComment,
   type DaemonClaimRequest,
   type DaemonClaimResponse,
   type RunTriggerType,
 } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
-import { findIssue } from '../issue/issue.records.js';
-import { AGENT_TRANSITIONS, STATUS_CATALOG } from '../issue/status.js';
+import { findIssue, issueRef } from '../issue/issue.records.js';
+import { claimedProject } from '../project/project.records.js';
+import type { WorkflowService } from '../workflow/workflow.service.js';
 import {
   CLAIM_RUN_SQL,
   CLAIM_RUNTIME_LOCK_SQL,
@@ -57,6 +59,33 @@ export interface ClaimDeps {
   readonly tx: TxRunner;
   readonly ids: IdSource;
   readonly users: UserDirectory;
+  readonly workflows: WorkflowService;
+}
+
+/** A claim payload with the iteration-1 extras merged in (contract §I). */
+export type ClaimedRunV1 = ClaimedRun & ClaimedRunPhase1Extras;
+
+async function delegationTargets(
+  conn: Conn,
+  agentId: string,
+): Promise<{ id: string; name: string }[]> {
+  const grants = await conn.query
+    .selectFrom('agentDelegationGrants')
+    .select('targetAgentId')
+    .where('agentId', '=', agentId)
+    .execute();
+  const ids = unique(grants.map((row) => str(row.targetAgentId)));
+  if (ids.length === 0) return [];
+  const rows = await conn.query
+    .selectFrom('agents')
+    .select(['id', 'name'])
+    .where('id', 'in', ids)
+    .orderBy('name', 'asc')
+    .execute();
+  return rows.map((row) => ({
+    id: str(row.id) ?? '',
+    name: str(row.name) ?? '',
+  }));
 }
 
 async function verifySlots(
@@ -171,7 +200,7 @@ async function buildClaimedRun(
   runId: string,
   token: string,
   serverUrl: string,
-): Promise<ClaimedRun | null> {
+): Promise<ClaimedRunV1 | null> {
   const conn = deps.tx.read();
   const run = await findRun(conn, runId);
   if (!run || !run.runtimeId) return null;
@@ -201,6 +230,10 @@ async function buildClaimedRun(
     subjectId: run.subjectId,
   });
   const fresh = !session || session.poisoned || !session.providerSessionId;
+  const view = await deps.workflows.forIssue(conn, issue);
+  const parent = issue.parentIssueId
+    ? await findIssue(conn, issue.parentIssueId)
+    : null;
   return {
     run: {
       id: run.id,
@@ -217,6 +250,7 @@ async function buildClaimedRun(
       instructions: str(agent.instructions) ?? '',
       provider: (str(agent.provider) ?? 'echo') as AgentProvider,
       model: str(agent.model),
+      delegationTargets: await delegationTargets(conn, run.agentId),
     },
     issue: {
       id: issue.id,
@@ -224,9 +258,14 @@ async function buildClaimedRun(
       title: issue.title,
       statusKey: issue.statusKey,
       ownerName: (issue.ownerUserId && ownerNames.get(issue.ownerUserId)) || '',
+      parent: parent ? issueRef(parent) : null,
+      stage: issue.stage,
+      autoExecuteSubtasks: issue.autoExecuteSubtasks,
+      projectId: issue.projectId,
     },
-    statusCatalog: STATUS_CATALOG,
-    agentTransitions: AGENT_TRANSITIONS,
+    project: await claimedProject(conn, issue.projectId),
+    statusCatalog: view.catalog,
+    agentTransitions: view.agentTransitions,
     triggers: triggerRows.map((row) => {
       const comment = row.commentId
         ? comments.get(str(row.commentId) ?? '')
@@ -239,6 +278,8 @@ async function buildClaimedRun(
       providerSessionId: fresh ? null : (session?.providerSessionId ?? null),
       workDir: session?.workDir ?? null,
       fresh,
+      branchName: session?.branchName ?? null,
+      repoUrl: session?.repoUrl ?? null,
     },
     server: { url: serverUrl, protocolVersion: PROTOCOL_VERSION },
     leaseSeconds: CLAIM_LEASE_SECONDS,
@@ -280,7 +321,7 @@ export function createClaimService(deps: ClaimDeps): ClaimService {
           claimed.push(result);
         }
       }
-      const runs: ClaimedRun[] = [];
+      const runs: ClaimedRunV1[] = [];
       for (const { runId, token } of claimed) {
         const payload = await buildClaimedRun(deps, runId, token, serverUrl);
         if (payload) runs.push(payload);

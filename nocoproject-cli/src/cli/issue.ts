@@ -1,51 +1,17 @@
 /**
- * Agent-facing commands (run-token mode): issue get / comment list / comment add / status.
+ * Agent-facing commands (run-token mode): issue get / comment list / comment add / status,
+ * plus the Phase 1 sub-issue commands registered from ./subissue.ts.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
 import { z } from 'zod';
-import { AgentApi } from '../api/client.js';
-import { normalizeServerUrl } from '../config.js';
 import type { CommentForAgent, IssueForAgent } from '../protocol.js';
-import { RUN_ENV } from '../protocol.js';
-import { registerSecret } from '../util/redact.js';
-import { CliError, EXIT, failAndExit, printJson, printLine } from './output.js';
+import { CliError, EXIT, printJson, printLine } from './output.js';
+import { action, type JsonOpt, resolveIssueId, runTokenContext } from './run-token.js';
+import { registerSubIssueCommands } from './subissue.js';
 
-export interface RunTokenContext {
-  readonly api: AgentApi;
-  readonly issueId?: string;
-  readonly issueKey?: string;
-}
-
-export function runTokenContext(env: NodeJS.ProcessEnv = process.env): RunTokenContext {
-  const token = env[RUN_ENV.token];
-  const serverUrl = env[RUN_ENV.serverUrl];
-  if (!token || !serverUrl) {
-    throw new CliError(
-      `issue commands run inside an agent run: ${RUN_ENV.token} and ${RUN_ENV.serverUrl} must be set`,
-      EXIT.auth,
-      'RUN_TOKEN_REQUIRED',
-    );
-  }
-  registerSecret(token);
-  return { api: new AgentApi(normalizeServerUrl(serverUrl), token), issueId: env[RUN_ENV.issueId], issueKey: env[RUN_ENV.issueKey] };
-}
-
-const IDENTIFIER = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
-
-/** Resolves `NP-12` style identifiers to ids; raw ids pass through. */
-export async function resolveIssueId(arg: string | undefined, ctx: RunTokenContext): Promise<string> {
-  if (!arg) {
-    if (ctx.issueId) return ctx.issueId;
-    throw new CliError('issue id or identifier is required', EXIT.validation, 'ISSUE_REQUIRED');
-  }
-  if (!IDENTIFIER.test(arg)) return arg;
-  if (ctx.issueKey && ctx.issueId && ctx.issueKey.toUpperCase() === arg.toUpperCase()) return ctx.issueId;
-  const context = await ctx.api.context();
-  if (context.issue.identifier.toUpperCase() === arg.toUpperCase()) return context.issue.id;
-  return arg;
-}
+export { resolveIssueId, runTokenContext, type RunTokenContext } from './run-token.js';
 
 function printIssue(issue: IssueForAgent): void {
   printLine(`${issue.identifier}  ${issue.title}`);
@@ -83,20 +49,6 @@ function readContent(opts: { content?: string; contentFile?: string }): string {
   }
   if (!content || !content.trim()) throw new CliError('comment content is empty', EXIT.validation, 'EMPTY_CONTENT');
   return content;
-}
-
-type JsonOpt = { json?: boolean };
-
-function action<A extends unknown[]>(fn: (...args: A) => Promise<void>): (...args: A) => Promise<void> {
-  return async (...args: A) => {
-    const cmd = args[args.length - 1] as Command;
-    const json = Boolean((cmd.optsWithGlobals() as JsonOpt).json);
-    try {
-      await fn(...args);
-    } catch (error) {
-      failAndExit(error, json);
-    }
-  };
 }
 
 export function registerIssueCommands(program: Command): void {
@@ -164,4 +116,6 @@ export function registerIssueCommands(program: Command): void {
         else printLine(`status set to ${statusKey}`);
       }),
     );
+
+  registerSubIssueCommands(issue);
 }

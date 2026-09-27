@@ -11,10 +11,12 @@ import {
 import { Hono } from 'hono';
 
 import { createDaemonRunRoutes } from '../modules/run/daemon-run.routes.js';
+import { ensureMember } from '../modules/member/member.routes.js';
 import { createDaemonRoutes } from '../modules/runtime/daemon.routes.js';
 import { guarded, rejectRunTokens } from '../modules/shared/http.js';
 import {
   npClaimServiceToken,
+  npMemberServiceToken,
   npRunEventServiceToken,
   npRunRecoveryServiceToken,
   npRunServiceToken,
@@ -30,7 +32,11 @@ export const npDaemonRoutes: AppApiRouteContribution<Application> =
     router.route(
       '/np/daemon',
       guarded(
-        [rejectRunTokens(), auth.required()],
+        [
+          rejectRunTokens(),
+          auth.required(),
+          ensureMember(container.resolve(npMemberServiceToken)),
+        ],
         createDaemonRoutes({
           runtimes,
           claims: container.resolve(npClaimServiceToken),

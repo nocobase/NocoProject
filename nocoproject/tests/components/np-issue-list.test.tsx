@@ -2,6 +2,7 @@ import { I18nRuntime } from '@nocobase/i18n';
 import { I18nProvider } from '@nocobase/i18n/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -55,7 +56,7 @@ const ISSUES: IssueListItem[] = [
   },
 ];
 
-async function renderPage() {
+async function renderPage(entry = '/issues') {
   const runtime = new I18nRuntime({
     defaultLocale: 'en-US',
     locales: ['en-US', 'zh-CN'],
@@ -69,7 +70,7 @@ async function renderPage() {
   render(
     <I18nProvider runtime={runtime}>
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/issues']}>
+        <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route path='/issues' element={<IssuesPage />} />
           </Routes>
@@ -136,6 +137,55 @@ describe('issue list', () => {
     api.request.mockResolvedValue({ data: [] });
     await renderPage();
     expect(await screen.findByText('No issues yet')).toBeVisible();
+  });
+
+  it('reads the search and status filter from the URL and sends them', async () => {
+    api.request.mockImplementation((options: { path: string }) =>
+      Promise.resolve({ data: options.path === 'np/issues' ? ISSUES : [] }),
+    );
+    await renderPage('/issues?q=claim&status=in_progress');
+
+    await screen.findByText('Wire up the claim endpoint');
+    expect(screen.getByRole('textbox', { name: 'Search issues' })).toHaveValue(
+      'claim',
+    );
+    expect(api.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: 'np/issues',
+        query: expect.objectContaining({
+          q: 'claim',
+          statusKey: 'in_progress',
+        }),
+      }),
+    );
+    // A filtered result offers to clear the filters; the table has no row selection to count.
+    expect(screen.getByRole('button', { name: /Clear filters/ })).toBeVisible();
+    expect(screen.queryByText(/row\(s\) selected/)).toBeNull();
+  });
+
+  it('switches to the board view', async () => {
+    const user = userEvent.setup();
+    api.request.mockImplementation(
+      (options: { path: string; query?: Record<string, unknown> }) =>
+        Promise.resolve(
+          options.query?.view === 'board'
+            ? { data: { groups: [{ statusKey: 'todo', issues: [ISSUES[1]] }] } }
+            : { data: options.path === 'np/issues' ? ISSUES : [] },
+        ),
+    );
+    await renderPage();
+    await screen.findByText('Wire up the claim endpoint');
+
+    await user.click(screen.getByRole('button', { name: 'Board' }));
+    expect(
+      await screen.findByRole('region', { name: 'Issue board' }),
+    ).toBeVisible();
+    expect(api.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: 'np/issues',
+        query: expect.objectContaining({ view: 'board' }),
+      }),
+    );
   });
 
   it('offers a retry when loading fails', async () => {

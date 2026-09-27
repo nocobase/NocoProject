@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 import { runTriggerType } from '../../detail-normalize.js';
-import { useNpFormatters } from '../../format.js';
+import { failureReasonKey, useNpFormatters } from '../../format.js';
 import type {
   CommentThread,
   IssueActivity,
@@ -283,7 +283,12 @@ function RunRow({
         </span>
       ) : null}
       {run.status === 'failed' && run.failureReason ? (
-        <span className='text-xs text-destructive'>· {run.failureReason}</span>
+        <span className='text-xs text-destructive'>
+          ·{' '}
+          {t(failureReasonKey(run.failureReason), {
+            defaultValue: run.failureReason,
+          })}
+        </span>
       ) : null}
       <Link
         to={`runs/${encodeURIComponent(run.id)}`}

@@ -6,7 +6,7 @@
 import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import type { ClaimedRun } from '../protocol.js';
-import { RUN_ENV } from '../protocol.js';
+import { RUN_ENV_PHASE1 as RUN_ENV } from '../protocol.js';
 
 export interface RunEnvironment {
   readonly envDir: string;
@@ -67,9 +67,13 @@ export interface AgentEnvInput {
   readonly token: string;
   readonly claimed: Pick<ClaimedRun, 'run' | 'agent' | 'issue'>;
   readonly binDir?: string;
+  /** The run's workDir → `NOCOPROJECT_WORKDIR` (contract §I). */
+  readonly workDir?: string;
+  /** The daemon's state dir → `NOCOPROJECT_HOME`, so `repo checkout` shares its repo cache. */
+  readonly home?: string;
 }
 
-/** Environment injected into the agent process (§7). */
+/** Environment injected into the agent process (§7, plus NOCOPROJECT_WORKDIR from Phase 1 §I). */
 export function buildAgentEnv(input: AgentEnvInput): Record<string, string> {
   const env: Record<string, string> = {
     [RUN_ENV.serverUrl]: input.serverUrl,
@@ -79,6 +83,8 @@ export function buildAgentEnv(input: AgentEnvInput): Record<string, string> {
     [RUN_ENV.issueId]: input.claimed.issue.id,
     [RUN_ENV.issueKey]: input.claimed.issue.identifier,
   };
+  if (input.workDir) env[RUN_ENV.workDir] = input.workDir;
+  if (input.home) env.NOCOPROJECT_HOME = input.home;
   if (input.binDir && existsSync(input.binDir)) env.PATH = `${input.binDir}${delimiter}${process.env.PATH ?? ''}`;
   return env;
 }

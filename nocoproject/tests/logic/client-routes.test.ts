@@ -95,12 +95,19 @@ describe('app client routes', () => {
     // pages each check their own page grant; their overlays and the issue detail inherit it.
     expect(pageAuthorizations(resolved.routes)).toEqual([
       { name: 'home', authorizedAs: null },
+      { name: 'np-inbox', authorizedAs: 'np-inbox' },
       { name: 'np-issues', authorizedAs: 'np-issues' },
       { name: 'np-issue-new', authorizedAs: 'np-issues' },
       { name: 'np-issue-detail', authorizedAs: 'np-issues' },
       { name: 'np-run-transcript', authorizedAs: 'np-issues' },
+      { name: 'np-subtask-new', authorizedAs: 'np-issues' },
+      { name: 'np-projects', authorizedAs: 'np-projects' },
+      { name: 'np-project-new', authorizedAs: 'np-projects' },
+      { name: 'np-project-detail', authorizedAs: 'np-projects' },
+      { name: 'np-project-resource-new', authorizedAs: 'np-projects' },
       { name: 'np-agents', authorizedAs: 'np-agents' },
       { name: 'np-agent-new', authorizedAs: 'np-agents' },
+      { name: 'np-agent-detail', authorizedAs: 'np-agents' },
       { name: 'np-runtimes', authorizedAs: 'np-runtimes' },
       { name: 'np-runtime-connect', authorizedAs: 'np-runtimes' },
     ]);

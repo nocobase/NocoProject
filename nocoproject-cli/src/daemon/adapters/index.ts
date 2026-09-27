@@ -1,5 +1,6 @@
 import type { AgentProvider } from '../../protocol.js';
 import { ClaudeAdapter } from './claude.js';
+import { CodexAdapter } from './codex.js';
 import { EchoAdapter } from './echo.js';
 import { OpenCodeAdapter } from './opencode.js';
 import type { AgentAdapter } from './types.js';
@@ -7,7 +8,7 @@ import type { AgentAdapter } from './types.js';
 export * from './types.js';
 
 /** Providers registered by default; `echo` only when explicitly requested. */
-export const DEFAULT_PROVIDERS: readonly AgentProvider[] = ['claude', 'opencode'];
+export const DEFAULT_PROVIDERS: readonly AgentProvider[] = ['claude', 'opencode', 'codex'];
 
 export function createAdapter(provider: string): AgentAdapter | null {
   switch (provider) {
@@ -15,6 +16,8 @@ export function createAdapter(provider: string): AgentAdapter | null {
       return new ClaudeAdapter();
     case 'opencode':
       return new OpenCodeAdapter();
+    case 'codex':
+      return new CodexAdapter();
     case 'echo':
       return new EchoAdapter();
     default:

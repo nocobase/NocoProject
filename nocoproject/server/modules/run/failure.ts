@@ -12,6 +12,7 @@ import {
   RETRYABLE_FAILURE_REASONS,
   SESSION_POISONING_FAILURE_REASONS,
   type DaemonFailRequest,
+  type DaemonReportPhase1Extras,
   type FailureReason,
   type Run,
   type RunStatus,
@@ -23,7 +24,7 @@ import {
   revokeRunTokens,
   transitionRun,
 } from './run.records.js';
-import { emitRunStatus } from './run.service.js';
+import { checkoutReport, emitRunStatus } from './run.service.js';
 import { upsertSession } from './sessions.js';
 
 const FAILURE_REASONS: readonly FailureReason[] = [
@@ -94,6 +95,8 @@ export interface FailOptions {
   readonly providerSessionId?: string | null;
   readonly workDir?: string | null;
   readonly sessionPoisoned?: boolean;
+  readonly branchName?: string | null;
+  readonly repoUrl?: string | null;
   /** Statuses the run may be failed from; defaults to dispatched | running. */
   readonly from?: readonly RunStatus[];
 }
@@ -109,6 +112,10 @@ export async function failRunInTx(
   options: FailOptions,
 ): Promise<boolean> {
   const { reason } = options;
+  const checkout = {
+    ...(options.branchName ? { branchName: options.branchName } : {}),
+    ...(options.repoUrl ? { repoUrl: options.repoUrl } : {}),
+  };
   const moved = await transitionRun(
     tx.conn,
     run.id,
@@ -121,6 +128,7 @@ export async function failRunInTx(
       leaseExpiresAt: null,
       providerSessionId: options.providerSessionId ?? run.providerSessionId,
       workDir: options.workDir ?? run.workDir,
+      ...checkout,
     },
   );
   if (!moved) return false;
@@ -129,21 +137,32 @@ export async function failRunInTx(
   const poisoned =
     options.sessionPoisoned === true ||
     SESSION_POISONING_FAILURE_REASONS.includes(reason);
-  if (poisoned || options.providerSessionId) {
+  if (poisoned || options.providerSessionId || checkout.branchName) {
     await upsertSession(tx.conn, deps.ids, run, {
       providerSessionId: options.providerSessionId ?? run.providerSessionId,
       workDir: options.workDir ?? run.workDir,
       poisoned,
+      ...checkout,
     });
   }
 
   const collaborators = deps.collaborators();
   const maxAttempts = maxAttemptsFor(run, reason);
-  if (isRetryable(reason) && run.attempt < maxAttempts) {
-    await collaborators.scheduleRetry(tx, run, maxAttempts, reason);
-  }
+  const retried =
+    isRetryable(reason) && run.attempt < maxAttempts
+      ? (await collaborators.scheduleRetry(tx, run, maxAttempts, reason)) !==
+        null
+      : false;
   await collaborators.resetAbandonedIssue(tx, run.subjectId);
   emitRunStatus(tx, run, 'failed');
+  tx.emit({
+    type: 'run.failed',
+    runId: run.id,
+    issueId: run.subjectId,
+    agentId: run.agentId,
+    reason,
+    final: !retried,
+  });
   return true;
 }
 
@@ -151,7 +170,7 @@ export async function failRunInTx(
 export async function failRun(
   deps: FailureDeps,
   runId: string,
-  input: DaemonFailRequest,
+  input: DaemonFailRequest & DaemonReportPhase1Extras,
 ): Promise<Run> {
   return deps.tx.run(async (tx) => {
     const run = await findRun(tx.conn, runId);
@@ -163,6 +182,7 @@ export async function failRun(
       providerSessionId: input.providerSessionId ?? null,
       workDir: input.workDir ?? null,
       sessionPoisoned: input.sessionPoisoned === true,
+      ...checkoutReport(input),
     });
     if (!failed)
       throw conflict(
@@ -174,7 +194,10 @@ export async function failRun(
 }
 
 export interface RunRecoveryService {
-  fail(runId: string, input: DaemonFailRequest): Promise<Run>;
+  fail(
+    runId: string,
+    input: DaemonFailRequest & DaemonReportPhase1Extras,
+  ): Promise<Run>;
   /** Manual retry from the browser: a new run for the same agent, subject and thread. */
   retry(actor: Actor, runId: string): Promise<Run>;
 }

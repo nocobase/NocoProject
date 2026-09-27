@@ -40,8 +40,24 @@ export const SEEDS_DIR = path.join(ROOT, 'database/main/seeds');
 
 export const ALICE: Actor = { type: 'user', id: 'u-alice' };
 export const BOB: Actor = { type: 'user', id: 'u-bob' };
+export const CAROL: Actor = { type: 'user', id: 'u-carol' };
 
-/** Every table the migration creates, for truncation between tests. */
+/** Tables of the Phase 1 iteration 1 migration (workflow_templates holds the seeded default template). */
+export const NP_PHASE1_TABLES = [
+  'members',
+  'project_members',
+  'project_resources',
+  'issue_labels',
+  'issue_label_links',
+  'issue_dependencies',
+  'executor_proposals',
+  'issue_subscribers',
+  'inbox_items',
+  'agent_access_grants',
+  'agent_delegation_grants',
+] as const;
+
+/** Every table the Phase 0 migration creates, for truncation between tests. */
 export const NP_TABLES = [
   'run_tokens',
   'run_usage',
@@ -112,11 +128,25 @@ export async function openNpTestDatabase(
   await knex.raw(`CREATE SCHEMA "${schema}"`);
   database.collections().invalidate();
   await knex.raw(
-    `CREATE TABLE "${schema}"."user" (id varchar(64) PRIMARY KEY, name varchar(255), username varchar(255))`,
+    `CREATE TABLE "${schema}"."user" (id varchar(64) PRIMARY KEY, name varchar(255), username varchar(255), ` +
+      `email varchar(255), disabled_at timestamptz, deleted_at timestamptz)`,
   );
   await knex.raw(
-    `INSERT INTO "${schema}"."user" (id, name, username) VALUES (?, ?, ?), (?, ?, ?)`,
-    [ALICE.id, 'Alice', 'alice', BOB.id, 'Bob', 'bob'],
+    `INSERT INTO "${schema}"."user" (id, name, username, email) VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)`,
+    [
+      ALICE.id,
+      'Alice',
+      'alice',
+      'alice@example.com',
+      BOB.id,
+      'Bob',
+      'bob',
+      'bob@example.com',
+      CAROL.id,
+      'Carol',
+      'carol',
+      'carol@example.com',
+    ],
   );
   if (options.migrate !== false) {
     await createMigrator({
@@ -155,14 +185,41 @@ export function buildServices(database: DatabaseManager): NpTestServices {
   return { services, events };
 }
 
-/** Empties every NocoProject table and restores the settings row. */
+/** Empties every NocoProject table (keeping the seeded workflow template) and restores the settings row. */
 export async function resetData(db: NpTestDatabase): Promise<void> {
   await db.knex.raw(
-    `TRUNCATE ${NP_TABLES.map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
+    `TRUNCATE ${[...NP_TABLES, ...NP_PHASE1_TABLES].map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
   );
   await db.knex.raw(
     `INSERT INTO "${db.schema}".system_settings (id, issue_prefix, issue_counter) VALUES ('default', 'NP', 0)`,
   );
+}
+
+/** Sets a member's role directly (tests bypass the ensureMember middleware). */
+export async function setRole(
+  db: NpTestDatabase,
+  actor: Actor,
+  role: 'owner' | 'admin' | 'member',
+): Promise<void> {
+  await db.knex.raw(
+    `INSERT INTO "${db.schema}".members (id, user_id, role, joined_at, created_at, updated_at)
+     VALUES (?, ?, ?, now(), now(), now())
+     ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role`,
+    [`m-${actor.id}`, actor.id, role],
+  );
+}
+
+export async function rows(
+  db: NpTestDatabase,
+  table: string,
+  where = 'true',
+  params: readonly unknown[] = [],
+): Promise<Record<string, unknown>[]> {
+  const result = await db.knex.raw(
+    `SELECT * FROM "${db.schema}"."${table}" WHERE ${where}`,
+    params as unknown[],
+  );
+  return (result as { rows: Record<string, unknown>[] }).rows;
 }
 
 export interface Fixture {

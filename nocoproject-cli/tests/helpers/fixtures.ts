@@ -1,4 +1,5 @@
 import type { ClaimedRun } from '../../src/protocol.js';
+import type { ClaimedRunV1 } from '../../src/run-context.js';
 
 export function claimedRun(overrides: Partial<ClaimedRun> = {}): ClaimedRun {
   return {
@@ -19,6 +20,24 @@ export function claimedRun(overrides: Partial<ClaimedRun> = {}): ClaimedRun {
     session: { providerSessionId: null, workDir: null, fresh: true },
     server: { url: 'http://127.0.0.1:13000/main', protocolVersion: 1 },
     leaseSeconds: 45,
+    ...overrides,
+  };
+}
+
+/** A claimed run carrying the Phase 1 extras (project, parent, stage, delegation, previous branch). */
+export function phase1Run(overrides: Partial<ClaimedRunV1> = {}): ClaimedRunV1 {
+  const base = claimedRun();
+  return {
+    ...base,
+    project: {
+      id: 'p1',
+      name: 'NocoProject',
+      description: 'The project management app.',
+      resources: [{ type: 'gitRepo', url: 'https://github.com/nocobase/nocoproject.git', defaultRef: 'main' }],
+    },
+    issue: { ...base.issue, parent: { id: 'i10', identifier: 'NP-10', title: 'Login overhaul' }, stage: 2, autoExecuteSubtasks: true, projectId: 'p1' },
+    agent: { ...base.agent, delegationTargets: [{ id: 'a7', name: 'Reviewer' }] },
+    session: { ...base.session, branchName: 'agent/coder/np-12', repoUrl: 'https://github.com/nocobase/nocoproject.git' },
     ...overrides,
   };
 }

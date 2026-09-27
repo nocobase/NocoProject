@@ -42,6 +42,8 @@ export interface DataTableProps<TData, TValue = unknown> {
   readonly pagination?: boolean;
   readonly pageSize?: number;
   readonly pageSizeOptions?: readonly number[];
+  /** Set to `false` to hide the "n of m row(s) selected" summary, for tables without row selection. */
+  readonly showSelectedCount?: boolean;
   readonly getRowId?: (
     row: TData,
     index: number,
@@ -69,6 +71,7 @@ export function DataTable<TData, TValue = unknown>({
   pagination = true,
   pageSize = 10,
   pageSizeOptions,
+  showSelectedCount = true,
   getRowId,
   onRowClick,
 }: DataTableProps<TData, TValue>): ReactElement {
@@ -157,7 +160,11 @@ export function DataTable<TData, TValue = unknown>({
         </Table>
       </div>
       {pagination ? (
-        <DataTablePagination table={table} pageSizeOptions={pageSizeOptions} />
+        <DataTablePagination
+          table={table}
+          pageSizeOptions={pageSizeOptions}
+          showSelectedCount={showSelectedCount}
+        />
       ) : null}
     </div>
   );

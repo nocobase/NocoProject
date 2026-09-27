@@ -1,6 +1,9 @@
 import { useTranslation } from '@nocobase/i18n/client';
 import { type ReactElement, useMemo, useRef, useState } from 'react';
 
+import { CornerLeftUpIcon } from 'lucide-react';
+import { Link } from 'react-router';
+
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NpStatusBadge } from '@/components/np-badges';
 import { Separator } from '@/components/ui/separator';
@@ -8,10 +11,16 @@ import { Separator } from '@/components/ui/separator';
 import type { AgentListItem, IssueComment, IssueDetail } from '../../types.js';
 import { ActivityTimeline } from './activity-timeline.js';
 import { CommentComposer } from './comment-composer.js';
+import { DependenciesSection } from './dependencies-section.js';
 import { IssueDescription, IssueTitle } from './issue-content.js';
+import { ProposalsCard } from './proposals-card.js';
+import { SubtasksSection } from './subtasks-section.js';
 import { buildTimeline } from './timeline.js';
 
-/** The main column: heading, description, the activity timeline and the comment composer pinned under it. */
+/**
+ * The main column: parent link, heading, description, executor proposals, sub-issues, dependencies, the activity
+ * timeline and the comment composer pinned under it.
+ */
 export function IssueMain({
   detail,
   agents,
@@ -43,6 +52,23 @@ export function IssueMain({
         <div className='mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8'>
           <div className='space-y-3'>
             <Breadcrumbs />
+            {detail.parent ? (
+              <Link
+                to={`../${encodeURIComponent(detail.parent.id)}`}
+                relative='path'
+                className='inline-flex max-w-full items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground'
+              >
+                <CornerLeftUpIcon
+                  className='size-3.5 shrink-0'
+                  aria-hidden='true'
+                />
+                <span className='shrink-0'>{t('np.issue.parent')}</span>
+                <span className='shrink-0 font-mono'>
+                  {detail.parent.identifier}
+                </span>
+                <span className='truncate'>{detail.parent.title}</span>
+              </Link>
+            ) : null}
             <div className='flex items-center gap-2 text-sm text-muted-foreground'>
               <span className='font-mono'>{issue.identifier}</span>
               <NpStatusBadge
@@ -53,6 +79,18 @@ export function IssueMain({
             <IssueTitle issue={issue} />
           </div>
           <IssueDescription issue={issue} />
+          <ProposalsCard
+            issueId={issue.id}
+            proposals={detail.proposals}
+            agents={agents}
+          />
+          <Separator />
+          <SubtasksSection
+            subtasks={detail.subtasks}
+            catalog={detail.statusCatalog}
+          />
+          <Separator />
+          <DependenciesSection detail={detail} />
           <Separator />
           <section className='space-y-4' aria-labelledby='np-activity-heading'>
             <h2

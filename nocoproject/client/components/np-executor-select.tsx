@@ -1,5 +1,5 @@
 import { useTranslation } from '@nocobase/i18n/client';
-import { BotIcon } from 'lucide-react';
+import { BotIcon, UserIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 
 import {
@@ -11,13 +11,15 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { isRuntimeOnline } from '@/pages/np/constants';
-import type { AgentListItem, ExecutorRef } from '@/pages/np/types';
+import type { AgentListItem, ExecutorRef, Member } from '@/pages/np/types';
 
 export interface NpExecutorSelectProps {
   readonly id?: string;
   readonly value: ExecutorRef;
   readonly agents: readonly AgentListItem[];
-  /** Label for a person currently set as executor, which the Phase 0 picker cannot choose but must display. */
+  /** Members who may execute an issue themselves (§E `executor_assigned`); omitted, only agents are offered. */
+  readonly members?: readonly Member[];
+  /** Label for a person currently set as executor when `members` does not list them. */
   readonly userExecutorName?: string | null;
   readonly onChange: (executor: ExecutorRef) => void;
   readonly disabled?: boolean;
@@ -41,11 +43,15 @@ function decode(value: string): ExecutorRef {
   };
 }
 
-/** Executor picker: nobody, or one of the agents (with its runtime's online state). */
+/**
+ * Executor picker: nobody, one of the agents (with its runtime's online state), or a member. An agent the viewer may
+ * not invoke (`canInvoke === false`, §H) is listed but disabled; the server refuses the assignment anyway.
+ */
 export function NpExecutorSelect({
   id,
   value,
   agents,
+  members = [],
   userExecutorName,
   onChange,
   disabled,
@@ -56,19 +62,25 @@ export function NpExecutorSelect({
   const selected = encode(value);
   const items = [
     { value: 'none', label: t('np.executor.none') },
-    ...(value.type === 'user' && value.id
-      ? [
-          {
-            value: selected,
-            label: userExecutorName ?? t('np.executor.person'),
-          },
-        ]
-      : []),
     ...agents.map((agent) => ({
       value: `agent:${agent.id}`,
       label: agent.name,
     })),
+    ...members.map((member) => ({
+      value: `user:${member.userId}`,
+      label: member.name,
+    })),
   ];
+  if (
+    value.type === 'user' &&
+    value.id &&
+    !items.some((item) => item.value === selected)
+  ) {
+    items.push({
+      value: selected,
+      label: userExecutorName ?? t('np.executor.person'),
+    });
+  }
   // An agent that is no longer listed (archived) still displays by id rather than as an empty trigger.
   if (!items.some((item) => item.value === selected)) {
     items.push({ value: selected, label: value.id ?? selected });
@@ -95,8 +107,10 @@ export function NpExecutorSelect({
           const agent = item.value.startsWith('agent:')
             ? agents.find((candidate) => `agent:${candidate.id}` === item.value)
             : undefined;
+          const person = item.value.startsWith('user:');
+          const blocked = agent?.canInvoke === false && item.value !== selected;
           return (
-            <SelectItem key={item.value} value={item.value}>
+            <SelectItem key={item.value} value={item.value} disabled={blocked}>
               {agent ? (
                 <span className='flex min-w-0 items-center gap-2'>
                   <BotIcon
@@ -105,10 +119,20 @@ export function NpExecutorSelect({
                   />
                   <span className='truncate'>{item.label}</span>
                   <span className='text-xs text-muted-foreground'>
-                    {isRuntimeOnline(agent)
-                      ? t('np.common.online')
-                      : t('np.common.offline')}
+                    {agent.canInvoke === false
+                      ? t('np.executor.noAccess')
+                      : isRuntimeOnline(agent)
+                        ? t('np.common.online')
+                        : t('np.common.offline')}
                   </span>
+                </span>
+              ) : person ? (
+                <span className='flex min-w-0 items-center gap-2'>
+                  <UserIcon
+                    className='size-3.5 text-muted-foreground'
+                    aria-hidden='true'
+                  />
+                  <span className='truncate'>{item.label}</span>
                 </span>
               ) : (
                 item.label

@@ -13,7 +13,12 @@ import {
   queryText,
   readJson,
 } from '../shared/http.js';
-import type { CreateCommentRequest } from '../shared/protocol.js';
+import type {
+  AgentCreateIssueRequest,
+  AgentDependencyRequest,
+  CreateCommentRequest,
+} from '../shared/protocol.js';
+import type { AgentIssueService } from '../subtask/agent-issue.service.js';
 import type { RunAuth, RunTokenService } from './token.js';
 
 export interface RunTokenEnv {
@@ -47,12 +52,14 @@ function agentActor(context: Context<RunTokenEnv>): Actor {
 }
 
 /**
- * `/np/agent/*` (protocol.md §5). Reads may address any issue; writes are limited to the issue of the token's run.
+ * `/np/agent/*` (protocol.md §5, iteration-1 contract §D/§I). Reads may address any issue; comments and status writes
+ * are limited to the issue of the token's run; sub-issues and dependencies to that issue and its descendants.
  */
 export function createAgentApiRoutes(deps: {
   issues: IssueService;
   queries: IssueQueries;
   comments: CommentService;
+  agentIssues: AgentIssueService;
 }): Hono<RunTokenEnv> {
   const routes = npRouter<RunTokenEnv>();
 
@@ -100,6 +107,53 @@ export function createAgentApiRoutes(deps: {
       await readJson<CreateCommentRequest>(context),
     );
     return context.json({ data: result.comment }, 201);
+  });
+  routes.post('/issues', async (context) =>
+    context.json(
+      {
+        data: await deps.agentIssues.create(
+          context.get('runAuth'),
+          await readJson<AgentCreateIssueRequest>(context),
+        ),
+      },
+      201,
+    ),
+  );
+  routes.get('/issues/:id/children', async (context) =>
+    context.json({
+      data: await deps.agentIssues.children(context.req.param('id')),
+    }),
+  );
+  routes.post('/issues/:id/dependencies', async (context) =>
+    context.json(
+      {
+        data: await deps.agentIssues.addDependency(
+          context.get('runAuth'),
+          context.req.param('id'),
+          await readJson<AgentDependencyRequest>(context),
+        ),
+      },
+      201,
+    ),
+  );
+  // The CLI form: `?dependsOnIssueId=<id or identifier>&type=blockedBy`.
+  routes.delete('/issues/:id/dependencies', async (context) => {
+    await deps.agentIssues.removeDependency(
+      context.get('runAuth'),
+      context.req.param('id'),
+      queryText(context, 'dependsOnIssueId') ?? '',
+      queryText(context, 'type'),
+    );
+    return context.json({ data: { ok: true } });
+  });
+  routes.delete('/issues/:id/dependencies/:target', async (context) => {
+    await deps.agentIssues.removeDependency(
+      context.get('runAuth'),
+      context.req.param('id'),
+      context.req.param('target'),
+      queryText(context, 'type'),
+    );
+    return context.json({ data: { ok: true } });
   });
   routes.post('/issues/:id/status', async (context) => {
     const issueId = await requireRunIssue(context);

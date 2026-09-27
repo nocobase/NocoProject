@@ -23,6 +23,7 @@ const PATTERNS: readonly SecretPattern[] = [
   { re: /\bsk-[A-Za-z0-9_.\-]{16,}/g, replacement: '[REDACTED API KEY]' },
   { re: /\bBearer\s+[A-Za-z0-9\-._~+/]+=*/gi, replacement: 'Bearer [REDACTED]' },
   { re: /(x-api-key["']?\s*[:=]\s*["']?)[^\s"',}]+/gi, replacement: '$1[REDACTED]' },
+  { re: /\b(https?:\/\/)[^/\s@'"]+@/gi, replacement: '$1[REDACTED]@' },
 ];
 
 /** Values registered at runtime (the daemon API key, issued run tokens) are always masked. */

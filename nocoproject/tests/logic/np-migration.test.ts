@@ -8,6 +8,7 @@ import { createMigrator, createSeeder } from '@nocobase/db';
 
 import {
   MIGRATIONS_DIR,
+  NP_PHASE1_TABLES,
   NP_TABLES,
   SEEDS_DIR,
   openNpTestDatabase,
@@ -45,7 +46,19 @@ async function indexes(db: NpTestDatabase): Promise<Map<string, string>> {
   );
 }
 
-describe.skipIf(!db)('NocoProject Phase 0 migration (PostgreSQL)', () => {
+const PHASE1_ALL_TABLES = [...NP_PHASE1_TABLES, 'workflow_templates'];
+
+async function columns(db: NpTestDatabase, table: string): Promise<string[]> {
+  const result = await db.knex.raw(
+    'SELECT column_name FROM information_schema.columns WHERE table_schema = ? AND table_name = ?',
+    [db.schema, table],
+  );
+  return (result as { rows: { column_name: string }[] }).rows.map(
+    (row) => row.column_name,
+  );
+}
+
+describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   const migrator = () =>
     createMigrator({
       database: db!.database,
@@ -90,6 +103,54 @@ describe.skipIf(!db)('NocoProject Phase 0 migration (PostgreSQL)', () => {
     expect(pending).toContain('WHERE');
   });
 
+  it('adds the iteration 1 tables, columns and partial indexes', async () => {
+    expect(await tables(db!)).toEqual(
+      expect.arrayContaining(PHASE1_ALL_TABLES),
+    );
+    const defs = await indexes(db!);
+    expect(defs.get('np_inbox_items_dedupe_unique')).toMatch(
+      /UNIQUE.*\(dedupe_key\) WHERE \(resolved_at IS NULL\)/u,
+    );
+    expect(defs.get('np_workflow_templates_default_unique')).toMatch(
+      /UNIQUE.*WHERE is_default/u,
+    );
+    expect(defs.get('np_members_user_unique')).toMatch(/UNIQUE.*\(user_id\)/u);
+    expect(defs.get('np_issue_dependencies_unique')).toMatch(
+      /UNIQUE.*\(issue_id, depends_on_issue_id, type\)/u,
+    );
+    expect(defs.get('np_issues_parent_idx')).toContain('(parent_issue_id)');
+    expect(await columns(db!, 'projects')).toEqual(
+      expect.arrayContaining(['visibility', 'lead_user_id', 'workflow_id']),
+    );
+    expect(await columns(db!, 'issues')).toEqual(
+      expect.arrayContaining([
+        'stage',
+        'start_date',
+        'due_date',
+        'auto_execute_subtasks',
+        'suggested_executor_agent_id',
+      ]),
+    );
+    expect(await columns(db!, 'runs')).toEqual(
+      expect.arrayContaining(['branch_name', 'repo_url']),
+    );
+    expect(await columns(db!, 'run_sessions')).toEqual(
+      expect.arrayContaining(['branch_name', 'repo_url']),
+    );
+    const insert = (id: string, resolved: boolean) =>
+      db!.knex.raw(
+        `INSERT INTO "${db!.schema}".inbox_items (id, user_id, kind, type, title, dedupe_key, resolved_at, created_at, updated_at)
+         VALUES (?, 'u1', 'info', 'commented', 't', 'k1', ${resolved ? 'now()' : 'NULL'}, now(), now())`,
+        [id],
+      );
+    await insert('i1', false);
+    await expect(insert('i2', false)).rejects.toThrow(
+      /np_inbox_items_dedupe_unique/u,
+    );
+    await insert('i3', true);
+    await db!.knex.raw(`DELETE FROM "${db!.schema}".inbox_items`);
+  });
+
   it('enforces one pending run per agent, subject and thread scope', async () => {
     const insert = (id: string, status: string, scope: string | null) =>
       db!.knex.raw(
@@ -107,8 +168,22 @@ describe.skipIf(!db)('NocoProject Phase 0 migration (PostgreSQL)', () => {
     await db!.knex.raw(`DELETE FROM "${db!.schema}".runs`);
   });
 
-  it('seeds the settings row once', async () => {
-    await seeder().run();
+  it('seeds the settings row and the default workflow once', async () => {
+    const first = await seeder().run();
+    expect(first.executed).toEqual(
+      expect.arrayContaining([
+        '2026092700002_np_system_settings',
+        '2026092800002_np_default_workflow',
+        // No authorization tables in this schema: the grant seed runs and does nothing.
+        '2026092800003_np_member_page_grants',
+      ]),
+    );
+    const workflows = (await db!.knex.raw(
+      `SELECT id, name, is_default FROM "${db!.schema}".workflow_templates`,
+    )) as { rows: { id: string; name: string; is_default: boolean }[] };
+    expect(workflows.rows).toEqual([
+      { id: 'default', name: '软件开发', is_default: true },
+    ]);
     await db!.knex.raw(
       `UPDATE "${db!.schema}".system_settings SET issue_counter = 7`,
     );
@@ -130,10 +205,16 @@ describe.skipIf(!db)('NocoProject Phase 0 migration (PostgreSQL)', () => {
 
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
-    expect(rolledBack.rolledBack).toContain('2026092700001_np_phase0');
+    expect(rolledBack.rolledBack).toEqual([
+      '2026092800001_np_phase1_iter1',
+      '2026092700001_np_phase0',
+    ]);
     const remaining = await tables(db!);
-    for (const table of NP_TABLES) expect(remaining).not.toContain(table);
-    expect((await indexes(db!)).has('np_runs_pending_unique')).toBe(false);
+    for (const table of [...NP_TABLES, ...PHASE1_ALL_TABLES])
+      expect(remaining).not.toContain(table);
+    const defs = await indexes(db!);
+    expect(defs.has('np_runs_pending_unique')).toBe(false);
+    expect(defs.has('np_inbox_items_dedupe_unique')).toBe(false);
 
     const again = await migrator().latest();
     expect(again.executed).toContain('2026092700001_np_phase0');

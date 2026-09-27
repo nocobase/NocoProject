@@ -6,21 +6,14 @@
  * is covered by np-claim.test.ts.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 
 import type {
   AppWebSocket,
   AppWebSocketReadyState,
 } from '@nocobase/app-websocket';
 
-import {
-  createStandaloneServer,
-  type StandaloneServer,
-} from '../../server/standalone.ts';
-
-process.env.AUTH_SECRET ??= 'test-auth-secret-at-least-32-characters';
+import type { StandaloneServer } from '../../server/standalone.ts';
+import { cookiesOf, startNpApp } from './np-app-harness.ts';
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
@@ -28,49 +21,8 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-async function startApp(): Promise<StandaloneServer> {
-  const sourceRoot = path.resolve(import.meta.dirname, '../..');
-  const directory = mkdtempSync(
-    path.join(tmpdir(), 'nocoproject-daemon-auth-'),
-  );
-  cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
-  const configFile = path.join(directory, 'config.json');
-  writeFileSync(
-    configFile,
-    JSON.stringify({
-      auth: { secret: 'test-auth-secret-at-least-32-characters' },
-      database: {
-        default: 'main',
-        connections: {
-          main: {
-            dialect: 'sqlite',
-            filename: path.join(directory, 'database.sqlite'),
-          },
-        },
-        migrations: { autoRun: true },
-        seeds: { autoRun: true },
-      },
-      hub: { host: { enabled: false } },
-    }),
-  );
-  const app = await createStandaloneServer({
-    viteDevUrl: false,
-    env: {
-      DB_DIALECT: 'sqlite',
-      DB_MIGRATIONS_AUTO_RUN: 'true',
-      DB_SEEDS_AUTO_RUN: 'true',
-      APP_CONFIG_FILE: configFile,
-    },
-    paths: {
-      rootDir: sourceRoot,
-      serverDir: path.join(sourceRoot, 'server'),
-      databaseDir: path.join(sourceRoot, 'database'),
-      clientDir: path.join(sourceRoot, 'dist/client'),
-      storageDir: path.join(sourceRoot, 'storage'),
-    },
-  });
-  cleanups.push(() => app.close());
-  return app;
+function startApp(): Promise<StandaloneServer> {
+  return startNpApp(cleanups, 'nocoproject-daemon-auth-');
 }
 
 interface TestSocket extends AppWebSocket {
@@ -150,10 +102,7 @@ async function openSession(): Promise<Session> {
     {},
   );
   expect(signIn.status).toBe(200);
-  const cookie = signIn.headers
-    .getSetCookie()
-    .map((header) => header.split(';')[0])
-    .join('; ');
+  const cookie = cookiesOf(signIn);
   const created = await post(
     '/auth/api-key/create',
     { name: 'np-daemon-test' },

@@ -244,7 +244,7 @@ describe.skipIf(!db)('issue writes (PostgreSQL)', () => {
       priority: 'high',
       revision: issue.revision,
     });
-    const detail = await services.issueQueries.detail(issue.identifier);
+    const detail = await services.issueQueries.detail(ALICE, issue.identifier);
     const actions = detail.activities.map((activity) => activity.action);
     expect(actions).toEqual([
       'issue_created',
@@ -295,7 +295,7 @@ describe.skipIf(!db)('agent status transitions (PostgreSQL)', () => {
       code: 'TRANSITION_NOT_ALLOWED',
     });
 
-    const current = await services.issueQueries.detail(issue.id);
+    const current = await services.issueQueries.detail(ALICE, issue.id);
     const human = await services.issues.update(ALICE, issue.id, {
       statusKey: 'done',
       revision: current.issue.revision,
@@ -358,7 +358,7 @@ describe.skipIf(!db)('failures and retries (PostgreSQL)', () => {
       sessionPoisoned: true,
     });
     expect(await runRows(db!, `retry_of_run_id = '${runId}'`)).toHaveLength(0);
-    const detail = await services.issueQueries.detail(issue.id);
+    const detail = await services.issueQueries.detail(ALICE, issue.id);
     expect(detail.issue.statusKey).toBe('todo');
     expect(detail.activities.at(-1)).toMatchObject({
       actorType: 'system',

@@ -5,6 +5,12 @@ import type { Conn } from '../shared/db.js';
 import { iso, isoOrNull, num, str } from '../shared/db.js';
 import type { FailureReason, Run, RunStatus } from '../shared/protocol.js';
 
+/** A run with the checkout the daemon reported (iteration 1). */
+export type RunV1 = Run & {
+  readonly branchName: string | null;
+  readonly repoUrl: string | null;
+};
+
 /** Statuses the pending-run unique index covers: a new trigger coalesces into such a run. */
 export const PENDING_STATUSES: readonly RunStatus[] = [
   'queued',
@@ -38,7 +44,7 @@ export function isTerminalRunStatus(status: string): boolean {
   return (TERMINAL_STATUSES as readonly string[]).includes(status);
 }
 
-export function mapRun(row: Record<string, unknown>): Run {
+export function mapRun(row: Record<string, unknown>): RunV1 {
   const status = str(row.status) ?? 'queued';
   return {
     id: str(row.id) ?? '',
@@ -67,12 +73,17 @@ export function mapRun(row: Record<string, unknown>): Run {
     resultSummary: str(row.resultSummary),
     providerSessionId: str(row.providerSessionId),
     workDir: str(row.workDir),
+    branchName: str(row.branchName),
+    repoUrl: str(row.repoUrl),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
 }
 
-export async function findRun(conn: Conn, runId: string): Promise<Run | null> {
+export async function findRun(
+  conn: Conn,
+  runId: string,
+): Promise<RunV1 | null> {
   const row = await conn.query
     .selectFrom('runs')
     .selectAll()

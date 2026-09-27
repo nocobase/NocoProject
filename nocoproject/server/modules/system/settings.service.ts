@@ -1,8 +1,15 @@
 /**
- * The single `systemSettings` row: the issue prefix and the issue counter.
+ * The single `systemSettings` row: the issue prefix, the issue counter and (iteration 1) the `settings` json.
  */
 import type { Conn } from '../shared/db.js';
-import { isPostgres, knexOf, num, rawRows, str } from '../shared/db.js';
+import {
+  fromJson,
+  isPostgres,
+  knexOf,
+  num,
+  rawRows,
+  str,
+} from '../shared/db.js';
 
 export const SETTINGS_ID = 'default';
 const DEFAULT_PREFIX = 'NP';
@@ -12,7 +19,20 @@ export interface AllocatedIssueNumber {
   readonly identifier: string;
 }
 
+/** `systemSettings.settings` (contract §A); missing keys take these defaults. */
+export interface WorkspaceSettings {
+  readonly autoExecuteSubtasksDefault: boolean;
+  /** Used from iteration 2 (PR merged → status). */
+  readonly prMergedStatus: string;
+}
+
+export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
+  autoExecuteSubtasksDefault: false,
+  prMergedStatus: 'done',
+};
+
 export interface SettingsService {
+  read(conn: Conn): Promise<WorkspaceSettings>;
   /**
    * Allocates the next issue number. Must run inside the caller's transaction: on PostgreSQL the counter row stays
    * locked by `UPDATE … RETURNING` until that transaction ends, so concurrent creates are serialized and numbers are
@@ -56,6 +76,24 @@ async function incrementPortable(conn: Conn): Promise<CounterRow | undefined> {
 
 export function createSettingsService(): SettingsService {
   return {
+    async read(conn) {
+      const row = await conn.query
+        .selectFrom('systemSettings')
+        .select('settings')
+        .where('id', '=', SETTINGS_ID)
+        .executeTakeFirst();
+      const stored = fromJson<Partial<WorkspaceSettings>>(row?.settings) ?? {};
+      return {
+        autoExecuteSubtasksDefault:
+          typeof stored.autoExecuteSubtasksDefault === 'boolean'
+            ? stored.autoExecuteSubtasksDefault
+            : DEFAULT_WORKSPACE_SETTINGS.autoExecuteSubtasksDefault,
+        prMergedStatus:
+          typeof stored.prMergedStatus === 'string'
+            ? stored.prMergedStatus
+            : DEFAULT_WORKSPACE_SETTINGS.prMergedStatus,
+      };
+    },
     async allocateIssueNumber(conn) {
       const increment = isPostgres(conn)
         ? incrementPostgres

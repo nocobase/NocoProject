@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { AlertCircleIcon, BotIcon, PlusIcon } from 'lucide-react';
 import { type ReactElement, useMemo } from 'react';
-import { Link, Outlet } from 'react-router';
+import { Link, Outlet, useNavigate } from 'react-router';
 
 import { NpOnlineState, NpPulse } from '@/components/np-badges';
 import { DataTable } from '@/components/data-table';
@@ -33,10 +33,11 @@ import { isRuntimeOnline, npKeys } from '../constants.js';
 import type { AgentListItem, AgentsTopicPayload } from '../types.js';
 import { useRealtimeTopic } from '../use-realtime.js';
 
-/** Route `/agents`: the agents that can execute issues, with their runtime's state. */
+/** Route `/agents`: the agents that can execute issues, with their runtime's state; a row opens `/agents/:agentId`. */
 export default function AgentsPage(): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const agents = useQuery({
@@ -62,7 +63,13 @@ export default function AgentsPage(): ReactElement {
               aria-hidden='true'
             />
             <div className='min-w-0 leading-tight'>
-              <div className='truncate font-medium'>{row.original.name}</div>
+              <Link
+                to={encodeURIComponent(row.original.id)}
+                onClick={(event) => event.stopPropagation()}
+                className='block truncate font-medium hover:underline'
+              >
+                {row.original.name}
+              </Link>
               {row.original.description ? (
                 <div className='line-clamp-1 text-xs text-muted-foreground'>
                   {row.original.description}
@@ -202,6 +209,8 @@ export default function AgentsPage(): ReactElement {
         data={agents.data}
         getRowId={(agent) => agent.id}
         pageSize={20}
+        showSelectedCount={false}
+        onRowClick={(row) => void navigate(encodeURIComponent(row.original.id))}
       />
     );
   }

@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 
 import { useNpFormatters } from '../../format.js';
 import type { RunEvent } from '../../types.js';
+import { toolSummary } from './tool-summary.js';
 
 const PREVIEW_LIMIT = 280;
 
@@ -74,14 +75,26 @@ export function TranscriptEvent({
         </p>
       );
       break;
-    case 'toolUse':
+    case 'toolUse': {
       label = (
         <Badge variant='secondary'>
           {event.tool ?? t('np.transcript.kinds.toolUse')}
         </Badge>
       );
-      body = <CodeBlock text={stringify(event.input ?? event.content)} />;
+      // The command (or file, pattern…) is visible at once; the full input stays one click away.
+      const summary = toolSummary(event.input ?? event.content);
+      body = (
+        <>
+          {summary ? (
+            <p className='font-mono text-xs whitespace-pre-wrap wrap-anywhere text-foreground'>
+              {summary}
+            </p>
+          ) : null}
+          <CodeBlock text={stringify(event.input ?? event.content)} />
+        </>
+      );
       break;
+    }
     case 'toolResult':
       label = (
         <Badge variant='outline'>

@@ -1,57 +1,85 @@
 /**
- * Trigger rules (protocol.md §2). This is the only module that creates runs: every call to `run.enqueue` is here.
+ * Trigger rules (protocol.md §2, iteration-1 contract §D). This is the only module that creates runs: every call to
+ * `run.enqueue` is here.
  *
  * | Change                                                              | Result                                   |
  * | ------------------------------------------------------------------- | ---------------------------------------- |
- * | Human sets the executor to an agent, status not backlog/done/cancel | enqueue, scope null, `assign`            |
+ * | Human sets the executor to an agent, status not dormant             | enqueue, scope null, `assign` (`proposalAccepted` when a proposal is accepted) |
  * | Human moves the issue out of backlog to a non-terminal status       | enqueue for the agent executor, `statusChange` |
+ * | ... either of the above with `start: false`                         | nothing (fields change only)             |
+ * | Agent creates a sub-issue executed by an agent (self or delegated)  | enqueue on behalf of the owner, `assign` |
  * | Human comment mentioning agents                                     | one enqueue per agent, scope = thread root, `mention` |
  * | Human reply (no mention) to an agent's comment                      | that agent, scope = thread root, `reply` |
  * | Human top-level comment (no mention), executor is an agent          | the executor, scope null, `comment`      |
- * | Comment starting with `/note`                                       | nothing                                  |
- * | Agent-authored comment                                              | nothing (mentions are plain text)        |
- * | Run failed with a retryable reason, attempts left                   | new run, `retryOfRunId`, `retry`         |
+ * | Comment starting with `/note`, or agent-authored comment            | nothing                                  |
+ * | Any of the above while the issue is blocked (`subtask/blocking.ts`) | nothing; activity `run_deferred_blocked` |
+ * | An issue reaches a terminal status                                  | release dependents / next-stage siblings (`trigger/release.ts`) |
+ * | Run failed with a retryable reason, attempts left                   | new run, `retryOfRunId`, `retry` (never gated) |
  *
  * Coalescing into an existing pending run, and "a running run makes the new one wait", are enforced by
  * `run.enqueue` and the claim SQL.
  */
-import type { Actor } from '../shared/activity.js';
+import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import type { Tx } from '../shared/db.js';
 import { fromJson, str, unique } from '../shared/db.js';
 import type {
   Comment,
   FailureReason,
   Issue,
+  IssueV1,
+  Phase1RunTriggerType,
   Run,
   TriggeredRun,
 } from '../shared/protocol.js';
 import { parseMentions, isNote } from '../collaboration/mentions.js';
 import { runPriorityOf } from '../issue/issue.records.js';
-import { isDormantStatus, isTerminalStatus } from '../issue/status.js';
 import type {
   EnqueueResult,
   RunService,
   TriggerRecordInput,
 } from '../run/run.service.js';
+import { blockersOf } from '../subtask/blocking.js';
+import type { WorkflowService } from '../workflow/workflow.service.js';
+import { onTerminalEntered, releaseIfUnblocked } from './release.js';
 
 export interface IssueChange {
-  readonly before: Issue | null;
-  readonly after: Issue;
+  readonly before: IssueV1 | null;
+  readonly after: IssueV1;
   readonly actor: Actor;
+  /** false = 暂不开始: the change must not enqueue `assign` / `statusChange` (default true). */
+  readonly start?: boolean;
+  /** The trigger type an executor change records (default `assign`). */
+  readonly assignTriggerType?: 'assign' | 'proposalAccepted';
+  /** For agent-created sub-issues: the user the run acts for (the owner). */
+  readonly onBehalfOfUserId?: string | null;
 }
 
 export interface CommentChange {
   readonly comment: Comment;
-  readonly issue: Issue;
+  readonly issue: IssueV1;
   /** The direct parent comment, when this is a reply. */
   readonly parent: Comment | null;
   readonly actor: Actor;
 }
 
+export interface StatusChange {
+  readonly before: IssueV1;
+  readonly after: IssueV1;
+  readonly actor: Actor;
+}
+
 export interface TriggerService {
-  /** A human created or updated an issue (creation passes `before: null`). */
+  /** A human created or updated an issue (creation passes `before: null`), or an agent created a sub-issue. */
   onIssueChanged(tx: Tx, change: IssueChange): Promise<TriggeredRun[]>;
   onCommentCreated(tx: Tx, change: CommentChange): Promise<TriggeredRun[]>;
+  /** Any status write (human, agent or system): terminal entry releases dependents and may wake the parent. */
+  onStatusChanged(tx: Tx, change: StatusChange): Promise<TriggeredRun[]>;
+  /** A dependency was removed: start the issue if nothing blocks it any more. */
+  onUnblockCandidate(
+    tx: Tx,
+    issue: IssueV1,
+    releasedBy: string,
+  ): Promise<TriggeredRun[]>;
   /** Automatic retry of a failed run (called by the failure handler). */
   retryFailedRun(
     tx: Tx,
@@ -65,6 +93,16 @@ export interface TriggerService {
 
 export interface TriggerDeps {
   readonly runs: () => RunService;
+  readonly workflows: WorkflowService;
+  readonly activity: ActivityRecorder;
+}
+
+export interface EnqueueTarget {
+  readonly issue: Issue;
+  /** Recorded on the run and as the trigger's creator; null for system-initiated triggers. */
+  readonly actorUserId: string | null;
+  readonly agentId: string;
+  readonly threadScope: string | null;
 }
 
 async function activeAgentIds(
@@ -82,35 +120,45 @@ async function activeAgentIds(
   return new Set(rows.map((row) => String(row.id as string)));
 }
 
-function issueRunBase(issue: Issue, actor: Actor) {
-  return {
-    subjectId: issue.id,
-    actorUserId: actor.type === 'user' ? actor.id : null,
-    ownerUserId: issue.ownerUserId,
-    priority: runPriorityOf(issue.priority),
-  };
-}
-
-async function enqueueFor(
+/**
+ * Enqueues one run unless the agent is archived or the issue is blocked. A blocked issue gets an activity naming
+ * the blockers instead of a run; the trigger is not stored (release re-triggers it as `dependencyReleased`).
+ */
+export async function enqueueFor(
   deps: TriggerDeps,
   tx: Tx,
-  target: {
-    issue: Issue;
-    actor: Actor;
-    agentId: string;
-    threadScope: string | null;
-  },
+  target: EnqueueTarget,
   trigger: TriggerRecordInput,
 ): Promise<TriggeredRun | null> {
-  const { issue, actor, agentId, threadScope } = target;
+  const { issue, agentId, threadScope, actorUserId } = target;
   if (!(await activeAgentIds(tx, [agentId])).has(agentId)) return null;
+  const blockers = await blockersOf(tx.conn, deps.workflows, issue as IssueV1);
+  if (blockers.length > 0) {
+    await deps.activity.record(tx.conn, {
+      issueId: issue.id,
+      actor: { type: 'system', id: null },
+      action: 'run_deferred_blocked',
+      details: {
+        agentId,
+        triggerType: trigger.type,
+        blockers: blockers.map((item) => ({
+          issueId: item.issueId,
+          identifier: item.identifier,
+          reason: item.reason,
+        })),
+      },
+    });
+    tx.emit({ type: 'issue.changed', issueId: issue.id });
+    return null;
+  }
   const result = await deps.runs().enqueue(tx, {
-    ...issueRunBase(issue, actor),
+    subjectId: issue.id,
+    actorUserId,
+    ownerUserId: issue.ownerUserId,
+    priority: runPriorityOf(issue.priority),
     agentId,
     threadScope,
-    triggers: [
-      { ...trigger, createdById: actor.type === 'user' ? actor.id : null },
-    ],
+    triggers: [{ ...trigger, createdById: trigger.createdById ?? actorUserId }],
   });
   return { agentId, runId: result.runId };
 }
@@ -118,22 +166,27 @@ async function enqueueFor(
 async function onIssueChanged(
   deps: TriggerDeps,
   tx: Tx,
-  { before, after, actor }: IssueChange,
+  change: IssueChange,
 ): Promise<TriggeredRun[]> {
-  if (actor.type !== 'user') return [];
+  const { before, after, actor } = change;
+  const actorUserId =
+    actor.type === 'user' ? actor.id : (change.onBehalfOfUserId ?? null);
+  if (actor.type !== 'user' && !change.onBehalfOfUserId) return [];
+  if (change.start === false) return [];
   if (after.executorType !== 'agent' || !after.executorId) return [];
+  const view = await deps.workflows.forIssue(tx.conn, after);
   const executorChanged =
     !before ||
     before.executorType !== 'agent' ||
     before.executorId !== after.executorId;
-  let type: 'assign' | 'statusChange' | null = null;
-  if (executorChanged && !isDormantStatus(after.statusKey)) {
-    type = 'assign';
+  let type: Phase1RunTriggerType | null = null;
+  if (executorChanged && !view.isDormant(after.statusKey)) {
+    type = change.assignTriggerType ?? 'assign';
   } else if (
     before &&
     before.statusKey === 'backlog' &&
     after.statusKey !== 'backlog' &&
-    !isTerminalStatus(after.statusKey)
+    !view.isTerminal(after.statusKey)
   ) {
     type = 'statusChange';
   }
@@ -141,13 +194,15 @@ async function onIssueChanged(
   const triggered = await enqueueFor(
     deps,
     tx,
-    { issue: after, actor, agentId: after.executorId, threadScope: null },
+    { issue: after, actorUserId, agentId: after.executorId, threadScope: null },
     {
       type,
       payload:
         type === 'statusChange'
           ? { from: before?.statusKey ?? null, to: after.statusKey }
-          : null,
+          : actor.type === 'agent'
+            ? { createdByAgentId: actor.id, sourceRunId: actor.runId ?? null }
+            : null,
     },
   );
   return triggered ? [triggered] : [];
@@ -169,7 +224,7 @@ async function onCommentCreated(
     enqueueFor(
       deps,
       tx,
-      { issue, actor, agentId, threadScope },
+      { issue, actorUserId: actor.id, agentId, threadScope },
       { type, commentId: comment.id },
     );
 
@@ -261,9 +316,26 @@ async function manualRetry(
 }
 
 export function createTriggerService(deps: TriggerDeps): TriggerService {
+  const enqueue = (
+    tx: Tx,
+    target: EnqueueTarget,
+    trigger: TriggerRecordInput,
+  ) => enqueueFor(deps, tx, target, trigger);
   return {
     onIssueChanged: (tx, change) => onIssueChanged(deps, tx, change),
     onCommentCreated: (tx, change) => onCommentCreated(deps, tx, change),
+    async onStatusChanged(tx, { before, after }) {
+      if (before.statusKey === after.statusKey) return [];
+      const view = await deps.workflows.forIssue(tx.conn, after);
+      if (
+        !view.isTerminal(after.statusKey) ||
+        view.isTerminal(before.statusKey)
+      )
+        return [];
+      return onTerminalEntered({ ...deps, enqueue }, tx, after);
+    },
+    onUnblockCandidate: (tx, issue, releasedBy) =>
+      releaseIfUnblocked({ ...deps, enqueue }, tx, issue, releasedBy),
     retryFailedRun: (tx, failed, maxAttempts, reason) =>
       retryFailedRun(deps, tx, failed, maxAttempts, reason),
     manualRetry: (tx, run, actor) => manualRetry(deps, tx, run, actor),

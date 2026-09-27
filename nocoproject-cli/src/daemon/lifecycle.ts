@@ -83,7 +83,7 @@ export class Daemon {
   async start(): Promise<void> {
     const detected = this.opts.adapters ?? (await this.detect());
     for (const d of detected) this.adapters.set(d.adapter.provider, d);
-    if (this.adapters.size === 0) throw new Error('No supported coding tools found (looked for: claude, opencode). Install one or pass --providers echo.');
+    if (this.adapters.size === 0) throw new Error('No supported coding tools found (looked for: claude, opencode, codex). Install one or pass --providers echo.');
     mkdirSync(this.opts.settings.workspacesRoot, { recursive: true, mode: 0o700 });
     const cli = distPath('cli.js');
     if (existsSync(cli)) this.binDir = ensureCliShim(this.opts.config.home, cli);
@@ -214,6 +214,7 @@ export class Daemon {
       serverUrl: this.opts.config.serverUrl,
       workspacesRoot: this.opts.settings.workspacesRoot,
       binDir: this.binDir,
+      home: this.opts.config.home,
       idleWatchdogMs: this.opts.settings.idleWatchdogMs,
       leaseIntervalMs: this.opts.intervals?.leaseMs,
       cancelPollMs: this.opts.intervals?.cancelPollMs,

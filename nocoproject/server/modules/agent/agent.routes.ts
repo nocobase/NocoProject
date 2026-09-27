@@ -3,21 +3,26 @@ import type { Hono } from 'hono';
 
 import { npRouter, readJson, sessionActor } from '../shared/http.js';
 import type {
-  CreateAgentRequest,
-  UpdateAgentRequest,
+  CreateAgentRequestV1,
+  UpdateAgentRequestV1,
 } from '../shared/protocol.js';
 import type { AgentService } from './agent.service.js';
 
-/** `/np/agents` (browser). */
+/** `/np/agents` (browser). Every row carries `canInvoke` / `canEdit` for the caller. */
 export function createAgentRoutes(agents: AgentService): Hono<AuthEnv> {
   const routes = npRouter<AuthEnv>();
   routes.get('/', async (context) =>
-    context.json({ data: await agents.list() }),
+    context.json({ data: await agents.list(sessionActor(context)) }),
+  );
+  routes.get('/:id', async (context) =>
+    context.json({
+      data: await agents.get(sessionActor(context), context.req.param('id')),
+    }),
   );
   routes.post('/', async (context) => {
     const agent = await agents.create(
       sessionActor(context),
-      await readJson<CreateAgentRequest>(context),
+      await readJson<CreateAgentRequestV1>(context),
     );
     return context.json({ data: agent }, 201);
   });
@@ -25,7 +30,7 @@ export function createAgentRoutes(agents: AgentService): Hono<AuthEnv> {
     const agent = await agents.update(
       sessionActor(context),
       context.req.param('id'),
-      await readJson<UpdateAgentRequest>(context),
+      await readJson<UpdateAgentRequestV1>(context),
     );
     return context.json({ data: agent });
   });

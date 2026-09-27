@@ -14,7 +14,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { fetchAgents, fetchRun } from '../../api.js';
 import { ACTIVE_RUN_STATUSES, npKeys } from '../../constants.js';
 import { runTriggerType } from '../../detail-normalize.js';
-import { durationText, useNpFormatters } from '../../format.js';
+import {
+  durationText,
+  failureReasonKey,
+  useNpFormatters,
+} from '../../format.js';
 import type { RunTopicPayload } from '../../types.js';
 import { useRealtimeTopic } from '../../use-realtime.js';
 import { TranscriptEvent } from './transcript-event.js';
@@ -138,7 +142,9 @@ function TranscriptBody({ runId }: { readonly runId: string }): ReactElement {
           </p>
           {data.failureReason ? (
             <p className='text-sm text-destructive'>
-              {data.failureReason}
+              {t(failureReasonKey(data.failureReason), {
+                defaultValue: data.failureReason,
+              })}
               {data.failureDetail ? ` — ${data.failureDetail}` : ''}
             </p>
           ) : null}

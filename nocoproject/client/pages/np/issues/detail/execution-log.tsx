@@ -27,7 +27,11 @@ import {
   RETRYABLE_RUN_STATUSES,
 } from '../../constants.js';
 import { runTriggerType } from '../../detail-normalize.js';
-import { durationText, useNpFormatters } from '../../format.js';
+import {
+  durationText,
+  failureReasonKey,
+  useNpFormatters,
+} from '../../format.js';
 import type { AgentListItem, RunSummary } from '../../types.js';
 
 /** Runs on this issue, newest first, with transcript, stop and retry. */
@@ -196,11 +200,24 @@ function RunItem({
             <dd>{run.attempt}</dd>
           </>
         ) : null}
+        {run.branchName ? (
+          <>
+            <dt>{t('np.runs.branch')}</dt>
+            <dd
+              className='wrap-anywhere font-mono'
+              title={run.repoUrl ?? undefined}
+            >
+              {run.branchName}
+            </dd>
+          </>
+        ) : null}
         {run.failureReason ? (
           <>
             <dt>{t('np.runs.failure')}</dt>
             <dd className='wrap-anywhere text-destructive'>
-              {run.failureReason}
+              {t(failureReasonKey(run.failureReason), {
+                defaultValue: run.failureReason,
+              })}
             </dd>
           </>
         ) : null}

@@ -7,8 +7,10 @@ import type { RealtimeService } from '@nocobase/app-server/realtime';
 import type { DomainEvent, DomainEventBus } from './events.js';
 import {
   REALTIME_TOPICS,
+  REALTIME_TOPICS_PHASE1,
   type AgentsTopicPayload,
   type DaemonWakeupPayload,
+  type InboxTopicPayload,
   type IssuesTopicPayload,
   type RunTopicPayload,
 } from './protocol.js';
@@ -31,6 +33,10 @@ export function connectRealtime(
   );
   const daemon = realtime.defineTopic<DaemonWakeupPayload, 'user'>(
     REALTIME_TOPICS.daemon,
+    { audience: 'user' },
+  );
+  const inbox = realtime.defineTopic<InboxTopicPayload, 'user'>(
+    REALTIME_TOPICS_PHASE1.inbox,
     { audience: 'user' },
   );
 
@@ -66,6 +72,12 @@ export function connectRealtime(
           runId: event.runId,
         });
         return;
+      case 'inbox.changed':
+        inbox.publishFor(event.userId, { kind: 'inbox.changed' });
+        return;
+      default:
+        // Notification-module events (`issue.created`, `run.failed`, …) have no realtime topic of their own.
+        return;
     }
   };
 
@@ -96,6 +108,7 @@ export function connectRealtime(
       issues.close();
       agents.close();
       daemon.close();
+      inbox.close();
     },
   };
 }

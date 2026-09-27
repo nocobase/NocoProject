@@ -1,7 +1,9 @@
 import { useTranslation } from '@nocobase/i18n/client';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
+
+import { NpLabelChip } from '@/components/np-labels';
 
 import { DataTableColumnHeader } from '@/components/data-table-column-header';
 import {
@@ -18,6 +20,7 @@ import type { IssueListItem } from '../types.js';
 export function useIssueColumns(): ColumnDef<IssueListItem, unknown>[] {
   const { t } = useTranslation();
   const format = useNpFormatters();
+  const { search } = useLocation();
 
   return useMemo<ColumnDef<IssueListItem, unknown>[]>(
     () => [
@@ -35,7 +38,7 @@ export function useIssueColumns(): ColumnDef<IssueListItem, unknown>[] {
           a.original.identifier.localeCompare(b.original.identifier),
         cell: ({ row }) => (
           <Link
-            to={encodeURIComponent(row.original.id)}
+            to={{ pathname: encodeURIComponent(row.original.id), search }}
             onClick={(event) => event.stopPropagation()}
             className='font-mono text-xs text-muted-foreground hover:text-foreground hover:underline'
           >
@@ -49,9 +52,18 @@ export function useIssueColumns(): ColumnDef<IssueListItem, unknown>[] {
         enableSorting: false,
         header: t('np.issues.columns.title'),
         cell: ({ row }) => (
-          <span className='line-clamp-2 min-w-48 font-medium wrap-anywhere'>
-            {row.original.title}
-          </span>
+          <div className='min-w-48 space-y-1'>
+            <span className='line-clamp-2 font-medium wrap-anywhere'>
+              {row.original.title}
+            </span>
+            {row.original.labels && row.original.labels.length > 0 ? (
+              <div className='flex flex-wrap gap-1'>
+                {row.original.labels.map((label) => (
+                  <NpLabelChip key={label.id} label={label} />
+                ))}
+              </div>
+            ) : null}
+          </div>
         ),
       },
       {
@@ -116,6 +128,6 @@ export function useIssueColumns(): ColumnDef<IssueListItem, unknown>[] {
         ),
       },
     ],
-    [t, format],
+    [t, format, search],
   );
 }

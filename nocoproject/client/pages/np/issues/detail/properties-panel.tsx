@@ -1,8 +1,11 @@
+import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
-import type { ReactElement, ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 
 import { NpExecutor, NpStatusBadge } from '@/components/np-badges';
 import { NpExecutorSelect } from '@/components/np-executor-select';
+import { NpStartDialog } from '@/components/np-start-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -13,9 +16,18 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
 
-import { ISSUE_PRIORITIES, statusLabelKey } from '../../constants.js';
+import { fetchLabels, fetchMembers } from '../../api-collab.js';
+import { fetchProjects } from '../../api.js';
+import {
+  ISSUE_PRIORITIES,
+  isTerminalStatus,
+  npKeys,
+  statusLabelKey,
+} from '../../constants.js';
 import { useNpFormatters } from '../../format.js';
+import { canActAsIssueOwner, viewerFrom } from '../../permissions.js';
 import type {
   AgentListItem,
   IssueDetail,
@@ -23,32 +35,23 @@ import type {
   Me,
 } from '../../types.js';
 import { ExecutionLog } from './execution-log.js';
+import {
+  DateField,
+  LabelsField,
+  PropertyRow,
+  PropertySelect,
+} from './property-fields.js';
+import { Subscribers } from './subscribers.js';
+import { useConfirmedUpdate } from './use-confirmed-update.js';
 import { useIssueUpdate } from './use-issue-update.js';
 
-function PropertyRow({
-  label,
-  htmlFor,
-  children,
-}: {
-  readonly label: ReactNode;
-  readonly htmlFor?: string;
-  readonly children: ReactNode;
-}): ReactElement {
-  return (
-    <div className='grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-3 text-sm'>
-      {htmlFor ? (
-        <label htmlFor={htmlFor} className='text-muted-foreground'>
-          {label}
-        </label>
-      ) : (
-        <span className='text-muted-foreground'>{label}</span>
-      )}
-      <div className='min-w-0'>{children}</div>
-    </div>
-  );
-}
-
-/** The right-hand panel: editable properties, timestamps and the execution log. */
+/**
+ * The right-hand panel: editable properties, dates, labels, subscribers, timestamps and the execution log.
+ *
+ * Controls the §B rules would refuse are disabled rather than hidden, so the value stays readable: the owner picker
+ * and the done / cancelled statuses for anyone but the owner, the project lead and owner/admin; agents the viewer
+ * cannot invoke in the executor picker. The server enforces the same rules.
+ */
 export function PropertiesPanel({
   detail,
   agents,
@@ -59,18 +62,48 @@ export function PropertiesPanel({
   readonly me: Me | undefined;
 }): ReactElement {
   const { t } = useTranslation();
+  const api = useApiClient();
   const format = useNpFormatters();
   const { issue, statusCatalog } = detail;
   const update = useIssueUpdate(issue);
+  const confirmed = useConfirmedUpdate({
+    issue,
+    catalog: statusCatalog,
+    agents,
+    mutate: (changes) => update.mutate(changes),
+  });
+
+  const members = useQuery({
+    queryKey: npKeys.members,
+    queryFn: () => fetchMembers(api),
+  });
+  const projects = useQuery({
+    queryKey: npKeys.projects,
+    queryFn: () => fetchProjects(api),
+  });
+  const labels = useQuery({
+    queryKey: npKeys.labels,
+    queryFn: () => fetchLabels(api),
+  });
+
+  const projectId = detail.project?.id ?? issue.projectId ?? null;
+  const project = projects.data?.find((item) => item.id === projectId);
+  const viewer = viewerFrom(me?.userId, members.data);
+  const ownerPowers = canActAsIssueOwner(viewer, issue, project?.leadUserId);
 
   const statusItems = statusCatalog.map((entry) => ({
     value: entry.key,
     label: t(statusLabelKey(entry.key), { defaultValue: entry.key }),
+    disabled:
+      !ownerPowers &&
+      entry.key !== issue.statusKey &&
+      isTerminalStatus(entry.key, statusCatalog),
   }));
   const priorityItems = ISSUE_PRIORITIES.map((value) => ({
     value,
     label: t(`np.priority.${value}`),
   }));
+  const busy = update.isPending;
 
   return (
     <div className='space-y-6 p-4 md:p-6'>
@@ -80,7 +113,7 @@ export function PropertiesPanel({
           className='flex items-center gap-2 text-sm font-semibold'
         >
           {t('np.properties.title')}
-          {update.isPending ? (
+          {busy ? (
             <Spinner
               className='size-3.5 text-muted-foreground'
               aria-label={t('np.common.saving')}
@@ -91,10 +124,10 @@ export function PropertiesPanel({
           <Select
             items={statusItems}
             value={issue.statusKey}
-            disabled={update.isPending}
+            disabled={busy}
             onValueChange={(value) => {
               if (value && value !== issue.statusKey) {
-                update.mutate({ statusKey: value });
+                confirmed.apply({ statusKey: value });
               }
             }}
           >
@@ -110,7 +143,11 @@ export function PropertiesPanel({
             </SelectTrigger>
             <SelectContent>
               {statusItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
+                <SelectItem
+                  key={item.value}
+                  value={item.value}
+                  disabled={item.disabled}
+                >
                   {item.label}
                 </SelectItem>
               ))}
@@ -124,7 +161,7 @@ export function PropertiesPanel({
           <Select
             items={priorityItems}
             value={issue.priority}
-            disabled={update.isPending}
+            disabled={busy}
             onValueChange={(value: IssuePriority | null) => {
               if (value && value !== issue.priority) {
                 update.mutate({ priority: value });
@@ -143,30 +180,39 @@ export function PropertiesPanel({
             </SelectContent>
           </Select>
         </PropertyRow>
-        <PropertyRow label={t('np.properties.owner')}>
-          <div className='flex min-w-0 items-center gap-2'>
-            <span className='truncate'>
-              {issue.ownerName ?? (
-                <span className='text-muted-foreground'>—</span>
-              )}
-            </span>
-            {me && issue.ownerUserId === me.userId ? (
-              <span className='text-xs text-muted-foreground'>
-                {t('np.properties.you')}
-              </span>
-            ) : null}
-            {me && issue.ownerUserId !== me.userId ? (
-              <Button
-                variant='ghost'
-                size='xs'
-                disabled={update.isPending}
-                onClick={() => update.mutate({ ownerUserId: me.userId })}
-              >
-                {t('np.properties.assignToMe')}
-              </Button>
-            ) : null}
-          </div>
+        <PropertyRow label={t('np.properties.owner')} htmlFor='np-prop-owner'>
+          {members.data ? (
+            <PropertySelect
+              id='np-prop-owner'
+              options={members.data.map((member) => ({
+                value: member.userId,
+                label:
+                  member.userId === me?.userId
+                    ? `${member.name} ${t('np.properties.you')}`
+                    : member.name,
+              }))}
+              value={issue.ownerUserId}
+              disabled={busy || !ownerPowers}
+              onChange={(value) => {
+                if (value) update.mutate({ ownerUserId: value });
+              }}
+            />
+          ) : (
+            <span className='truncate'>{issue.ownerName ?? '—'}</span>
+          )}
         </PropertyRow>
+        {me && issue.ownerUserId !== me.userId && ownerPowers ? (
+          <PropertyRow label=''>
+            <Button
+              variant='ghost'
+              size='xs'
+              disabled={busy}
+              onClick={() => update.mutate({ ownerUserId: me.userId })}
+            >
+              {t('np.properties.assignToMe')}
+            </Button>
+          </PropertyRow>
+        ) : null}
         <PropertyRow
           label={t('np.properties.executor')}
           htmlFor='np-prop-executor'
@@ -176,11 +222,12 @@ export function PropertiesPanel({
             className='h-7'
             value={{ type: issue.executorType, id: issue.executorId }}
             agents={agents}
+            members={members.data}
             userExecutorName={
               issue.executorType === 'user' ? issue.executorName : null
             }
-            disabled={update.isPending}
-            onChange={(executor) => update.mutate({ executor })}
+            disabled={busy}
+            onChange={(executor) => confirmed.apply({ executor })}
           />
         </PropertyRow>
         {issue.executorType === 'agent' && (issue.activeRunCount ?? 0) > 0 ? (
@@ -192,6 +239,75 @@ export function PropertiesPanel({
             />
           </PropertyRow>
         ) : null}
+        <PropertyRow label={t('np.properties.labels')} htmlFor='np-prop-labels'>
+          <LabelsField
+            id='np-prop-labels'
+            labels={labels.data ?? detail.labels}
+            value={detail.labels.map((label) => label.id)}
+            disabled={busy}
+            onChange={(labelIds) => update.mutate({ labelIds })}
+          />
+        </PropertyRow>
+        <PropertyRow
+          label={t('np.properties.project')}
+          htmlFor='np-prop-project'
+        >
+          <PropertySelect
+            id='np-prop-project'
+            options={(projects.data ?? []).map((item) => ({
+              value: item.id,
+              label: item.name,
+            }))}
+            value={projectId}
+            noneLabel={t('np.issueForm.noProject')}
+            disabled={busy || !projects.data}
+            onChange={(value) => update.mutate({ projectId: value })}
+          />
+        </PropertyRow>
+        <PropertyRow label={t('np.dates.start')} htmlFor='np-prop-start'>
+          <DateField
+            id='np-prop-start'
+            value={issue.startDate}
+            disabled={busy}
+            clearLabel={t('np.dates.clearStart')}
+            onChange={(value) => update.mutate({ startDate: value })}
+          />
+        </PropertyRow>
+        <PropertyRow label={t('np.dates.due')} htmlFor='np-prop-due'>
+          <DateField
+            id='np-prop-due'
+            value={issue.dueDate}
+            disabled={busy}
+            clearLabel={t('np.dates.clearDue')}
+            onChange={(value) => update.mutate({ dueDate: value })}
+          />
+        </PropertyRow>
+        <PropertyRow
+          label={t('np.properties.autoExecute')}
+          htmlFor='np-prop-auto-execute'
+        >
+          <Switch
+            id='np-prop-auto-execute'
+            checked={issue.autoExecuteSubtasks ?? false}
+            disabled={busy}
+            onCheckedChange={(checked) =>
+              update.mutate({ autoExecuteSubtasks: checked })
+            }
+          />
+        </PropertyRow>
+      </section>
+
+      <Separator />
+
+      <section className='space-y-3' aria-labelledby='np-subscribers-heading'>
+        <h2 id='np-subscribers-heading' className='text-sm font-semibold'>
+          {t('np.subscribers.title')}
+        </h2>
+        <Subscribers
+          issueId={issue.id}
+          subscribers={detail.subscribers}
+          meUserId={me?.userId}
+        />
       </section>
 
       <Separator />
@@ -215,6 +331,12 @@ export function PropertiesPanel({
       <Separator />
 
       <ExecutionLog runs={detail.runs} agents={agents} issueId={issue.id} />
+
+      <NpStartDialog
+        request={confirmed.startRequest}
+        onDecide={confirmed.decide}
+        onCancel={confirmed.cancel}
+      />
     </div>
   );
 }

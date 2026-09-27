@@ -15,6 +15,7 @@ import {
 } from '../modules/run/agent-api.routes.js';
 import { guarded } from '../modules/shared/http.js';
 import {
+  npAgentIssueServiceToken,
   npCommentServiceToken,
   npIssueQueriesToken,
   npIssueServiceToken,
@@ -33,6 +34,7 @@ export const npAgentRoutes: AppApiRouteContribution<Application> =
           issues: container.resolve(npIssueServiceToken),
           queries: container.resolve(npIssueQueriesToken),
           comments: container.resolve(npCommentServiceToken),
+          agentIssues: container.resolve(npAgentIssueServiceToken),
         }),
       ),
     );

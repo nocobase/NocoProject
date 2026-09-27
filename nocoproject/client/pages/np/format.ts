@@ -1,9 +1,12 @@
 import { useLocale } from '@nocobase/i18n/client';
+import { type Locale, enUS, zhCN } from 'date-fns/locale';
 import { useMemo } from 'react';
 
 export interface NpFormatters {
   /** Date and time in the current language, or "—" for an empty value. */
   readonly dateTime: (iso: string | null | undefined) => string;
+  /** Calendar date only, for start and due dates. */
+  readonly date: (iso: string | null | undefined) => string;
   /** Time of day only, for transcript rows. */
   readonly time: (iso: string | null | undefined) => string;
   /** "3 minutes ago" in the current language. */
@@ -29,16 +32,30 @@ export function useNpFormatters(): NpFormatters {
       timeStyle: 'short',
     });
     const time = new Intl.DateTimeFormat(locale, { timeStyle: 'medium' });
+    const day = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' });
     const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
     const parse = (iso: string | null | undefined): Date | null => {
       if (!iso) return null;
       const date = new Date(iso);
       return Number.isNaN(date.getTime()) ? null : date;
     };
+    // A date-only value ("2026-10-01") is a calendar day, not UTC midnight: read it in local time so it does not
+    // show as the previous day west of Greenwich.
+    const parseDay = (iso: string | null | undefined): Date | null => {
+      if (iso && /^\d{4}-\d{2}-\d{2}$/u.test(iso)) {
+        const [year, month, dayOfMonth] = iso.split('-').map(Number);
+        return new Date(year, month - 1, dayOfMonth);
+      }
+      return parse(iso);
+    };
     return {
       dateTime: (iso) => {
         const date = parse(iso);
         return date ? dateTime.format(date) : '—';
+      },
+      date: (iso) => {
+        const date = parseDay(iso);
+        return date ? day.format(date) : '—';
       },
       time: (iso) => {
         const date = parse(iso);
@@ -73,4 +90,47 @@ export function durationText(
   return minutes > 0
     ? `${minutes}m ${String(seconds).padStart(2, '0')}s`
     : `${seconds}s`;
+}
+
+/** A calendar day as the `YYYY-MM-DD` string the API stores for start and due dates. */
+export function toDateOnly(date: Date | undefined): string | null {
+  if (!date) return null;
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** The inverse of `toDateOnly`, also accepting a full ISO timestamp. */
+export function fromDateOnly(
+  value: string | null | undefined,
+): Date | undefined {
+  if (!value) return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/u.exec(value);
+  if (!match) return undefined;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+/**
+ * The locale key of a run failure reason (protocol `FailureReason`): `np.failure.runtimeOffline`,
+ * `np.failure.agentError.providerAuth`. Callers pass the raw reason as `defaultValue` so a reason a newer server
+ * adds still reads as its code.
+ */
+export function failureReasonKey(reason: string): string {
+  return `np.failure.${reason}`;
+}
+
+/** The `date-fns` locale for the interface language, for `DatePicker` and `format`. */
+export function useDateFnsLocale(): Locale {
+  const { locale } = useLocale();
+  return locale.startsWith('zh') ? zhCN : enUS;
+}
+
+/** Up to two letters for an avatar: the first letters of the first and last words, or the start of a single word. */
+export function initials(name: string): string {
+  const parts = name.trim().split(/\s+/u).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) {
+    return [...parts[0]].slice(0, 2).join('').toUpperCase();
+  }
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
