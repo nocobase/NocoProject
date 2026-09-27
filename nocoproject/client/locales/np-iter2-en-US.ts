@@ -128,6 +128,8 @@ const npIter2EnUS = {
   },
   intake: {
     title: 'Batch entry',
+    openDrawer: 'Batch entry',
+    parsedToast: 'Parsed into {{count}} drafts',
     description:
       'Paste a list, meeting notes or a CSV. It is split into draft issues you can edit before creating them.',
     rawLabel: 'Text to split into issues',
@@ -330,6 +332,7 @@ const npIter2EnUS = {
   },
   usage: {
     title: 'Usage',
+    loadFailed: 'Unable to load usage',
     description:
       'Tokens and estimated cost of agent runs. Costs use the model prices in Settings → NocoProject.',
     issueTitle: 'Usage',
@@ -423,6 +426,10 @@ const npIter2EnUS = {
     approval_rejected: '{{actor}} rejected moving it to {{to}}.',
     pr_review: 'PR {{repo}}#{{number}} is ready to merge.',
     pr_merged: 'PR {{repo}}#{{number}} was merged.',
+    knowledge_proposal: '{{actor}} proposes a change to “{{doc}}”.',
+    knowledge_proposal_new: '{{actor}} proposes a new document “{{doc}}”.',
+    knowledge_accepted: 'Your knowledge proposal “{{doc}}” was accepted.',
+    knowledge_rejected: 'Your knowledge proposal “{{doc}}” was rejected.',
   },
   projectMore: {
     label: 'More project actions',

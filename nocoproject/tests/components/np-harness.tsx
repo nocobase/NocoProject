@@ -42,6 +42,36 @@ export async function renderNp(
   return { ...result, queryClient };
 }
 
+/**
+ * Like `renderNp`, but with a route tree of its own (`<Route>` elements, nested for child routes and tabs), for
+ * pages whose behavior depends on their children or on redirects.
+ */
+export async function renderNpRoutes(
+  routes: ReactElement,
+  { url = '/' }: { readonly url?: string } = {},
+): Promise<RenderResult & { readonly queryClient: QueryClient }> {
+  const runtime = new I18nRuntime({
+    defaultLocale: 'en-US',
+    locales: ['en-US', 'zh-CN'],
+    applicationNamespace: 'test-app',
+  });
+  runtime.registerApplicationNamespace('test-app', locales);
+  await runtime.init('en-US');
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const result = render(
+    <I18nProvider runtime={runtime}>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[url]}>
+          <Routes>{routes}</Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </I18nProvider>,
+  );
+  return { ...result, queryClient };
+}
+
 export interface RequestOptions {
   readonly path: string;
   readonly method?: string;

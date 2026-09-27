@@ -57,6 +57,21 @@ export function buildTimeline(
   );
 }
 
+/**
+ * The detail's newest activities and the older pages loaded on demand (§D), each once, oldest first. A page that
+ * overlaps the detail (an activity arrived while paging) does not repeat it.
+ */
+export function mergeActivities(
+  older: readonly IssueActivity[],
+  newest: readonly IssueActivity[],
+): IssueActivity[] {
+  const byId = new Map<string, IssueActivity>();
+  for (const activity of [...older, ...newest]) byId.set(activity.id, activity);
+  return [...byId.values()].sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt),
+  );
+}
+
 export type ActivityLabel =
   | 'created'
   | 'statusChanged'
@@ -89,6 +104,11 @@ export type ActivityLabel =
   | 'skillsChanged'
   | 'intakeConfirmed'
   | 'intakeReverted'
+  // Phase 1 iteration 3 (§J)
+  | 'knowledgeProposed'
+  | 'knowledgeUpdated'
+  | 'deliveryAccepted'
+  | 'changesRequested'
   | 'updated';
 
 /** Iteration 2 actions are matched exactly (snake case, as the contract spells them) before the keyword rules. */
@@ -108,6 +128,10 @@ const EXACT_LABELS: Readonly<Record<string, ActivityLabel>> = {
   skills_changed: 'skillsChanged',
   intake_confirmed: 'intakeConfirmed',
   intake_reverted: 'intakeReverted',
+  knowledge_proposed: 'knowledgeProposed',
+  knowledge_updated: 'knowledgeUpdated',
+  delivery_accepted: 'deliveryAccepted',
+  changes_requested: 'changesRequested',
 };
 
 /** Labels whose details carry a status change to show as badges. */

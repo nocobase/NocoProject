@@ -82,6 +82,13 @@ export const NP_PHASE1_ITER2_TABLES = [
   'intake_drafts',
 ] as const;
 
+/** Tables of the Phase 1 iteration 3 migration. */
+export const NP_PHASE1_ITER3_TABLES = [
+  'knowledge_docs',
+  'knowledge_doc_versions',
+  'knowledge_proposals',
+] as const;
+
 /** A fixed test key for stored secrets (32 bytes of 0x11). */
 export const TEST_SECRET_KEY = Buffer.alloc(32, 0x11);
 
@@ -229,7 +236,7 @@ export function buildServices(
 /** Empties every NocoProject table (keeping the seeded workflow template) and restores the settings row. */
 export async function resetData(db: NpTestDatabase): Promise<void> {
   await db.knex.raw(
-    `TRUNCATE ${[...NP_TABLES, ...NP_PHASE1_TABLES, ...NP_PHASE1_ITER2_TABLES].map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
+    `TRUNCATE ${[...NP_TABLES, ...NP_PHASE1_TABLES, ...NP_PHASE1_ITER2_TABLES, ...NP_PHASE1_ITER3_TABLES].map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
   );
   await db.knex.raw(
     `INSERT INTO "${db.schema}".system_settings (id, issue_prefix, issue_counter) VALUES ('default', 'NP', 0)`,

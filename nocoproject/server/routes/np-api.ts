@@ -1,7 +1,8 @@
 /**
  * NocoProject browser API (protocol.md §3, iteration-1 contract §B–§H, iteration-2 contract §C–§K):
  * `/api/np/{me,members,workflows,projects,labels,issues,inbox,agents,runtimes,runs}` and, from iteration 2,
- * `/api/np/{integrations,approvals,intake,comments,skills,usage,settings}`.
+ * `/api/np/{integrations,approvals,intake,comments,skills,usage,settings}` and, from iteration 3,
+ * `/api/np/{knowledge,metrics}` (plus the delivery, activity and comment pages under `/api/np/issues/:id`).
  *
  * Every prefix is mounted behind its own guard: a run token is refused with 403 before the session lookup,
  * `auth.required()` answers 401 for anonymous callers, and `ensureMember` bootstraps the caller's members row. The
@@ -19,6 +20,7 @@ import {
 import { Hono } from 'hono';
 
 import type { AppIdentityConfig } from '@nocobase/app-server/config';
+import { loggingToken } from '@nocobase/app-server/logging';
 
 import { createAgentRoutes } from '../modules/agent/agent.routes.js';
 import { createAgentEnvRoutes } from '../modules/agent/env.routes.js';
@@ -30,6 +32,8 @@ import {
   createIssuePullRequestRoutes,
 } from '../modules/git/git.routes.js';
 import { createIntakeRoutes } from '../modules/intake/intake.routes.js';
+import { createKnowledgeRoutes } from '../modules/knowledge/knowledge.routes.js';
+import { createMetricsRoutes } from '../modules/metrics/metrics.routes.js';
 import { createSkillRoutes } from '../modules/skill/skill.routes.js';
 import { createSettingsRoutes } from '../modules/system/settings.routes.js';
 import { createUsageRoutes } from '../modules/usage/usage.routes.js';
@@ -61,6 +65,9 @@ import {
   npSkillServiceToken,
   npUsageServiceToken,
   npWorkspaceSettingsServiceToken,
+  npDeliveryServiceToken,
+  npKnowledgeServiceToken,
+  npMetricsServiceToken,
   npCommentServiceToken,
   npDependencyServiceToken,
   npInboxServiceToken,
@@ -110,7 +117,10 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
       '/np/projects',
       guarded(
         guard,
-        createProjectRoutes(container.resolve(npProjectServiceToken)),
+        createProjectRoutes(
+          container.resolve(npProjectServiceToken),
+          container.resolve(npKnowledgeServiceToken),
+        ),
       ),
     );
     router.route(
@@ -124,6 +134,10 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
         createIssueRoutes({
           issues: container.resolve(npIssueServiceToken),
           queries: container.resolve(npIssueQueriesToken),
+          deliveries: container.resolve(npDeliveryServiceToken),
+          slowLog: container.has(loggingToken)
+            ? container.resolve(loggingToken).getLogger('nocoproject')
+            : undefined,
         }),
         createCommentRoutes(container.resolve(npCommentServiceToken)),
         createSubtaskRoutes({
@@ -217,6 +231,21 @@ function mountIteration2(
     guarded(
       guard,
       createSettingsRoutes(container.resolve(npWorkspaceSettingsServiceToken)),
+    ),
+  );
+  // Iteration 3.
+  router.route(
+    '/np/knowledge',
+    guarded(
+      guard,
+      createKnowledgeRoutes(container.resolve(npKnowledgeServiceToken)),
+    ),
+  );
+  router.route(
+    '/np/metrics',
+    guarded(
+      guard,
+      createMetricsRoutes(container.resolve(npMetricsServiceToken)),
     ),
   );
 }

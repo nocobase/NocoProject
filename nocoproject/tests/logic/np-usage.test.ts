@@ -7,7 +7,10 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { NpServices } from '../../server/modules/services.ts';
-import type { ModelPrice } from '../../server/modules/shared/protocol.ts';
+import {
+  DEFAULT_METRIC_THRESHOLDS,
+  type ModelPrice,
+} from '../../server/modules/shared/protocol.ts';
 import {
   aggregateUsage,
   priceFor,
@@ -296,6 +299,8 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
       prMergedStatus: 'done',
       modelPrices: [],
       intakeParser: 'auto',
+      // Iteration 3 §C: the defaults until an owner/admin sets them (np-metrics.test.ts covers PATCH).
+      metricThresholds: DEFAULT_METRIC_THRESHOLDS,
       issuePrefix: 'NP',
       canEdit: false,
     });

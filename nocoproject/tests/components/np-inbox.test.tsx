@@ -261,10 +261,213 @@ describe('inbox', () => {
     expect(await screen.findByText('issue page')).toBeVisible();
   });
 
-  it('links to the page of approvals waiting for me', async () => {
-    api.request.mockImplementation(respond);
+  it('acts on a decision inline from payload.actions and resolves the card at once', async () => {
+    const user = userEvent.setup();
+    const review = item({
+      payload: {
+        actions: [
+          {
+            key: 'accept',
+            label: 'np.inboxActions.accept',
+            kind: 'primary',
+            method: 'POST',
+            path: '/np/issues/101/deliveries/accept',
+          },
+          {
+            key: 'requestChanges',
+            label: 'np.inboxActions.requestChanges',
+            kind: 'secondary',
+            method: 'POST',
+            path: '/np/issues/101/deliveries/request-changes',
+            needsComment: true,
+          },
+          {
+            key: 'open',
+            label: 'np.inboxActions.open',
+            kind: 'secondary',
+            opensIssue: true,
+          },
+        ],
+      },
+    });
+    let accept: (value: unknown) => void = () => {};
+    api.request.mockImplementation(
+      (options: { path: string; method?: string; json?: unknown }) => {
+        if (options.path === 'np/inbox') {
+          return Promise.resolve({ data: [review] });
+        }
+        if (options.path === 'np/issues/101/deliveries/accept') {
+          return new Promise((resolve) => {
+            accept = resolve;
+          });
+        }
+        return respond(options as never);
+      },
+    );
     await renderInbox();
-    const link = await screen.findByText('Waiting for my approval');
-    expect(link.closest('a')).toHaveAttribute('href', '/inbox/approvals');
+
+    const card = (await screen.findByText('NP-1 is ready for review')).closest(
+      'li',
+    ) as HTMLElement;
+    expect(within(card).getByRole('button', { name: 'Accept' })).toBeVisible();
+    expect(
+      within(card).getByRole('button', { name: 'Request changes' }),
+    ).toBeVisible();
+    await user.click(within(card).getByRole('button', { name: 'Accept' }));
+    // Optimistic: the card shows resolved before the server answers.
+    expect(await within(card).findByText('Resolved')).toBeVisible();
+    expect(api.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: 'np/issues/101/deliveries/accept',
+        method: 'POST',
+        json: {},
+      }),
+    );
+    accept({ data: {} });
+    await waitFor(() =>
+      expect(toast.add).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'success' }),
+      ),
+    );
+  });
+
+  it('asks for a comment before an action that needs one and sends it', async () => {
+    const user = userEvent.setup();
+    const review = item({
+      payload: {
+        actions: [
+          {
+            key: 'requestChanges',
+            label: 'np.inboxActions.requestChanges',
+            kind: 'secondary',
+            method: 'POST',
+            path: '/np/issues/101/deliveries/request-changes',
+            needsComment: true,
+          },
+        ],
+      },
+    });
+    api.request.mockImplementation((options: { path: string }) =>
+      options.path === 'np/inbox'
+        ? Promise.resolve({ data: [review] })
+        : respond(options as never),
+    );
+    await renderInbox();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Request changes' }),
+    );
+    const box = screen.getByRole('textbox', {
+      name: 'Request changes: NP-1 is ready for review',
+    });
+    const send = screen.getByRole('button', { name: 'Request changes' });
+    expect(send).toBeDisabled();
+    await user.type(box, 'Please add tests');
+    await user.click(send);
+    await waitFor(() =>
+      expect(api.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'np/issues/101/deliveries/request-changes',
+          method: 'POST',
+          json: { comment: 'Please add tests' },
+        }),
+      ),
+    );
+  });
+
+  it('falls back to type defaults: a blocked agent gets a reply sent as a comment', async () => {
+    const user = userEvent.setup();
+    const blocked = item({
+      id: 'n7',
+      type: 'agent_blocked',
+      title: 'Claude Coder is blocked on NP-1',
+      payload: null,
+    });
+    api.request.mockImplementation((options: { path: string }) =>
+      options.path === 'np/inbox'
+        ? Promise.resolve({ data: [blocked] })
+        : respond(options as never),
+    );
+    await renderInbox();
+
+    expect(
+      await screen.findByRole('button', { name: 'Reassign' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Reply' }));
+    await user.type(
+      screen.getByRole('textbox', {
+        name: 'Reply: Claude Coder is blocked on NP-1',
+      }),
+      'Use the staging key{Meta>}{Enter}{/Meta}',
+    );
+    await waitFor(() =>
+      expect(api.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'np/issues/101/comments',
+          method: 'POST',
+          json: { content: 'Use the staging key' },
+        }),
+      ),
+    );
+  });
+
+  it('opens an external PR in a new tab and an issue action in the app', async () => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const pr = item({
+      id: 'n8',
+      type: 'pr_review',
+      title: 'NP-1 PR ready',
+      readAt: NOW,
+      payload: { url: 'https://github.com/acme/app/pull/7' },
+    });
+    api.request.mockImplementation((options: { path: string }) =>
+      options.path === 'np/inbox'
+        ? Promise.resolve({ data: [pr] })
+        : respond(options as never),
+    );
+    await renderInbox();
+
+    await user.click(await screen.findByRole('button', { name: 'Open PR' }));
+    expect(open).toHaveBeenCalledWith(
+      'https://github.com/acme/app/pull/7',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    expect(await screen.findByText('issue page')).toBeVisible();
+    open.mockRestore();
+  });
+
+  it('puts the card back and says so when the action fails', async () => {
+    const user = userEvent.setup();
+    const approval = item({
+      id: 'n9',
+      type: 'approval_pending',
+      title: 'NP-9 needs approval',
+      payload: { approvalId: 'ap9', fromStatus: 'in_review', toStatus: 'done' },
+    });
+    let listed = [approval];
+    api.request.mockImplementation(
+      (options: { path: string; method?: string }) => {
+        if (options.path === 'np/inbox')
+          return Promise.resolve({ data: listed });
+        if (options.path === 'np/approvals/ap9/approve') {
+          listed = [approval];
+          return Promise.reject(new Error('offline'));
+        }
+        return respond(options as never);
+      },
+    );
+    await renderInbox();
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(toast.add).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error' }),
+      ),
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Approve' }),
+    ).toBeEnabled();
   });
 });

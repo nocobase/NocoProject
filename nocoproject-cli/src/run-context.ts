@@ -5,7 +5,8 @@
  *   claim extras: project and its repositories, parent issue, stage, delegation targets and the
  *   previous session's branch. The agent CLI reads it offline (`repo checkout`, `project get`).
  *   Iteration 2 adds `issue.executionMode` and `issue.pullRequests`. It never contains the run
- *   token or the agent's environment variables (`agent.env`).
+ *   token or the agent's environment variables (`agent.env`). Iteration 3 adds `knowledge` (the index
+ *   of the knowledge documents the run can read, without content).
  * - `checkout.json` — written by `nocoproject repo checkout`; the daemon reads it back and reports
  *   `branchName` / `repoUrl` on complete / fail.
  */
@@ -13,6 +14,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { dirname, join, resolve } from 'node:path';
 import type {
   CheckoutRecord,
+  ClaimedKnowledgeDoc,
   ClaimedProject,
   ClaimedPullRequest,
   ClaimedRun,
@@ -25,11 +27,12 @@ import type {
 import { RUN_ENV_PHASE1 } from './protocol.js';
 
 /**
- * A claimed run as the Phase 1 server sends it: the Phase 0 payload plus the iteration-1 and
- * iteration-2 extras. Every extra is optional so an older server (or mock) still type-checks and works.
+ * A claimed run as the Phase 1 server sends it: the Phase 0 payload plus the iteration-1,
+ * iteration-2 and iteration-3 (`knowledge`) extras. Every extra is optional so an older server (or mock) still type-checks and works.
  */
 export type ClaimedRunV1 = Omit<ClaimedRun, 'issue' | 'agent' | 'session' | 'triggers'> & {
   readonly project?: ClaimedProject | null;
+  readonly knowledge?: readonly ClaimedKnowledgeDoc[] | null;
   readonly issue: ClaimedRun['issue'] & Partial<ClaimedRunPhase1Extras['issue']> & Partial<ClaimedRunPhase2Extras['issue']>;
   readonly agent: ClaimedRun['agent'] & Partial<ClaimedRunPhase1Extras['agent']> & Partial<ClaimedRunPhase2Extras['agent']>;
   readonly session: ClaimedRun['session'] & Partial<ClaimedRunPhase1Extras['session']>;
@@ -56,6 +59,8 @@ export interface RunContextFile {
     readonly pullRequests: readonly ClaimedPullRequest[];
   };
   readonly project: ClaimedProject | null;
+  /** Iteration 3: knowledge index (`[]` when the server sends none). */
+  readonly knowledge: readonly ClaimedKnowledgeDoc[];
   readonly session: { readonly branchName: string | null; readonly repoUrl: string | null };
 }
 
@@ -66,6 +71,14 @@ export const CHECKOUT_FILE = 'checkout.json';
 /** `issue.executionMode`, defaulting to `task` for servers that do not send it. */
 export function executionModeOf(claimed: Pick<ClaimedRunV1, 'issue'>): ExecutionMode {
   return claimed.issue.executionMode === 'session' ? 'session' : 'task';
+}
+
+/** The claim's knowledge index, field by field, skipping malformed entries. */
+export function knowledgeOf(claimed: Pick<ClaimedRunV1, 'knowledge'>): ClaimedKnowledgeDoc[] {
+  const list = Array.isArray(claimed.knowledge) ? claimed.knowledge : [];
+  return list
+    .filter((d) => d && typeof d.slug === 'string' && d.slug && typeof d.title === 'string')
+    .map((d) => ({ id: String(d.id), slug: d.slug, title: d.title, summary: typeof d.summary === 'string' ? d.summary : '', projectId: d.projectId ?? null }));
 }
 
 /** Built field by field (never spread from the claim) so `agent.env` and the token cannot leak in. */
@@ -86,6 +99,7 @@ export function buildRunContext(claimed: ClaimedRunV1): RunContextFile {
       pullRequests: (claimed.issue.pullRequests ?? []).map((pr) => ({ number: pr.number, url: pr.url, state: pr.state })),
     },
     project: claimed.project ?? null,
+    knowledge: knowledgeOf(claimed),
     session: { branchName: claimed.session.branchName ?? null, repoUrl: claimed.session.repoUrl ?? null },
   };
 }

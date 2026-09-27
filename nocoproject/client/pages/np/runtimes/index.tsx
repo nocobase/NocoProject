@@ -8,6 +8,8 @@ import { Link, Outlet } from 'react-router';
 
 import { NpOnlineState } from '@/components/np-badges';
 import { DataTable } from '@/components/data-table';
+import { NpActorAvatar } from '@/components/np-actor-avatar';
+import { NpShortcuts } from '@/components/np-shortcuts';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -129,7 +131,15 @@ export default function RuntimesPage(): ReactElement {
         id: 'owner',
         header: t('np.runtimes.columns.owner'),
         cell: ({ row }) =>
-          row.original.ownerName ?? (
+          row.original.ownerName ? (
+            <NpActorAvatar
+              type='user'
+              name={row.original.ownerName}
+              size='xs'
+              showName
+              className='text-sm'
+            />
+          ) : (
             <span className='text-muted-foreground'>—</span>
           ),
       },
@@ -221,6 +231,7 @@ export default function RuntimesPage(): ReactElement {
           </Button>
         }
       />
+      <NpShortcuts />
       {content}
       <Outlet />
     </PageContainer>

@@ -6,6 +6,7 @@
  * are optional, and the normalizers in `api-iter2.ts` accept the plausible envelopes.
  */
 import type { ActorType, ExecutorRef, IssuePriority } from './types.js';
+import type { MetricThresholds } from './types-iter3.js';
 
 export type ExecutionMode = 'task' | 'session';
 
@@ -294,6 +295,8 @@ export interface WorkspaceSettings {
   readonly intakeParser?: IntakeParserSetting;
   readonly modelPrices?: readonly ModelPrice[];
   readonly issuePrefix?: string;
+  /** Iteration 3 §C: the targets the acceptance metrics are held to. */
+  readonly metricThresholds?: MetricThresholds;
   /** Whether the viewer may change the settings (owner/admin). */
   readonly canEdit?: boolean;
   readonly [key: string]: unknown;
@@ -306,6 +309,7 @@ export type WorkspaceSettingsInput = Partial<
     | 'autoExecuteSubtasksDefault'
     | 'intakeParser'
     | 'modelPrices'
+    | 'metricThresholds'
   >
 >;
 

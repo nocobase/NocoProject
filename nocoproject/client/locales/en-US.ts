@@ -2,6 +2,7 @@ import type { LocaleResource } from '@nocobase/i18n';
 
 import npCollabEnUS from './np-en-US.js';
 import npIter2EnUS from './np-iter2-en-US.js';
+import npIter3EnUS from './np-iter3-en-US.js';
 
 const enUS = {
   'auth.welcome': 'Welcome back',
@@ -138,12 +139,13 @@ const enUS = {
     projects: 'Projects',
     agents: 'Agents',
     runtimes: 'Runtimes',
-    members: 'Members',
-    intake: 'Batch entry',
+    myIssues: 'My issues',
+    work: 'Work',
+    agentTeam: 'Agent team',
     skills: 'Skills',
-    usage: 'Usage',
-    github: 'GitHub',
-    nocoproject: 'NocoProject',
+    knowledge: 'Knowledge',
+    reports: 'Reports',
+    config: 'Settings',
     open: 'Open navigation',
     close: 'Close navigation',
     expand: 'Expand navigation',
@@ -173,6 +175,7 @@ const enUS = {
   np: {
     ...npCollabEnUS,
     ...npIter2EnUS,
+    ...npIter3EnUS,
     common: {
       online: 'Online',
       offline: 'Offline',
@@ -238,6 +241,7 @@ const enUS = {
       description:
         'Work for people and coding agents. Assign an agent as executor to start a run.',
       new: 'New issue',
+      moreCreate: 'More ways to create issues',
       searchPlaceholder: 'Search by title or identifier',
       searchLabel: 'Search issues',
       statusFilterLabel: 'Filter by status',
@@ -301,6 +305,7 @@ const enUS = {
       title: 'Activity',
       empty: 'No activity yet.',
       system: 'System',
+      loadOlder: 'Load older activity',
       actions: {
         created: 'created the issue',
         statusChanged: 'changed the status',
@@ -332,6 +337,10 @@ const enUS = {
         skillsChanged: 'changed the skills',
         intakeConfirmed: 'created issues from a batch',
         intakeReverted: 'reverted a batch',
+        knowledgeProposed: 'proposed a knowledge base change',
+        knowledgeUpdated: 'updated the knowledge base from a proposal',
+        deliveryAccepted: 'accepted the delivery',
+        changesRequested: 'requested changes',
         updated: 'updated the issue',
       },
       run: {

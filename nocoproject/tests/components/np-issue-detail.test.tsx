@@ -424,3 +424,58 @@ describe('issue detail', () => {
     expect(within(card).queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 });
+
+describe('older activity (iteration 3 §D)', () => {
+  it('loads activities older than the detail on demand and merges them into the timeline', async () => {
+    const user = userEvent.setup();
+    api.request.mockImplementation(
+      (options: {
+        path: string;
+        method?: string;
+        query?: Record<string, unknown>;
+      }) => {
+        if (options.path === 'np/issues/101' && !options.method) {
+          return Promise.resolve({
+            data: { ...DETAIL, activitiesNextCursor: 'c-old' },
+          });
+        }
+        if (options.path === 'np/issues/101/activities') {
+          return Promise.resolve({
+            data: [
+              {
+                id: 'act-old',
+                actorType: 'user',
+                actorId: 'u1',
+                actorName: 'Ada',
+                action: 'priority_changed',
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+            nextCursor: null,
+          });
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+
+    await screen.findByText('Wire up the claim endpoint');
+    expect(screen.queryByText('changed the priority')).toBeNull();
+    await user.click(
+      screen.getByRole('button', { name: 'Load older activity' }),
+    );
+    expect(await screen.findByText('changed the priority')).toBeVisible();
+    expect(api.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: 'np/issues/101/activities',
+        query: expect.objectContaining({ cursor: 'c-old' }),
+      }),
+    );
+    // The last page carried no cursor, so the button goes away.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Load older activity' }),
+      ).toBeNull(),
+    );
+  });
+});

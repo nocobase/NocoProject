@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applyBriefBlock, BRIEF_BEGIN, BRIEF_END, buildBrief, buildTurnPrompt, writeBrief } from '../src/daemon/brief.js';
-import { claimedRun, iter2Run, phase1Run } from './helpers/fixtures.js';
+import { claimedRun, iter2Run, iter3Run, phase1Run } from './helpers/fixtures.js';
 
 describe('brief', () => {
   it('renders the runtime block', () => {
@@ -105,6 +105,32 @@ describe('iteration 2 brief', () => {
     expect(prompt).toContain('live conversation with the owner on issue NP-12');
     expect(prompt).toContain('--content-file ./reply.md --parent c9`; you do not need to set `in_review`.');
     expect(buildTurnPrompt(iter2Run(), { resumed: true })).toContain('When done, deliver via');
+  });
+});
+
+describe('iteration 3 brief', () => {
+  it('lists the knowledge documents and how to read and propose them', () => {
+    const brief = buildBrief(iter3Run());
+    expect(brief).toMatchSnapshot();
+    expect(brief).toContain('## Knowledge');
+    expect(brief).toContain('- **API conventions** (`api-conventions`) — Error envelope, pagination and naming rules.');
+    expect(brief).toContain('- **Release process** (`release-process`, system-wide) — (no summary)');
+    expect(brief).toContain('Read one with `nocoproject kb get <slug>`');
+    expect(brief).toContain('- `nocoproject kb list --json`');
+    expect(brief).toContain('## Capture learnings');
+    expect(brief).toContain('Propose at most 3 per run');
+    expect(brief).toContain('Do not edit knowledge documents directly');
+    expect(brief.indexOf('## Skills')).toBeLessThan(brief.indexOf('## Knowledge'));
+    expect(brief.indexOf('## Knowledge')).toBeLessThan(brief.indexOf('## Workflow'));
+    expect(brief.indexOf('## Parent coordination')).toBeLessThan(brief.indexOf('## Capture learnings'));
+    expect(brief.indexOf('## Capture learnings')).toBeLessThan(brief.indexOf('## Status Rules'));
+  });
+
+  it('says when there are no documents and still asks to capture learnings', () => {
+    const brief = buildBrief(claimedRun());
+    expect(brief).toContain('No knowledge documents are available to this run yet.');
+    expect(brief).toContain('## Capture learnings');
+    expect(buildBrief(iter3Run({ knowledge: [] }))).toContain('No knowledge documents are available to this run yet.');
   });
 });
 

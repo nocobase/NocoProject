@@ -7,7 +7,10 @@ import { Link, useParams } from 'react-router';
 
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NpOnlineState } from '@/components/np-badges';
+import { NpActorAvatar } from '@/components/np-actor-avatar';
+import { NpDetailSkeleton } from '@/components/np-states';
 import { PageContainer } from '@/components/page-container';
+import { PageHeader } from '@/components/page-header';
 import { RouteChildPage } from '@/components/route-child-page';
 import {
   Alert,
@@ -17,7 +20,6 @@ import {
 } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 
 import { fetchMembers } from '../../api-collab.js';
 import { fetchAgents, fetchMe, fetchRuntimes } from '../../api.js';
@@ -107,34 +109,27 @@ function AgentDetailView({
   }
 
   if (!agent) {
-    return (
-      <div
-        role='status'
-        aria-label={t('status.loading')}
-        className='space-y-4 p-6 md:p-8'
-      >
-        <Skeleton className='h-4 w-40' />
-        <Skeleton className='h-8 w-1/3' />
-        <Skeleton className='h-64 w-full max-w-2xl' />
-      </div>
-    );
+    return <NpDetailSkeleton />;
   }
 
   const viewer = viewerFrom(me.data?.userId, members.data);
   const canEdit = agent.canEdit ?? canEditAgent(viewer, agent);
   return (
     <PageContainer>
-      <div className='space-y-2'>
-        <Breadcrumbs />
-        <div className='flex flex-wrap items-center gap-3'>
-          <h1 className='font-heading text-xl font-semibold'>{agent.name}</h1>
-          <Badge variant='outline'>{agent.provider}</Badge>
-          <NpOnlineState online={isRuntimeOnline(agent)} />
-        </div>
-        <p className='text-sm text-muted-foreground'>
-          {t('np.agentDetail.owner', { name: agent.ownerName ?? '—' })}
-        </p>
-      </div>
+      <Breadcrumbs />
+      <PageHeader
+        title={
+          <span className='inline-flex flex-wrap items-center gap-3'>
+            <NpActorAvatar type='agent' name={agent.name} size='default' />
+            {agent.name}
+            <Badge variant='outline'>{agent.provider}</Badge>
+            <NpOnlineState online={isRuntimeOnline(agent)} />
+          </span>
+        }
+        description={t('np.agentDetail.owner', {
+          name: agent.ownerName ?? '—',
+        })}
+      />
       {/* Keyed by the agent's update time so a save elsewhere reseeds the form instead of keeping a stale draft. */}
       <AgentForm
         key={agent.updatedAt ?? agent.id}

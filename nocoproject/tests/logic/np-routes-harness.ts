@@ -23,6 +23,9 @@ import {
   npSkillServiceToken,
   npUsageServiceToken,
   npWorkspaceSettingsServiceToken,
+  npDeliveryServiceToken,
+  npKnowledgeServiceToken,
+  npMetricsServiceToken,
   npClaimServiceToken,
   npCommentServiceToken,
   npDependencyServiceToken,
@@ -90,6 +93,10 @@ export function createDoubles() {
   };
   const issueQueries = {
     list: vi.fn(async () => [{ id: 'i1', identifier: 'NP-1' }]),
+    page: vi.fn(async () => ({
+      data: [{ id: 'i1', identifier: 'NP-1' }],
+      nextCursor: null,
+    })),
     detail: vi.fn(),
     forAgent: vi.fn(async (id: string) => ({
       id: id === 'NP-1' ? 'i1' : id,
@@ -232,6 +239,12 @@ export async function build(
   container.instance(npSkillServiceToken, { list: async () => [] } as never);
   container.instance(npUsageServiceToken, {} as never);
   container.instance(npWorkspaceSettingsServiceToken, {} as never);
+  container.instance(npKnowledgeServiceToken, {
+    list: async () => [],
+    projectDocs: async () => [],
+  } as never);
+  container.instance(npMetricsServiceToken, {} as never);
+  container.instance(npDeliveryServiceToken, {} as never);
   const router = await contribution.createRouter({
     container,
     publicBasePath: '/main',

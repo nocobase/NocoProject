@@ -20,6 +20,9 @@ import type {
   DependencyType,
   IssueForAgent,
   IssuePullRequestView,
+  KnowledgeDoc,
+  KnowledgeDocSummary,
+  KnowledgeProposal,
   StatusChangePendingResponse,
   SubtaskSummary,
 } from '../protocol.js';
@@ -181,6 +184,20 @@ export class DaemonApi {
   }
 }
 
+/**
+ * `POST /np/agent/knowledge/proposals` (iteration 3 §B): `docId` updates an existing document,
+ * `title` (+ optional `slug`) proposes a new one; `projectId` defaults to the run's project.
+ */
+export interface KnowledgeProposalBody {
+  readonly docId?: string;
+  readonly title?: string;
+  readonly slug?: string;
+  readonly projectId?: string;
+  readonly summary?: string;
+  readonly content: string;
+  readonly reason: string;
+}
+
 export interface CommentListQuery {
   readonly since?: string;
   readonly rootsOnly?: boolean;
@@ -221,6 +238,19 @@ export class AgentApi {
   /** GET /np/agent/issues/:id/pull-requests (iteration 2 §C). */
   pullRequests(id: string): Promise<IssuePullRequestView[]> {
     return this.http.data('GET', `/np/agent/issues/${enc(id)}/pull-requests`);
+  }
+  /** GET /np/agent/knowledge → the run's project documents plus system-level ones (iteration 3 §B). */
+  knowledgeList(): Promise<KnowledgeDocSummary[]> {
+    return this.http.data('GET', '/np/agent/knowledge');
+  }
+  /** GET /np/agent/knowledge/:idOrSlug → `{ doc }` with its Markdown content. */
+  async knowledgeDoc(idOrSlug: string): Promise<KnowledgeDoc> {
+    const data = await this.http.data<{ doc?: KnowledgeDoc } | KnowledgeDoc>('GET', `/np/agent/knowledge/${enc(idOrSlug)}`);
+    return (data && typeof data === 'object' && 'doc' in data && data.doc ? data.doc : data) as KnowledgeDoc;
+  }
+  /** POST /np/agent/knowledge/proposals → 201 KnowledgeProposal; 409 KNOWLEDGE_PROPOSAL_PENDING. */
+  proposeKnowledge(body: KnowledgeProposalBody): Promise<KnowledgeProposal> {
+    return this.http.data('POST', '/np/agent/knowledge/proposals', { body });
   }
   /** POST /np/agent/issues (contract §D). The response is passed through as-is. */
   createIssue(body: AgentCreateIssueRequest): Promise<unknown> {

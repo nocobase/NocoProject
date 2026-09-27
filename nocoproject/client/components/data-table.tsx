@@ -17,6 +17,7 @@ import {
 import { type ReactElement, type ReactNode, useState } from 'react';
 
 import { DataTablePagination } from '@/components/data-table-pagination';
+import { DataTableVirtual } from '@/components/data-table-virtual';
 import {
   Table,
   TableBody,
@@ -50,6 +51,11 @@ export interface DataTableProps<TData, TValue = unknown> {
     parent?: Row<TData>,
   ) => string;
   readonly onRowClick?: (row: Row<TData>) => void;
+  /**
+   * With `pagination={false}`, past this many rows the body is virtualized (`react-virtuoso`), rendering only the
+   * rows on screen. NocoProject's issue list sets 200 (§H 8).
+   */
+  readonly virtualizeAfter?: number;
 }
 
 /**
@@ -74,6 +80,7 @@ export function DataTable<TData, TValue = unknown>({
   showSelectedCount = true,
   getRowId,
   onRowClick,
+  virtualizeAfter,
 }: DataTableProps<TData, TValue>): ReactElement {
   const { t } = useTranslation();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -102,63 +109,73 @@ export function DataTable<TData, TValue = unknown>({
   });
 
   const rows = table.getRowModel().rows;
+  const virtualized =
+    !pagination &&
+    virtualizeAfter !== undefined &&
+    rows.length > virtualizeAfter;
 
   return (
     <div className={cn('flex flex-col gap-4', className)}>
       {toolbar ? (
         <div className='flex items-center gap-2'>{toolbar(table)}</div>
       ) : null}
-      <div className='overflow-hidden rounded-lg border'>
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} colSpan={header.colSpan}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {rows.length > 0 ? (
-              rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() ? 'selected' : undefined}
-                  className={onRowClick ? 'cursor-pointer' : undefined}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
+      {virtualized ? (
+        <div className='rounded-lg border'>
+          <DataTableVirtual table={table} onRowClick={onRowClick} />
+        </div>
+      ) : (
+        <div className='overflow-hidden rounded-lg border'>
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id} colSpan={header.colSpan}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                    </TableHead>
                   ))}
                 </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className='h-24 text-center text-muted-foreground'
-                >
-                  {emptyMessage ??
-                    t('dataTable.noResults', { defaultValue: 'No results.' })}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {rows.length > 0 ? (
+                rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() ? 'selected' : undefined}
+                    className={onRowClick ? 'cursor-pointer' : undefined}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={columns.length}
+                    className='h-24 text-center text-muted-foreground'
+                  >
+                    {emptyMessage ??
+                      t('dataTable.noResults', { defaultValue: 'No results.' })}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
       {pagination ? (
         <DataTablePagination
           table={table}

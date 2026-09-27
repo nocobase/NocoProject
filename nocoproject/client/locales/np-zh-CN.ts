@@ -166,6 +166,8 @@ const npCollabZhCN: NpCollabResource = {
       approval_decided: '审批结果',
       pr_review: 'PR 待合并',
       pr_merged: 'PR 已合并',
+      knowledge_proposal: '知识库建议',
+      knowledge_decided: '知识库建议已处理',
     },
   },
   projects: {
@@ -173,6 +175,7 @@ const npCollabZhCN: NpCollabResource = {
     description: '归集任务，向 Agent 共享代码仓库，跟踪进度。',
     new: '新建项目',
     breadcrumb: '项目',
+    sidePanel: '项目信息',
     loadFailed: '无法加载项目',
     detailLoadFailed: '无法加载这个项目',
     notFound: '这个项目不存在，或你无权查看。',

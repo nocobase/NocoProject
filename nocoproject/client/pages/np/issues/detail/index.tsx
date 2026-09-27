@@ -6,6 +6,8 @@ import type { ReactElement } from 'react';
 import { Link, Outlet, useParams } from 'react-router';
 
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { NpDetailLayout } from '@/components/np-detail-layout';
+import { NpDetailSkeleton } from '@/components/np-states';
 import { RouteChildPage } from '@/components/route-child-page';
 import {
   Alert,
@@ -14,13 +16,6 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from '@/components/ui/resizable';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useIsMobile } from '@/hooks/use-mobile';
 
 import { fetchAgents, fetchIssueDetail, fetchMe } from '../../api.js';
 import { npKeys } from '../../constants.js';
@@ -30,8 +25,8 @@ import { PropertiesPanel } from './properties-panel.js';
 
 /**
  * Route `/issues/:issueId`: a covering child page over the issue list, so the list keeps its filters and scroll.
- * Main column (title, description, activity, composer) beside a properties panel with the execution log; resizable
- * on desktop, stacked on narrow screens. The transcript dialog (`runs/:runId`) renders in the outlet beside the layer.
+ * Main column (title, description, activity, composer) beside a fixed `w-80` properties column with the execution
+ * log (§H 3), stacked on narrow screens. The transcript dialog (`runs/:runId`) renders in the outlet beside the layer.
  *
  * The detail refreshes through the `np:issues` subscription owned by the list page underneath.
  */
@@ -54,7 +49,6 @@ function IssueDetailView({
 }): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
-  const isMobile = useIsMobile();
 
   const detail = useQuery({
     queryKey: npKeys.issue(issueId),
@@ -110,28 +104,10 @@ function IssueDetailView({
     );
   }
 
-  if (!detail.data) {
-    return (
-      <div
-        role='status'
-        aria-label={t('status.loading')}
-        className='space-y-4 p-6 md:p-8'
-      >
-        <Skeleton className='h-4 w-40' />
-        <Skeleton className='h-8 w-2/3' />
-        <Skeleton className='h-24 w-full' />
-        <Skeleton className='h-40 w-full' />
-      </div>
-    );
-  }
+  if (!detail.data) return <NpDetailSkeleton />;
 
   return (
-    <IssueLayout
-      detail={detail.data}
-      agents={agents.data ?? []}
-      me={me.data}
-      isMobile={isMobile}
-    />
+    <IssueLayout detail={detail.data} agents={agents.data ?? []} me={me.data} />
   );
 }
 
@@ -139,34 +115,17 @@ function IssueLayout({
   detail,
   agents,
   me,
-  isMobile,
 }: {
   readonly detail: IssueDetail;
   readonly agents: readonly AgentListItem[];
   readonly me: Me | undefined;
-  readonly isMobile: boolean;
 }): ReactElement {
-  const main = <IssueMain detail={detail} agents={agents} me={me} />;
-  const panel = <PropertiesPanel detail={detail} agents={agents} me={me} />;
-
-  if (isMobile) {
-    return (
-      <div className='flex flex-col'>
-        {main}
-        <div className='border-t'>{panel}</div>
-      </div>
-    );
-  }
-
+  const { t } = useTranslation();
   return (
-    <ResizablePanelGroup orientation='horizontal' className='h-full'>
-      <ResizablePanel defaultSize='70%' minSize='45%'>
-        <div className='flex h-full min-h-0 flex-col'>{main}</div>
-      </ResizablePanel>
-      <ResizableHandle withHandle />
-      <ResizablePanel defaultSize='30%' minSize='22%' maxSize='45%'>
-        <div className='h-full overflow-y-auto bg-muted/30'>{panel}</div>
-      </ResizablePanel>
-    </ResizablePanelGroup>
+    <NpDetailLayout
+      main={<IssueMain detail={detail} agents={agents} me={me} />}
+      aside={<PropertiesPanel detail={detail} agents={agents} me={me} />}
+      asideLabel={t('np.properties.title')}
+    />
   );
 }

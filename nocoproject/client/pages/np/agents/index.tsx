@@ -8,6 +8,8 @@ import { Link, Outlet, useNavigate } from 'react-router';
 
 import { NpOnlineState, NpPulse } from '@/components/np-badges';
 import { DataTable } from '@/components/data-table';
+import { NpActorAvatar } from '@/components/np-actor-avatar';
+import { NpShortcuts } from '@/components/np-shortcuts';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -58,10 +60,7 @@ export default function AgentsPage(): ReactElement {
         header: t('np.agents.columns.name'),
         cell: ({ row }) => (
           <div className='flex min-w-0 items-center gap-2'>
-            <BotIcon
-              className='size-4 shrink-0 text-muted-foreground'
-              aria-hidden='true'
-            />
+            <NpActorAvatar type='agent' name={row.original.name} />
             <div className='min-w-0 leading-tight'>
               <Link
                 to={encodeURIComponent(row.original.id)}
@@ -227,6 +226,7 @@ export default function AgentsPage(): ReactElement {
           </Button>
         }
       />
+      <NpShortcuts />
       {content}
       <Outlet />
     </PageContainer>

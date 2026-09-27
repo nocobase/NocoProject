@@ -6,7 +6,9 @@ import { type ReactElement, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { NpDetailSkeleton } from '@/components/np-states';
 import { PageContainer } from '@/components/page-container';
+import { PageHeader } from '@/components/page-header';
 import { RouteChildPage } from '@/components/route-child-page';
 import {
   Alert,
@@ -33,7 +35,6 @@ import {
   FieldLabel,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
@@ -106,19 +107,7 @@ function SkillView({ skillId }: { readonly skillId: string }): ReactElement {
       </PageContainer>
     );
   }
-  if (!detail.data) {
-    return (
-      <div
-        role='status'
-        aria-label={t('status.loading')}
-        className='space-y-4 p-6 md:p-8'
-      >
-        <Skeleton className='h-4 w-40' />
-        <Skeleton className='h-8 w-1/3' />
-        <Skeleton className='h-64 w-full max-w-3xl' />
-      </div>
-    );
-  }
+  if (!detail.data) return <NpDetailSkeleton />;
   const viewer = viewerFrom(me.data?.userId, members.data);
   const { skill } = detail.data;
   const canEdit =
@@ -199,35 +188,25 @@ function SkillEditor({
 
   return (
     <PageContainer>
-      <div className='space-y-2'>
-        <Breadcrumbs />
-        <div className='flex flex-wrap items-center justify-between gap-3'>
-          <div className='min-w-0'>
-            <h1 className='truncate font-heading text-xl font-semibold'>
-              {skill.name}
-            </h1>
-            <p className='font-mono text-xs text-muted-foreground'>
-              {skill.slug}
-            </p>
-          </div>
-          {canEdit ? (
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => setConfirmingDelete(true)}
-            >
+      <Breadcrumbs />
+      <PageHeader
+        title={skill.name}
+        description={
+          <>
+            <span className='font-mono text-xs'>{skill.slug}</span>
+            {canEdit ? null : <span> · {t('np.skills.readOnly')}</span>}
+          </>
+        }
+        actions={
+          canEdit ? (
+            <Button variant='outline' onClick={() => setConfirmingDelete(true)}>
               <Trash2Icon data-icon='inline-start' />
               {t('np.skills.delete')}
             </Button>
-          ) : null}
-        </div>
-        {canEdit ? null : (
-          <p className='text-sm text-muted-foreground'>
-            {t('np.skills.readOnly')}
-          </p>
-        )}
-      </div>
-      <FieldGroup className='max-w-3xl'>
+          ) : undefined
+        }
+      />
+      <FieldGroup className='max-w-2xl'>
         <Field data-invalid={!name.trim() ? true : undefined}>
           <FieldLabel htmlFor='np-skill-edit-name'>
             {t('np.skills.name')}

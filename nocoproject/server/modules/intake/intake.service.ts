@@ -106,7 +106,7 @@ export async function parseIntake(
   if (useAi && deps.ai) {
     try {
       const result = await deps.ai.parseAs(input, userId);
-      aiSessionId = result.sessionId;
+      aiSessionId = result.sessionId || null;
       if (result.drafts.length > 0)
         return {
           drafts: result.drafts,

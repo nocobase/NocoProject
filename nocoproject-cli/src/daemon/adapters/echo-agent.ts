@@ -21,6 +21,10 @@
  *                       to check env injection and redaction (iteration 2 §G)
  *   [echo:skill=<slug>] write the first body line of `.nocoproject/skills/<slug>/SKILL.md` (after the front
  *                       matter) into the reply (iteration 2 §H)
+ *   [echo:kb=<slug>]    run `kb get <slug>` and write the document's first non-empty line into the reply
+ *                       (iteration 3 §I)
+ *   [echo:kb-propose=<title>] write kb.md and run `kb propose --title <title> --content-file kb.md --reason ...`
+ *                       (iteration 3 §I)
  *
  * In session mode (`issue.executionMode` in context.json) the agent never moves the issue to in_review.
  */
@@ -138,6 +142,22 @@ function skillFirstLine(slug: string): string {
   return lines.find((l) => l.trim())?.trim() ?? '(empty)';
 }
 
+/** `kb get <slug>` → the document's first non-empty line. */
+function kbFirstLine(slug: string): string {
+  const r = cli(['kb', 'get', slug]);
+  if (!r.ok) fail(`echo agent: kb get failed: ${r.output}`);
+  return r.output.split(/\r?\n/).find((l) => l.trim())?.trim() ?? '(empty)';
+}
+
+/** Proposes a new knowledge document titled `title`; returns the proposal id. */
+function kbPropose(issueKey: string, title: string): string {
+  const file = join(process.cwd(), 'kb.md');
+  writeFileSync(file, `# ${title}\n\nLearned by the echo agent while working on ${issueKey}.\n`);
+  const r = cli(['kb', 'propose', '--title', title, '--content-file', file, '--reason', `Found while working on ${issueKey}.`, '--json']);
+  if (!r.ok) fail(`echo agent: kb propose failed: ${r.output}`);
+  return (r.json as { id?: string } | undefined)?.id ?? '?';
+}
+
 function directive(text: string, name: string): string | undefined {
   return text.match(new RegExp(`\\[echo:${name}=([^\\]]*)\\]`))?.[1];
 }
@@ -185,6 +205,10 @@ async function main(): Promise<void> {
   }
   const skillSlug = directive(text, 'skill');
   if (skillSlug) extra.push(`Skill ${skillSlug}: ${skillFirstLine(skillSlug)}`);
+  const kbSlug = directive(text, 'kb');
+  if (kbSlug) extra.push(`KB ${kbSlug}: ${kbFirstLine(kbSlug)}`);
+  const kbTitle = directive(text, 'kb-propose');
+  if (kbTitle) extra.push(`Proposed knowledge "${kbTitle}" (proposal ${kbPropose(issueKey, kbTitle)}).`);
   const prUrl = directive(text, 'pr');
   if (prUrl) {
     const linked = cli(['pr', 'link', prUrl, '--json']);

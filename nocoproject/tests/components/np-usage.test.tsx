@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import UsagePage from '../../client/pages/np/usage/index.js';
+import UsagePage from '../../client/pages/np/reports/usage.js';
 import { type RequestOptions, renderNp } from './np-harness.js';
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));

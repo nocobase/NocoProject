@@ -9,13 +9,15 @@ import {
   requireVisibleIssue,
   viewerOf,
 } from '../shared/authz.js';
-import type { Conn, TxRunner } from '../shared/db.js';
+import type { Conn, Tx, TxRunner } from '../shared/db.js';
 import { iso, isoOrNull, now, str, toDate, unique } from '../shared/db.js';
 import { invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
+import { decodeCursor, encodeCursor } from '../shared/pagination.js';
 import type {
   ActorType,
   CommentForAgentV2,
+  CommentPage,
   CommentReaction,
   CommentV2,
   CreateCommentRequest,
@@ -42,14 +44,33 @@ export interface AgentCommentQuery {
   readonly excludeResolved?: boolean;
 }
 
+/** Iteration 3: the delivery endpoints compose a comment into their transaction. */
+export interface CommentCreateOptions {
+  /** Joins the caller's transaction. */
+  readonly outer?: Tx;
+  /** false = record the comment without running the trigger rules (an acceptance note). Default true. */
+  readonly trigger?: boolean;
+}
+
 export interface CommentService {
   create(
     actor: Actor,
     issueIdOrKey: string,
     input: CreateCommentRequest,
+    options?: CommentCreateOptions,
   ): Promise<CreateCommentResponse>;
   /** Every comment of an issue, flat, oldest first. */
   listForIssue(conn: Conn, issueId: string): Promise<CommentV2[]>;
+  /**
+   * One page of an issue's comments (iteration 3 §D): a newest-first slice returned oldest first; `nextCursor` asks
+   * for the slice before it (null when there is none).
+   */
+  pageForIssue(
+    conn: Conn,
+    issueId: string,
+    cursor: string | null,
+    limit: number,
+  ): Promise<CommentPage>;
   listForAgent(
     issueIdOrKey: string,
     query: AgentCommentQuery,
@@ -160,6 +181,7 @@ async function create(
   actor: Actor,
   issueIdOrKey: string,
   input: CreateCommentRequest,
+  options: CommentCreateOptions = {},
 ): Promise<CreateCommentResponse> {
   const content = typeof input?.content === 'string' ? input.content : '';
   if (content.trim() === '')
@@ -224,9 +246,12 @@ async function create(
       details: { commentId: id, parentId: row.parentId },
     });
     const comment = (await mapComments(tx.conn, deps.users, [row]))[0];
-    const triggered = await deps
-      .triggers()
-      .onCommentCreated(tx, { comment, issue, parent, actor });
+    const triggered =
+      options.trigger === false
+        ? []
+        : await deps
+            .triggers()
+            .onCommentCreated(tx, { comment, issue, parent, actor });
     tx.emit({ type: 'issue.changed', issueId: issue.id });
     tx.emit({
       type: 'comment.created',
@@ -236,7 +261,7 @@ async function create(
       mentionedUserIds: parseUserMentions(content),
     });
     return { comment, triggered };
-  });
+  }, options.outer);
 }
 
 async function listForAgent(
@@ -315,6 +340,43 @@ async function commentListForIssue(
   return mapComments(conn, deps.users, rows);
 }
 
+async function commentPageForIssue(
+  deps: CommentDeps,
+  ...[conn, issueId, cursor, limit]: Parameters<CommentService['pageForIssue']>
+): Promise<CommentPage> {
+  let query = conn.query
+    .selectFrom('comments')
+    .selectAll()
+    .where('issueId', '=', issueId);
+  if (cursor) {
+    const key = decodeCursor(cursor);
+    query = query.where((eb) =>
+      eb.or([
+        eb('createdAt', '<', key.at),
+        eb.and([eb('createdAt', '=', key.at), eb('id', '<', key.id)]),
+      ]),
+    );
+  }
+  const rows = await query
+    .orderBy('createdAt', 'desc')
+    .orderBy('id', 'desc')
+    .limit(limit + 1)
+    .execute();
+  const data = await mapComments(
+    conn,
+    deps.users,
+    rows.slice(0, limit).reverse(),
+  );
+  const oldest = data[0];
+  return {
+    data,
+    nextCursor:
+      rows.length > limit && oldest
+        ? encodeCursor(oldest.createdAt, oldest.id)
+        : null,
+  };
+}
+
 export function createCommentService(deps: CommentDeps): CommentService {
   return {
     create: (...args: Parameters<CommentService['create']>) =>
@@ -322,5 +384,6 @@ export function createCommentService(deps: CommentDeps): CommentService {
     listForAgent: (...args: Parameters<CommentService['listForAgent']>) =>
       listForAgent(deps, ...args),
     listForIssue: (...args) => commentListForIssue(deps, ...args),
+    pageForIssue: (...args) => commentPageForIssue(deps, ...args),
   };
 }

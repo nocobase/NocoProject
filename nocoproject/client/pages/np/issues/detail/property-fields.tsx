@@ -58,9 +58,14 @@ export function PropertySelect({
   noneLabel,
   disabled,
   size = 'sm',
+  className,
+  'aria-label': ariaLabel,
   onChange,
 }: {
   readonly id: string;
+  /** Width of the trigger; full width by default. */
+  readonly className?: string;
+  readonly 'aria-label'?: string;
   readonly options: readonly SimpleOption[];
   readonly value: string | null | undefined;
   readonly noneLabel?: string;
@@ -87,7 +92,12 @@ export function PropertySelect({
         onChange(next === 'none' ? null : next);
       }}
     >
-      <SelectTrigger id={id} size={size} className='w-full'>
+      <SelectTrigger
+        id={id}
+        size={size}
+        className={className ?? 'w-full'}
+        aria-label={ariaLabel}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

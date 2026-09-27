@@ -1,11 +1,11 @@
 # nocoproject-cli
 
-Local daemon and agent CLI for NocoProject (Phase 1 iteration 2, protocol version 1).
+Local daemon and agent CLI for NocoProject (Phase 1 iteration 3, protocol version 1).
 
 - The **daemon** registers the coding tools installed on this machine (Claude Code, OpenCode, Codex) as runtimes, wakes up on the `np:daemon` realtime topic (with polling as a fallback), claims queued runs, prepares a workspace, launches the tool, streams its events back and reports the result.
-- The **agent CLI** (`nocoproject issue ...`, `project get`, `repo checkout`, `pr link` / `pr list`) is what the agent runs inside a run to read the issue, post comments, change the status, create sub-issues, check out project repositories and link pull requests. It authenticates with the per-run token the daemon injects.
+- The **agent CLI** (`nocoproject issue ...`, `project get`, `repo checkout`, `pr link` / `pr list`, `kb list` / `get` / `propose`) is what the agent runs inside a run to read the issue, post comments, change the status, create sub-issues, check out project repositories and link pull requests. It authenticates with the per-run token the daemon injects.
 
-The contract lives in `nocoproject/docs/phase0/protocol.md`, `nocoproject/docs/phase1/iteration-1-contract.md` (§I) and `nocoproject/docs/phase1/iteration-2-contract.md` (§C, §D, §G, §H, §J, §L); `src/protocol.ts` is a copy of the shared types and re-exports the iteration-2 additions from `src/protocol.phase1-iter2.ts`.
+The contract lives in `nocoproject/docs/phase0/protocol.md`, `nocoproject/docs/phase1/iteration-1-contract.md` (§I), `nocoproject/docs/phase1/iteration-2-contract.md` (§C, §D, §G, §H, §J, §L) and `nocoproject/docs/phase1/iteration-3-contract.md` (§I, §J); `src/protocol.ts` is a copy of the shared types and re-exports the iteration-2 and iteration-3 additions from `src/protocol.phase1-iter2.ts` and `src/protocol.phase1-iter3.ts`. `pnpm sync-protocol` copies all three from `nocoproject/server/modules/shared/` (dropping the `*-server.js` re-exports). See `nocoproject/docs/phase1/workspace.md` for the planned move to a shared `@nocoproject/protocol` workspace package.
 
 ## Install
 
@@ -47,7 +47,7 @@ What it does:
 2. Subscribes to `np:daemon` over `<serverUrl>/ws`, authenticated with the `x-api-key` header. It reconnects with exponential backoff and jitter and pings every 30 s. It also polls for work every `pollIntervalMs` (15 s from the server).
 3. Claims runs in batches for all runtimes, within a shared slot limit. It renews each lease every 15 s until the run starts.
 4. For each run, creates `~/.nocoproject/workspaces/<issueKey>-<runKey>/{workdir,logs}`. It reuses the previous `workDir` and resumes the provider session when the server hands them back and `fresh` is false.
-5. Writes `<workDir>/.nocoproject/context.json` (mode 0600, never contains the run token or the agent's env vars) from the Phase 1 claim extras: project and repositories, parent issue, stage, `autoExecuteSubtasks`, delegation targets, the previous session's `branchName` / `repoUrl`, and (iteration 2) `issue.executionMode` (`task` when missing) and `issue.pullRequests` (`[{ number, url, state }]`).
+5. Writes `<workDir>/.nocoproject/context.json` (mode 0600, never contains the run token or the agent's env vars) from the Phase 1 claim extras: project and repositories, parent issue, stage, `autoExecuteSubtasks`, delegation targets, the previous session's `branchName` / `repoUrl`, (iteration 2) `issue.executionMode` (`task` when missing) and `issue.pullRequests` (`[{ number, url, state }]`), and (iteration 3) `knowledge` (`[{ id, slug, title, summary, projectId }]`, `[]` when missing; the index only, never document content).
 6. Rebuilds the agent's skills from `agent.skills` (see [Skills](#skills)) and writes the runtime brief as a marker block in `CLAUDE.md` (claude) or `AGENTS.md` (opencode, codex, echo). Content outside the markers is left untouched.
 7. Launches the tool with the per-turn prompt and streams events in batches (every 500 ms, and immediately on the first visible event). Events are redacted and truncated to 64 KB, with increasing `seq` numbers.
 8. Checks for cancellation every 5 s and also reacts to WebSocket `cancelRequested`, killing the whole process tree. An idle watchdog kills an agent that produces no output for 2 h.
@@ -110,6 +110,12 @@ nocoproject repo checkout <url> [--ref <ref>] [--fresh] [--json]
 # Iteration 2: pull requests
 nocoproject pr link <url> [--issue NP-12] [--json]  # POST /np/agent/issues/:id/pull-requests { url }
 nocoproject pr list [--issue NP-12] [--json]        # GET  /np/agent/issues/:id/pull-requests
+
+# Iteration 3: knowledge base
+nocoproject kb list [--json]                        # GET  /np/agent/knowledge
+nocoproject kb get <slug|id> [--json]               # GET  /np/agent/knowledge/:idOrSlug (content to stdout)
+nocoproject kb propose (--doc <slug|id> | --title T [--slug s]) --content-file F --reason R [--summary S] [--json]
+                                                    # POST /np/agent/knowledge/proposals
 ```
 
 - Issue arguments can be identifiers (`NP-12`) or raw ids. An identifier is resolved through `NOCOPROJECT_ISSUE_KEY`/`NOCOPROJECT_ISSUE_ID` or `GET /np/agent/context`. Any other value is passed through as a raw id. With no argument, the run's own issue is used.
@@ -118,6 +124,9 @@ nocoproject pr list [--issue NP-12] [--json]        # GET  /np/agent/issues/:id/
 - `issue dependency remove` calls `DELETE /np/agent/issues/:id/dependencies?dependsOnIssueId=<id>&type=blockedBy` (the agent knows the blocking issue, not the dependency row id). `add` posts `{ dependsOnIssueId, type: 'blockedBy' }`.
 - `issue status` handles approval gates (iteration 2 §D): when the server answers **202** `{ data: { issue, pendingApproval } }`, the status is unchanged and a pending approval request was created. The command prints `approval pending (request <id>)` (with `--json`: the `{ issue, pendingApproval }` object) and exits 0.
 - `pr link <url>` checks that the URL is an absolute http(s) URL (otherwise exit 5 `INVALID_PR_URL`) and lets the server parse it (`400 INVALID_PR_URL` → exit 5). Text output: `linked <repo>#<number> (<state>) to <issue>`. `pr list` prints `<repo>#<number> (<state>[, CI <ciState>])  <title>` and the URL per pull request. `--issue` defaults to the run's issue.
+- `kb list` shows the run's project documents plus system-level ones (`{ data: KnowledgeDocSummary[] }`, no content). Text output: `<slug>  <title>  (project|system, v<version>)` and the summary on the next line.
+- `kb get <slug|id>` prints the document's Markdown content as-is on stdout (a trailing newline is added when missing); `--json` prints the whole `doc` from `{ data: { doc } }`. Unknown or invisible documents exit 4.
+- `kb propose` never edits a document: it creates a pending proposal for the project lead (owner/admin for system documents). Exactly one of `--doc` (update; the slug or id is resolved to `docId` with `GET /np/agent/knowledge/:idOrSlug`) or `--title` (new document, optional `--slug` matching the server's `KNOWLEDGE_SLUG_PATTERN`, `^[a-z0-9][a-z0-9-]{0,63}$`). `--content-file` holds the whole proposed content (not a diff) and must not be empty; `--reason` is required (≤ 500 characters), `--summary` optional (≤ 300). These are checked locally (exit 5) before anything is sent. The body is `{ docId? | title, slug?, summary?, content, reason }`; `projectId` is left to the server (the run's project). A second pending proposal for the same document from the same run is `409 KNOWLEDGE_PROPOSAL_PENDING` → exit 5. Text output: `proposed <an update to <slug> | new document "<title>"> (proposal <id>, pending); ...`.
 - `issue comment list` marks resolved threads with `[resolved]` when the server sends `resolved: true`.
 - `project get` reads `context.json` and falls back to `GET /np/agent/context` (`project`) outside a daemon workDir.
 - Every command accepts `--json`. Errors are printed as `{"error":{"code","message","exitCode"}}`.
@@ -148,7 +157,7 @@ nocoproject pr list [--issue NP-12] [--json]        # GET  /np/agent/issues/:id/
 
 If the provider rejects `--resume` for an unknown session, the run is retried once with a fresh session inside the same run.
 
-The echo agent accepts test directives in the issue title or description: `[echo:sleep=<ms>]` to exercise cancellation and the watchdog, `[echo:fail=<text>]` to exercise failure classification (for example `[echo:fail=API Error: 429]` is reported as `agentError.providerRateLimit`), `[echo:subtasks=<n>]` to create n sub-issues with `issue create --executor self --stage <i>` (the parent then stays `in_progress`), and `[echo:checkout=<url>]` to run `repo checkout <url>`, write a file in the worktree and commit it on the agent branch. Iteration 2 adds `[echo:pr=<url>]` (runs `pr link <url>`), `[echo:status=<key>]` (runs `issue status <issue> <key>` instead of the usual `in_review`; a 202 "approval pending" counts as success), `[echo:env=<NAME>]` (writes `NAME=<value>` into the reply and a text event, to check env injection and redaction) and `[echo:skill=<slug>]` (writes the first body line of `.nocoproject/skills/<slug>/SKILL.md`, after the front matter, into the reply). In session mode (`issue.executionMode` in `context.json`) the echo agent never sets `in_review`.
+The echo agent accepts test directives in the issue title or description: `[echo:sleep=<ms>]` to exercise cancellation and the watchdog, `[echo:fail=<text>]` to exercise failure classification (for example `[echo:fail=API Error: 429]` is reported as `agentError.providerRateLimit`), `[echo:subtasks=<n>]` to create n sub-issues with `issue create --executor self --stage <i>` (the parent then stays `in_progress`), and `[echo:checkout=<url>]` to run `repo checkout <url>`, write a file in the worktree and commit it on the agent branch. Iteration 2 adds `[echo:pr=<url>]` (runs `pr link <url>`), `[echo:status=<key>]` (runs `issue status <issue> <key>` instead of the usual `in_review`; a 202 "approval pending" counts as success), `[echo:env=<NAME>]` (writes `NAME=<value>` into the reply and a text event, to check env injection and redaction) and `[echo:skill=<slug>]` (writes the first body line of `.nocoproject/skills/<slug>/SKILL.md`, after the front matter, into the reply). Iteration 3 adds `[echo:kb=<slug>]` (runs `kb get <slug>` and writes `KB <slug>: <first non-empty line>` into the reply) and `[echo:kb-propose=<title>]` (writes `kb.md` and runs `kb propose --title <title> --content-file kb.md --reason ... --json`). In session mode (`issue.executionMode` in `context.json`) the echo agent never sets `in_review`.
 
 ### Brief (Phase 1 additions)
 
@@ -162,6 +171,12 @@ Besides the Phase 0 sections the brief has `## Project Context` (project name an
 - Session mode (`issue.executionMode = 'session'`): the brief opens with `## Conversation Mode` (live conversation with the owner, short replies, no per-turn summary report, working directory and session carry over, no `in_review` needed), the `## Workflow` becomes the conversational loop (read the quoted comment, reply briefly in the thread, leave the status alone), and the per-turn prompt opens with "You are in a live conversation with the owner on issue …" and closes with "Reply briefly via … you do not need to set `in_review`".
 - Resolved comment threads are filtered by the server; the brief and prompt only quote the triggering comments.
 
+### Brief (iteration 3 additions)
+
+- `## Available Commands` lists `kb list`, `kb get` and `kb propose`.
+- `## Knowledge` (after `## Skills`, always present) lists every document from the claim's `knowledge` index as `- **<title>** (`<slug>`[, system-wide]) — <summary>` and explains `nocoproject kb get <slug>`; with an empty index it says no documents are available yet and that `kb list --json` shows ones added later.
+- `## Capture learnings` (after `## Parent coordination`, always present): before finishing, propose new conventions, pitfalls or decisions with `kb propose --doc <slug>` (whole new content, starting from `kb get`) or `kb propose --title`, give a reason, never edit documents directly (or write them into the repository instead), at most 3 proposals per run and only durable knowledge, one pending proposal per document per run.
+
 ## Development
 
 ```bash
@@ -174,4 +189,4 @@ pnpm vitest run --exclude "**/*.live.test.ts"                             # ever
 npm pack --dry-run
 ```
 
-The tests use an in-process mock server (`tests/helpers/mock-server.ts`) that implements the daemon API, the agent API (including the Phase 1 endpoints and claim extras, the iteration-2 pull-request endpoints, `agent.env` / `agent.skills` / `issue.executionMode` / `issue.pullRequests` in the claim payload via `enqueue` options, and a 202 approval gate for issues created with `approvalRequired: true | string[]`) and the realtime socket. Repository checkout is tested against local bare repositories in temp directories (no network). The Codex fixtures in `tests/fixtures/codex/` are real `codex-cli 0.154.0` captures.
+The tests use an in-process mock server (`tests/helpers/mock-server.ts`) that implements the daemon API, the agent API (including the Phase 1 endpoints and claim extras, the iteration-2 pull-request endpoints, `agent.env` / `agent.skills` / `issue.executionMode` / `issue.pullRequests` in the claim payload via `enqueue` options, and a 202 approval gate for issues created with `approvalRequired: true | string[]`, and the iteration-3 knowledge endpoints in `tests/helpers/mock-knowledge.ts` with `knowledge` in the claim payload via `enqueue({ knowledge })`) and the realtime socket. Repository checkout is tested against local bare repositories in temp directories (no network). The Codex fixtures in `tests/fixtures/codex/` are real `codex-cli 0.154.0` captures.

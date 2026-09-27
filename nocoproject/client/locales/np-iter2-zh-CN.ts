@@ -115,6 +115,8 @@ const npIter2ZhCN: NpIter2Resource = {
   },
   intake: {
     title: '批量录入',
+    openDrawer: '批量录入',
+    parsedToast: '已拆成 {{count}} 条草稿',
     description: '粘贴清单、会议纪要或 CSV，拆成任务草稿，编辑确认后再创建。',
     rawLabel: '要拆分的文本',
     rawPlaceholder:
@@ -306,6 +308,7 @@ const npIter2ZhCN: NpIter2Resource = {
   },
   usage: {
     title: '用量统计',
+    loadFailed: '无法加载用量',
     description:
       'Agent 运行消耗的 token 与估算费用；费用按“设置 → NocoProject”中的模型价格计算。',
     issueTitle: '用量',
@@ -395,6 +398,10 @@ const npIter2ZhCN: NpIter2Resource = {
     approval_rejected: '{{actor}} 驳回了改为 {{to}} 的申请。',
     pr_review: 'PR 待合并：{{repo}}#{{number}}。',
     pr_merged: 'PR {{repo}}#{{number}} 已合并。',
+    knowledge_proposal: '{{actor}} 建议修改「{{doc}}」。',
+    knowledge_proposal_new: '{{actor}} 建议新建文档「{{doc}}」。',
+    knowledge_accepted: '你对「{{doc}}」的知识库建议已被接受。',
+    knowledge_rejected: '你对「{{doc}}」的知识库建议被驳回。',
   },
   projectMore: {
     label: '更多项目操作',

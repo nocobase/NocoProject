@@ -164,6 +164,42 @@ export type DomainEvent =
       readonly url: string;
       /** The status the merge moved the issue to, or null when it did not change it. */
       readonly statusChangedTo: string | null;
+    }
+  // Iteration 3 (docs/phase1/iteration-3-contract.md §B, §E). Knowledge events carry everything the inbox payload
+  // needs, so the notification module never reads the knowledge tables.
+  | {
+      readonly type: 'knowledge.proposed';
+      readonly proposalId: string;
+      readonly docId: string | null;
+      readonly docTitle: string;
+      readonly projectId: string | null;
+      readonly projectName: string | null;
+      readonly reason: string;
+      readonly summary: string;
+      readonly isNew: boolean;
+      /** The source issue (the card is shown on it); null skips the card. */
+      readonly issueId: string | null;
+      readonly deciderUserIds: readonly string[];
+      readonly actor: EventActor;
+    }
+  | {
+      readonly type: 'knowledge.decided';
+      readonly proposalId: string;
+      readonly docId: string | null;
+      readonly docTitle: string;
+      readonly decision: 'accepted' | 'rejected';
+      /** The document version the acceptance produced (null when rejected). */
+      readonly version: number | null;
+      readonly comment: string | null;
+      readonly issueId: string | null;
+      readonly actor: EventActor;
+    }
+  | {
+      /** A member accepted a delivery or asked for changes: the issue's `review_requested` cards resolve. */
+      readonly type: 'delivery.decided';
+      readonly issueId: string;
+      readonly decision: 'accepted' | 'changesRequested';
+      readonly actor: EventActor;
     };
 
 export type DomainEventListener = (event: DomainEvent) => void;

@@ -51,3 +51,21 @@ export function inboxBadgeText(count: number): string | null {
   if (!Number.isFinite(count) || count <= 0) return null;
   return count > 99 ? '99+' : String(count);
 }
+
+/**
+ * Where opening a card goes: its issue, or — for knowledge proposals and decisions without an issue — the knowledge
+ * document (or the knowledge page for a proposed new document). Null when there is nothing to open.
+ */
+export function inboxItemLink(
+  item: Pick<InboxItem, 'type' | 'issueId' | 'payload'>,
+): string | null {
+  if (item.issueId) return `/issues/${encodeURIComponent(item.issueId)}`;
+  const type = item.type as string;
+  if (type === 'knowledge_proposal' || type === 'knowledge_decided') {
+    const docId = item.payload?.docId;
+    return typeof docId === 'string' && docId
+      ? `/knowledge/${encodeURIComponent(docId)}`
+      : '/knowledge';
+  }
+  return null;
+}

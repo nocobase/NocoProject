@@ -3,7 +3,9 @@ import { CircleDotIcon, PlayIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 import { Link } from 'react-router';
 
+import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpPulse, NpStatusBadge } from '@/components/np-badges';
+import { NpVirtualList } from '@/components/np-virtual-list';
 
 import { runTriggerType } from '../../detail-normalize.js';
 import { failureReasonKey, useNpFormatters } from '../../format.js';
@@ -25,7 +27,10 @@ export interface ActivityTimelineProps extends ThreadContext {
   readonly statusCatalog: readonly StatusCatalogEntry[];
 }
 
-/** Comments as threads, system activity as compact rows, and agent runs inline, oldest first. */
+/**
+ * Comments as threads, system activity as compact rows, and agent runs inline, oldest first. Past 100 entries the
+ * list is virtualized against the detail's scrolling column (§H 8).
+ */
 export function ActivityTimeline({
   entries,
   statusCatalog,
@@ -39,23 +44,24 @@ export function ActivityTimeline({
     );
   }
   return (
-    <ol className='space-y-3'>
-      {entries.map((entry) => (
-        <li key={entry.key}>
-          {entry.kind === 'thread' ? (
-            <ThreadCard thread={entry.thread} context={context} />
-          ) : entry.kind === 'activity' ? (
-            <ActivityRow
-              activity={entry.activity}
-              statusCatalog={statusCatalog}
-              agentName={agentName}
-            />
-          ) : (
-            <RunRow run={entry.run} agentName={agentName} />
-          )}
-        </li>
-      ))}
-    </ol>
+    <NpVirtualList
+      items={entries}
+      itemKey={(entry) => entry.key}
+      label={t('np.activity.title')}
+      renderItem={(entry) =>
+        entry.kind === 'thread' ? (
+          <ThreadCard thread={entry.thread} context={context} />
+        ) : entry.kind === 'activity' ? (
+          <ActivityRow
+            activity={entry.activity}
+            statusCatalog={statusCatalog}
+            agentName={agentName}
+          />
+        ) : (
+          <RunRow run={entry.run} agentName={agentName} />
+        )
+      }
+    />
   );
 }
 
@@ -81,6 +87,7 @@ function ActivityRow({
   return (
     <div className='flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-sm text-muted-foreground'>
       <CircleDotIcon className='size-3.5 shrink-0' aria-hidden='true' />
+      <NpActorAvatar type={activity.actorType} name={actor} size='xs' />
       <span className='font-medium text-foreground'>{actor}</span>
       <span>{t(`np.activity.actions.${label}`)}</span>
       {STATUS_CHANGE_LABELS.has(label) && change.to ? (

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { buildAgentEnv, filterAgentEnv } from '../src/daemon/env.js';
 import { checkoutExtras } from '../src/daemon/runner.js';
 import { buildRunContext, findWorkDir, readCheckoutRecord, readRunContext, writeCheckoutRecord, writeRunContext } from '../src/run-context.js';
-import { claimedRun, iter2Run, phase1Run } from './helpers/fixtures.js';
+import { claimedRun, iter2Run, iter3Run, phase1Run } from './helpers/fixtures.js';
 
 describe('run context', () => {
   it('fills defaults for a Phase 0 claim payload', () => {
@@ -15,8 +15,22 @@ describe('run context', () => {
       agent: { id: 'a1', name: 'Coder', delegationTargets: [] },
       issue: { id: 'i12', identifier: 'NP-12', title: 'Fix login redirect', parent: null, stage: null, autoExecuteSubtasks: false, projectId: null, executionMode: 'task', pullRequests: [] },
       project: null,
+      knowledge: [],
       session: { branchName: null, repoUrl: null },
     });
+  });
+
+  it('writes the iteration-3 knowledge index field by field, skipping malformed entries', () => {
+    const run = iter3Run();
+    const bad = [...(run.knowledge ?? []), { id: 'x', slug: '', title: 'No slug', summary: '', projectId: null }, { id: 'kd3', slug: 'extra', title: 'Extra', content: 'SECRET BODY', projectId: undefined } as any];
+    const ctx = buildRunContext({ ...run, knowledge: bad });
+    expect(ctx.knowledge).toEqual([
+      { id: 'kd1', slug: 'api-conventions', title: 'API conventions', summary: 'Error envelope,\npagination and naming rules.', projectId: 'p1' },
+      { id: 'kd2', slug: 'release-process', title: 'Release process', summary: '', projectId: null },
+      { id: 'kd3', slug: 'extra', title: 'Extra', summary: '', projectId: null },
+    ]);
+    expect(JSON.stringify(ctx)).not.toContain('SECRET BODY');
+    expect(buildRunContext({ ...run, knowledge: null }).knowledge).toEqual([]);
   });
 
   it('carries the Phase 1 extras and never the run token', () => {

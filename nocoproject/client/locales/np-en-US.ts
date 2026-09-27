@@ -173,6 +173,8 @@ const npCollabEnUS = {
       approval_decided: 'Approval decided',
       pr_review: 'PR ready to merge',
       pr_merged: 'PR merged',
+      knowledge_proposal: 'Knowledge proposal',
+      knowledge_decided: 'Knowledge decided',
     },
   },
   projects: {
@@ -181,6 +183,7 @@ const npCollabEnUS = {
       'Group issues, share repositories with agents and follow progress.',
     new: 'New project',
     breadcrumb: 'Project',
+    sidePanel: 'Project details',
     loadFailed: 'Unable to load projects',
     detailLoadFailed: 'Unable to load this project',
     notFound: 'This project does not exist or you cannot see it.',

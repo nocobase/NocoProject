@@ -68,11 +68,17 @@ describe('browser API /np/*', () => {
 
   it('passes list filters and maps domain conflicts to 409', async () => {
     const { router, doubles } = await build(npApiRoutes);
-    const list = await router.request('/np/issues?statusKey=todo&q=bug', {
-      headers: signedIn,
-    });
+    const list = await router.request(
+      '/np/issues?statusKey=todo&q=bug&limit=20&cursor=abc',
+      { headers: signedIn },
+    );
     expect(list.status).toBe(200);
-    expect(doubles.issueQueries.list).toHaveBeenCalledWith(
+    // Iteration 3 §D: one keyset page, `nextCursor` beside `data`.
+    await expect(list.json()).resolves.toEqual({
+      data: [{ id: 'i1', identifier: 'NP-1' }],
+      nextCursor: null,
+    });
+    expect(doubles.issueQueries.page).toHaveBeenCalledWith(
       { type: 'user', id: 'u1' },
       {
         statusKey: 'todo',
@@ -83,6 +89,7 @@ describe('browser API /np/*', () => {
         executorId: null,
         parentIssueId: null,
       },
+      { cursor: 'abc', limit: 20, sort: null },
     );
     // Every signed-in request bootstraps the caller's members row first.
     expect(doubles.members.ensure).toHaveBeenCalledWith('u1');

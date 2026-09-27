@@ -79,11 +79,15 @@ export interface IssueService {
     idOrKey: string,
     patch: UpdateIssueRequestV2,
   ): Promise<IssueV2>;
-  /** The browser PATCH: a status change that needs approval leaves the whole patch unapplied (202). */
+  /**
+   * The browser PATCH: a status change that needs approval leaves the whole patch unapplied (202). `outer` joins a
+   * caller's transaction (the delivery endpoints, iteration 3).
+   */
   patch(
     actor: Actor,
     idOrKey: string,
     patch: UpdateIssueRequestV2,
+    outer?: Tx,
   ): Promise<IssueStatusResult>;
   /** An agent (run token) moving the issue along its workflow's agent transitions. Never enqueues for itself. */
   agentSetStatus(
@@ -345,6 +349,7 @@ async function update(
   actor: Actor,
   idOrKey: string,
   patch: UpdateIssueRequestV2,
+  outer?: Tx,
 ): Promise<IssueStatusResult> {
   if (!Number.isInteger(patch?.revision))
     throw invalid('REVISION_REQUIRED', 'revision is required.');
@@ -422,7 +427,7 @@ async function update(
     for (const parentId of [before.parentIssueId, after.parentIssueId])
       if (parentId) tx.emit({ type: 'issue.changed', issueId: parentId });
     return { issue: after, pendingApproval: null };
-  });
+  }, outer);
 }
 
 async function assignAgentInTx(
@@ -475,7 +480,8 @@ export function createIssueService(deps: IssueDeps): IssueService {
     create: (actor, input) => create(deps, actor, input),
     update: async (actor, idOrKey, patch) =>
       (await update(deps, actor, idOrKey, patch)).issue,
-    patch: (actor, idOrKey, patch) => update(deps, actor, idOrKey, patch),
+    patch: (actor, idOrKey, patch, outer) =>
+      update(deps, actor, idOrKey, patch, outer),
     agentSetStatus: async (actor, idOrKey, statusKey) =>
       (await agentSetStatus(deps, actor, idOrKey, statusKey)).issue,
     agentSetStatusGated: (actor, idOrKey, statusKey) =>

@@ -166,3 +166,40 @@ describe('Phase 1 daemon e2e (echo adapter)', () => {
     expect(existsSync(join(workDir, '.nocoproject', 'skills'))).toBe(false);
   });
 });
+
+describe('iteration 3 daemon e2e (echo adapter)', () => {
+  it('writes the knowledge index to context.json and the brief, reads a document and proposes a new one', async () => {
+    const { mock } = await setup();
+    const project = { id: 'p1', name: 'Demo', description: null, resources: [] };
+    const doc = mock.knowledge.add({ slug: 'api-conventions', title: 'API conventions', summary: 'Errors and naming.', projectId: 'p1', content: '\nAlways return { code, message }.\nMore.' });
+    mock.addIssue({ id: 'i36', identifier: 'NP-36', title: 'Learn', description: '[echo:kb=api-conventions] [echo:kb-propose=Flaky e2e tests]' });
+    const knowledge = [{ id: doc.id, slug: doc.slug, title: doc.title, summary: doc.summary, projectId: 'p1' }];
+    const runId = mock.enqueue('i36', { project, knowledge });
+    await waitFor(() => runStatus(mock, runId) === 'completed' || runStatus(mock, runId) === 'failed', 20_000, 'run');
+    expect(runStatus(mock, runId)).toBe('completed');
+
+    const workDir = startBody(mock, runId)?.workDir as string;
+    expect(JSON.parse(readFileSync(join(workDir, '.nocoproject', 'context.json'), 'utf8')).knowledge).toEqual(knowledge);
+    const brief = readFileSync(join(workDir, 'AGENTS.md'), 'utf8');
+    expect(brief).toContain('- **API conventions** (`api-conventions`) — Errors and naming.');
+    expect(brief).toContain('## Capture learnings');
+
+    const reply = (mock.comments.get('i36') ?? []).find((c) => c.authorType === 'agent')?.content ?? '';
+    expect(reply).toContain('KB api-conventions: Always return { code, message }.');
+    expect(reply).toMatch(/Proposed knowledge "Flaky e2e tests" \(proposal kp\d+\)\./);
+    expect(mock.knowledge.proposals).toMatchObject([
+      { docId: null, title: 'Flaky e2e tests', status: 'pending', sourceRunId: runId, sourceIssueId: 'i36', projectId: 'p1', reason: 'Found while working on NP-36.' },
+    ]);
+    expect(mock.issues.get('i36')?.statusKey).toBe('in_review');
+  });
+
+  it('defaults context.json knowledge to [] when the server sends none', async () => {
+    const { mock } = await setup();
+    mock.addIssue({ id: 'i37', identifier: 'NP-37', title: 'Plain' });
+    const runId = mock.enqueue('i37');
+    await waitFor(() => runStatus(mock, runId) === 'completed' || runStatus(mock, runId) === 'failed', 20_000, 'run');
+    const workDir = startBody(mock, runId)?.workDir as string;
+    expect(JSON.parse(readFileSync(join(workDir, '.nocoproject', 'context.json'), 'utf8')).knowledge).toEqual([]);
+    expect(readFileSync(join(workDir, 'AGENTS.md'), 'utf8')).toContain('No knowledge documents are available to this run yet.');
+  });
+});

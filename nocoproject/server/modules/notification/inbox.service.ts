@@ -11,7 +11,7 @@ import { now, num, toDate } from '../shared/db.js';
 import { invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
-  InboxItemV2,
+  InboxItemV3,
   InboxKind,
   InboxListResponse,
   InboxUnreadCounts,
@@ -19,7 +19,7 @@ import type {
 
 /** `InboxListResponse` whose items may carry the iteration 2 types. */
 export type InboxListResponseV2 = Omit<InboxListResponse, 'data'> & {
-  readonly data: readonly InboxItemV2[];
+  readonly data: readonly InboxItemV3[];
 };
 import { mapInboxItems, subscribe, unsubscribe } from './inbox.store.js';
 
@@ -37,7 +37,7 @@ export type InboxAction = 'read' | 'unread' | 'archive' | 'unarchive';
 export interface InboxService {
   list(actor: Actor, query: InboxQuery): Promise<InboxListResponseV2>;
   unreadCount(actor: Actor): Promise<InboxUnreadCounts>;
-  mark(actor: Actor, itemId: string, action: InboxAction): Promise<InboxItemV2>;
+  mark(actor: Actor, itemId: string, action: InboxAction): Promise<InboxItemV3>;
   readAll(actor: Actor, kind: unknown): Promise<InboxUnreadCounts>;
   subscribe(actor: Actor, issueIdOrKey: string): Promise<void>;
   unsubscribe(actor: Actor, issueIdOrKey: string): Promise<void>;

@@ -8,7 +8,8 @@
  * the notification module.
  *
  * Iteration 2 adds the injectable edges tests replace: the secret box, the GitHub client, the AI intake parser and
- * the approval gateway (the "替换检查清单" test runs the suite with an in-memory gateway).
+ * the approval gateway (the "替换检查清单" test runs the suite with an in-memory gateway). Iteration 3 adds the
+ * knowledge base, the acceptance metrics and the delivery decisions (`createIteration3Services`).
  */
 import type { DatabaseManager } from '@nocobase/db';
 import type { IdGeneratorService } from '@nocobase/snowflake';
@@ -48,7 +49,19 @@ import {
   createIntakeService,
   type IntakeService,
 } from './intake/intake.service.js';
+import {
+  createDeliveryService,
+  type DeliveryService,
+} from './issue/delivery.service.js';
 import { findIssue } from './issue/issue.records.js';
+import {
+  createKnowledgeService,
+  type KnowledgeService,
+} from './knowledge/knowledge.service.js';
+import {
+  createMetricsService,
+  type MetricsService,
+} from './metrics/metrics.service.js';
 import type { ApprovalGateway, ApprovalHooks } from './shared/approval.js';
 import { resolveApproverIds } from './shared/authz.js';
 import {
@@ -187,6 +200,10 @@ export interface NpServices {
   readonly skills: SkillService;
   readonly usage: UsageService;
   readonly workspaceSettings: WorkspaceSettingsService;
+  // Iteration 3.
+  readonly knowledge: KnowledgeService;
+  readonly metrics: MetricsService;
+  readonly deliveries: DeliveryService;
 }
 
 /** What an alternative approval gateway gets to build itself (tests: the in-memory double). */
@@ -233,6 +250,16 @@ async function cancelStaleApprovals(
   }
 }
 
+/** What the approval gateway calls back into (applying an approved transition, resolving approvers). */
+function approvalHooksOf(services: NpServices): ApprovalHooks {
+  return {
+    applyTransition: (unit, request, approver) =>
+      services.issues.applyApprovedTransition(unit, request, approver),
+    resolveApprovers: (unit, issue, roles) =>
+      resolveApproverIds(unit.conn, issue, roles),
+  };
+}
+
 export function createNpServices(deps: NpServiceDeps): NpServices {
   // Filled in below; the lazy getters are only called at request time, after construction completes.
   const services = {} as { -readonly [K in keyof NpServices]: NpServices[K] };
@@ -244,12 +271,7 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
   });
   const secrets = deps.secrets ?? createSecretBox(resolveSecretKey({}));
   const github = deps.github ?? createFetchGitHubClient();
-  const approvalHooks = (): ApprovalHooks => ({
-    applyTransition: (unit, request, approver) =>
-      services.issues.applyApprovedTransition(unit, request, approver),
-    resolveApprovers: (unit, issue, roles) =>
-      resolveApproverIds(unit.conn, issue, roles),
-  });
+  const approvalHooks = () => approvalHooksOf(services);
   const ids = createIdSource(deps.idGenerator);
   const users = createUserDirectory();
   const activity = createActivityRecorder(ids);
@@ -338,13 +360,24 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
     }),
     runEvents: createRunEventService({ tx, ids }),
     runQueries: createRunQueries({ tx }),
-    claims: createClaimService({ tx, ids, users, workflows, secrets }),
+    claims: createClaimService({
+      tx,
+      ids,
+      users,
+      workflows,
+      secrets,
+      knowledge: () => services.knowledge,
+    }),
     runTokens: createRunTokenService({ tx }),
     sweeper: createSweeperService(failureDeps),
     ...createIteration2Services(
       { deps, tx, ids, users, activity, settings, workflows, secrets, github },
       services,
       approvalHooks,
+    ),
+    ...createIteration3Services(
+      { tx, ids, users, activity, settings, workflows },
+      services,
     ),
   } satisfies NpServices);
 
@@ -416,6 +449,30 @@ function createIteration2Services(
       tx,
       settings,
       workflows,
+    }),
+  };
+}
+
+/** The iteration 3 modules (knowledge, acceptance metrics, delivery decisions). */
+function createIteration3Services(
+  input: Omit<Iteration2Inputs, 'deps' | 'secrets' | 'github'>,
+  services: NpServices,
+) {
+  const { tx, ids, users, activity, settings, workflows } = input;
+  return {
+    knowledge: createKnowledgeService({ tx, ids, users, activity }),
+    metrics: createMetricsService({
+      tx,
+      settings,
+      workflows,
+      usage: () => services.usage,
+    }),
+    deliveries: createDeliveryService({
+      tx,
+      activity,
+      workflows,
+      issues: () => services.issues,
+      comments: () => services.comments,
     }),
   };
 }

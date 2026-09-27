@@ -162,11 +162,11 @@ pre code { background: none; padding: 0; font-size: inherit; }
   <main class="doc">
 
 <div class="legend">
-  <span>v0.6，2026-09-27</span>
+  <span>v0.7，2026-09-27</span>
   <span><span class="tag tag-temp">临时实现</span> 待替换为 NocoBase 官方能力</span>
   <span><span class="tag tag-no">不做</span> 明确不在范围内</span>
 </div>
-<h1>NocoProject 产品与技术方案</h1><aside class="meta"><p>版本：v0.6，2026-09-27
+<h1>NocoProject 产品与技术方案</h1><aside class="meta"><p>版本：v0.7，2026-09-27
 依据：《Multica 调研》、Multica 仓库（v0.5.x，只读，不复用代码）、NocoBase 3 应用模板与 19 份底座技能文档
 阅读建议：第 1–3 章是产品层，不需要技术背景；第 4–6 章是技术层，供研发评审；第 7 章是已定决策与待办；第 8 章是临时实现清单。
 同步规则：本文档是唯一来源，网页版由 <code>scripts/build-doc.mjs</code> 从本文件生成，每次修改后重新生成并发布。</p>
@@ -204,6 +204,11 @@ pre code { background: none; padding: 0; font-size: inherit; }
 <td>v0.6</td>
 <td>2026-09-27</td>
 <td>Phase 1 迭代 2（交付链路）交付并联调通过，见 6.3 节</td>
+</tr>
+<tr>
+<td>v0.7</td>
+<td>2026-09-27</td>
+<td>Phase 1 迭代 3（打磨与自用前置）交付，知识库 v0 提前到 Phase 1，真实 DeepSeek 与 GitHub 接入，见 6.4 节</td>
 </tr>
 </tbody></table></div><hr>
 <h2 id="s-1"><a class="anchor" href="#s-1">0. 一页总览</a></h2><p><strong>NocoProject 是什么</strong>：基于 NocoBase 3 的&quot;人与 Agent 协同&quot;的项目管理产品。人定方向、拍板、验收，Agent 在开发者的电脑或团队服务器上跑编码工具（Claude Code、Codex 等）把任务做出来，全过程记录在任务上。第一阶段服务软件开发团队。</p>
@@ -1272,6 +1277,44 @@ Agent
 <td>Agent 读接口与运行记录接口按私有项目限制；新增阻塞依赖撤回排队运行；收件箱角标与结构化渲染；删除项目、资源编辑、标签选色、新建任务弹窗补全</td>
 </tr>
 </tbody></table></div><p>联调九组链路全部通过（GitHub Webhook 模拟、审批、批量录入、表情、环境变量注入与脱敏、技能落盘、用量、会话模式、遗留项）。测试规模：应用 660 个用例、CLI 146 个用例。未在真实 GitHub 与真实 LLM 上跑过；Claude Code 仍以夹具为准（本机无该命令）。</p>
+<h4 id="s-7-2-3"><a class="anchor" href="#s-7-2-3">6.4 Phase 1 进展：迭代 3 打磨与自用前置（2026-09-27 完成）</a></h4><p>产品负责人验收迭代 2 后点名八项改进，本轮全部交付（记录在 <code>docs/phase1/iteration-3-integration.md</code>）：</p>
+<div class="tablewrap"><table><thead><tr>
+<th>范围</th>
+<th>内容</th>
+</tr>
+</thead><tbody><tr>
+<td>知识库 v0（从 Phase 2 提前）</td>
+<td>项目 / 系统级 Markdown 文档、版本历史、乐观锁；Agent 只读（<code>kb list/get</code>）并用 <code>kb propose</code> 建议更新，进项目 lead 的&quot;待我决定&quot;，接受即生成新版本并在来源任务留痕；简报&quot;Capture learnings&quot;要求 Agent 收尾时沉淀约定与坑</td>
+</tr>
+<tr>
+<td>验收指标采集</td>
+<td><code>GET /np/metrics</code> 按总纲 10.2 的六类（采用、AI 承担率、信任、可靠、成本、人的负担）计算，阈值可配，报表页显示达标状态</td>
+</tr>
+<tr>
+<td>工作流模板可视化</td>
+<td>状态流、转换矩阵（人 / Agent / 系统 + 审批角标）、规则、使用项目数；只读</td>
+</tr>
+<tr>
+<td>信息架构</td>
+<td>侧边栏按 §3.1 分组；&quot;我的任务&quot;；批量录入变成任务页的抽屉；成员、GitHub、通用设置、工作流、标签进前台&quot;设置&quot;页，撤出系统设置壳</td>
+</tr>
+<tr>
+<td>决定项直接可操作</td>
+<td>服务端给每张决定卡 <code>payload.actions</code>（验收 / 打回 / 批准 / 驳回 / 全部采纳 / 回复 / 接受知识建议），收件箱卡片上直接执行</td>
+</tr>
+<tr>
+<td>性能</td>
+<td>列表、看板列、活动流游标分页；索引；虚拟滚动；2000 任务夹具下列表 9 ms、看板 18 ms、详情 22 ms</td>
+</tr>
+<tr>
+<td>界面</td>
+<td>九条统一规则（<code>client/pages/np/README.md</code>）：统一页面框架与宽度、三栏详情、统一头像与徽标、空态与骨架、快捷键 C / ⌘K / ⌘Enter、深浅主题、中英文</td>
+</tr>
+<tr>
+<td>真实服务</td>
+<td>DeepSeek V4.1 Flash 已接入批量录入（直接模型调用 + JSON 校验，弃用插件的工具式结构化输出）；GitHub 令牌已配置，Webhook 用 <code>gh webhook forward</code> 转发到本机</td>
+</tr>
+</tbody></table></div><p>测试规模：应用 743 个用例、CLI 158 个用例。workspace 化在仓库副本上验证可行但涉及停服务与 lockfile 迁移，推迟到 dogfooding 期间单独执行（<code>docs/phase1/workspace.md</code>）。Phase 1 自此进入 dogfooding。</p>
 <h3 id="s-7-3"><a class="anchor" href="#s-7-3">Phase 2：对外发布 1.0（第 14–24 周）</a></h3><ul>
 <li>集成分支模式：子任务分支合入父任务分支，父任务统一提 PR。</li>
 <li>自定义工作流模板编辑器与阶段动作（含&quot;进入某阶段由某 Agent 执行&quot;）。</li>
@@ -1279,7 +1322,7 @@ Agent
 <li>服务器运行时：守护进程令牌、公共运行时、配额、容器隔离镜像。</li>
 <li>公共 Agent 与资源限制。</li>
 <li>实时会话模式（含 Claude Code、Codex 轮中插话）。</li>
-<li>知识库 v1：文档、版本、项目绑定、CLI 读取、Agent 建议更新待审。</li>
+<li>知识库 v1：在 Phase 1 的 v0（文档、版本、项目绑定、CLI 读取、Agent 建议更新待审）之上加附件、全文检索、系统级与项目级继承。</li>
 <li>自动化：定时、Webhook、手动，创建任务 / 仅运行两种模式，失败率熔断。</li>
 <li>ACP 通用适配器 + Cursor、Qwen Code。</li>
 <li>GitLab / Gitea / Forgejo；飞书、钉钉、企业微信通知渠道。</li>

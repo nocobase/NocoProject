@@ -13,17 +13,36 @@ const id = (value: string): string => encodeURIComponent(value);
 
 export type InboxAction = 'read' | 'unread' | 'archive' | 'unarchive';
 
+export interface InboxPage {
+  readonly items: readonly InboxItem[];
+  readonly unread: InboxUnread | null;
+  /** Null on the last page (and whenever the server sends none). */
+  readonly nextCursor: string | null;
+}
+
 export async function fetchInbox(
   api: ApiClient,
   filters: { readonly kind: InboxKind; readonly archived: boolean },
   signal?: AbortSignal,
-): Promise<{ items: readonly InboxItem[]; unread: InboxUnread | null }> {
+  cursor?: string | null,
+): Promise<InboxPage> {
   const body = await api.request<InboxListResponse>({
     path: 'np/inbox',
-    query: { kind: filters.kind, archived: String(filters.archived) },
+    query: {
+      kind: filters.kind,
+      archived: String(filters.archived),
+      cursor: cursor ?? undefined,
+    },
     signal,
   });
-  return { items: body.data, unread: body.unread ?? null };
+  return {
+    items: body.data,
+    unread: body.unread ?? null,
+    nextCursor:
+      typeof body.nextCursor === 'string' && body.nextCursor
+        ? body.nextCursor
+        : null,
+  };
 }
 
 /** `GET /np/inbox/unread-count`; accepts `{ data: { decision, info } }` or the counts at the top level. */

@@ -1,39 +1,25 @@
 import { ApiClientError, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import {
+  type InfiniteData,
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import {
-  AlertCircleIcon,
-  CheckCheckIcon,
-  InboxIcon,
-  ShieldCheckIcon,
-} from 'lucide-react';
-import type { ReactElement } from 'react';
-import { Link, Outlet, useNavigate, useSearchParams } from 'react-router';
+import { CheckCheckIcon, InboxIcon } from 'lucide-react';
+import { type ReactElement, useState } from 'react';
+import { Outlet, useNavigate, useSearchParams } from 'react-router';
 
+import { NpShortcuts } from '@/components/np-shortcuts';
+import { NpEmpty, NpListSkeleton, NpLoadError } from '@/components/np-states';
+import { NpVirtualList } from '@/components/np-virtual-list';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
-import {
-  Alert,
-  AlertAction,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -41,6 +27,7 @@ import { toast } from '@/components/ui/toast';
 
 import {
   type InboxAction,
+  type InboxPage,
   applyInboxAction,
   fetchInbox,
   fetchInboxUnread,
@@ -48,64 +35,91 @@ import {
 } from '../api-inbox.js';
 import { npKeys } from '../constants.js';
 import type { InboxItem, InboxTopicPayload } from '../types.js';
+import type { InboxDecisionAction } from '../types-iter3.js';
 import { useRealtimeTopic } from '../use-realtime.js';
+import { useActionLabel } from './use-action-label.js';
+import {
+  actionBody,
+  apiPath,
+  externalUrl,
+  inAppPath,
+  readInboxActions,
+  resolveLocally,
+} from './decision-actions.js';
 import { InboxItemCard } from './inbox-item.js';
 import {
   INBOX_TABS,
   applyInboxActionLocally,
+  inboxItemLink,
   inboxUnread,
   readInboxTab,
 } from './inbox-model.js';
 
-type InboxPage = Awaited<ReturnType<typeof fetchInbox>>;
+type InboxPages = InfiniteData<InboxPage, string | null>;
 
 /**
- * Route `/inbox` (§J 3): what needs the viewer's decision (review requests, blocked agents, executor proposals) and
- * notifications, each tab with its unread count. The tab and "show archived" live in the query string. Opening a card
- * marks it read and goes to its issue (an `approval_pending` decision included). "Waiting for my approval" opens the
- * `approvals` child page. The `np:inbox` user topic invalidates everything here.
+ * Route `/inbox` (§J 3): what needs the viewer's decision and notifications, each tab with its unread count. The tab
+ * and "show archived" live in the query string. A decision card acts inline from its `payload.actions` (iteration 3
+ * §E): the card resolves at once and the request follows; a failure puts it back with a toast. Approvals waiting for
+ * the viewer are decisions like the others (the old `approvals` page redirects here). Opening a card marks it read
+ * and goes to its issue or knowledge document. The `np:inbox` user topic invalidates everything here.
  */
 export default function InboxPage(): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const actionLabel = useActionLabel();
   const [params, setParams] = useSearchParams();
   const tab = readInboxTab(params.get('tab'));
   const archived = params.get('archived') === '1';
+  const [pending, setPending] = useState<{
+    readonly itemId: string;
+    readonly key: string;
+  } | null>(null);
 
   const listKey = npKeys.inboxList(tab, archived);
-  const list = useQuery({
+  const list = useInfiniteQuery({
     queryKey: listKey,
-    queryFn: ({ signal }) => fetchInbox(api, { kind: tab, archived }, signal),
+    queryFn: ({ pageParam, signal }) =>
+      fetchInbox(api, { kind: tab, archived }, signal, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last: InboxPage) => last.nextCursor ?? undefined,
     placeholderData: keepPreviousData,
   });
   const counter = useQuery({
     queryKey: npKeys.inboxUnread,
     queryFn: ({ signal }) => fetchInboxUnread(api, signal),
   });
-  const unread = inboxUnread(counter.data, list.data?.unread);
+  const unread = inboxUnread(counter.data, list.data?.pages[0]?.unread);
 
   useRealtimeTopic<InboxTopicPayload>('np:inbox', () => {
     void queryClient.invalidateQueries({ queryKey: npKeys.inbox });
   });
+
+  function patchItem(itemId: string, change: (item: InboxItem) => InboxItem) {
+    queryClient.setQueryData<InboxPages>(listKey, (current) =>
+      current
+        ? {
+            ...current,
+            pages: current.pages.map((page) => ({
+              ...page,
+              items: page.items.map((entry) =>
+                entry.id === itemId ? change(entry) : entry,
+              ),
+            })),
+          }
+        : current,
+    );
+  }
 
   const act = useMutation({
     mutationFn: ({ item, action }: { item: InboxItem; action: InboxAction }) =>
       applyInboxAction(api, item.id, action),
     onMutate: ({ item, action }) => {
       const now = new Date().toISOString();
-      queryClient.setQueryData<InboxPage>(listKey, (current) =>
-        current
-          ? {
-              ...current,
-              items: current.items.map((entry) =>
-                entry.id === item.id
-                  ? applyInboxActionLocally(entry, action, now)
-                  : entry,
-              ),
-            }
-          : current,
+      patchItem(item.id, (entry) =>
+        applyInboxActionLocally(entry, action, now),
       );
     },
     onSuccess: (_, { action }) => {
@@ -127,6 +141,54 @@ export default function InboxPage(): ReactElement {
       }),
     onSettled: () =>
       void queryClient.invalidateQueries({ queryKey: npKeys.inbox }),
+  });
+
+  const decide = useMutation({
+    mutationFn: ({
+      action,
+      comment,
+    }: {
+      item: InboxItem;
+      action: InboxDecisionAction;
+      comment: string;
+    }) =>
+      api.request<unknown, Record<string, unknown>>({
+        path: apiPath(action.path ?? ''),
+        method: action.method ?? 'POST',
+        json: actionBody(action, comment),
+      }),
+    onMutate: ({ item, action }) => {
+      setPending({ itemId: item.id, key: action.key });
+      const now = new Date().toISOString();
+      patchItem(item.id, (entry) => resolveLocally(entry, now));
+    },
+    onSuccess: (_, { action, item }) =>
+      toast.add({
+        type: 'success',
+        title: t('np.inboxActions.done', {
+          action: actionLabel(action),
+          title: item.title,
+        }),
+      }),
+    onError: (error: unknown) =>
+      toast.add({
+        type: 'error',
+        priority: 'high',
+        title:
+          error instanceof ApiClientError && error.status === 403
+            ? t('np.common.forbidden')
+            : error instanceof ApiClientError && error.status === 409
+              ? t('np.inboxActions.conflict')
+              : t('np.common.requestFailed'),
+      }),
+    onSettled: () => {
+      setPending(null);
+      void queryClient.invalidateQueries({ queryKey: npKeys.inbox });
+      void queryClient.invalidateQueries({ queryKey: npKeys.issues });
+      void queryClient.invalidateQueries({ queryKey: ['np', 'issue'] });
+      void queryClient.invalidateQueries({ queryKey: npKeys.approvals });
+      void queryClient.invalidateQueries({ queryKey: npKeys.knowledge });
+    },
   });
 
   const readAll = useMutation({
@@ -152,65 +214,66 @@ export default function InboxPage(): ReactElement {
 
   function open(item: InboxItem): void {
     if (!item.readAt) act.mutate({ item, action: 'read' });
-    if (item.issueId) {
-      void navigate(`/issues/${encodeURIComponent(item.issueId)}`);
-    }
+    const link = inboxItemLink(item);
+    if (link) void navigate(link);
   }
 
-  const items = list.data?.items;
+  function run(
+    item: InboxItem,
+    action: InboxDecisionAction,
+    comment: string,
+  ): void {
+    const external = externalUrl(action);
+    if (external) {
+      window.open(external, '_blank', 'noopener,noreferrer');
+      if (!item.readAt) act.mutate({ item, action: 'read' });
+      return;
+    }
+    const page = inAppPath(action);
+    if (page) {
+      if (!item.readAt) act.mutate({ item, action: 'read' });
+      void navigate(page);
+      return;
+    }
+    if (action.opensIssue || !action.path || action.method === 'GET') {
+      open(item);
+      return;
+    }
+    decide.mutate({ item, action, comment });
+  }
+
+  const items = list.data?.pages.flatMap((page) => page.items);
   let content: ReactElement;
   if (list.isError && !list.isFetching) {
-    const forbidden =
-      list.error instanceof ApiClientError && list.error.status === 403;
     content = (
-      <Alert variant='destructive'>
-        <AlertCircleIcon />
-        <AlertTitle>{t('np.inbox.loadFailed')}</AlertTitle>
-        <AlertDescription>
-          {forbidden ? t('np.common.forbidden') : t('np.common.requestFailed')}
-        </AlertDescription>
-        {forbidden ? null : (
-          <AlertAction>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => void list.refetch()}
-            >
-              {t('status.retry')}
-            </Button>
-          </AlertAction>
-        )}
-      </Alert>
+      <NpLoadError
+        title={t('np.inbox.loadFailed')}
+        error={list.error}
+        onRetry={() => void list.refetch()}
+      />
     );
   } else if (!items) {
-    content = (
-      <div role='status' aria-label={t('status.loading')} className='space-y-2'>
-        {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className='h-20 w-full rounded-lg' />
-        ))}
-      </div>
-    );
+    content = <NpListSkeleton rows={4} />;
   } else if (items.length === 0) {
     content = (
-      <Empty className='border'>
-        <EmptyHeader>
-          <EmptyMedia variant='icon'>
-            <InboxIcon />
-          </EmptyMedia>
-          <EmptyTitle>
-            {archived
-              ? t('np.inbox.emptyArchived')
-              : t(`np.inbox.empty.${tab}`)}
-          </EmptyTitle>
-          <EmptyDescription>{t('np.inbox.emptyDescription')}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <NpEmpty
+        icon={<InboxIcon />}
+        title={
+          archived ? t('np.inbox.emptyArchived') : t(`np.inbox.empty.${tab}`)
+        }
+        description={t('np.inbox.emptyDescription')}
+      />
     );
   } else {
     content = (
-      <ul className='space-y-2' aria-label={t(`np.inbox.tabs.${tab}`)}>
-        {items.map((item) => (
-          <li key={item.id}>
+      <div className='space-y-3'>
+        <NpVirtualList
+          as='ul'
+          gapClassName='space-y-2'
+          label={t(`np.inbox.tabs.${tab}`)}
+          items={items}
+          itemKey={(item) => item.id}
+          renderItem={(item) => (
             <InboxItemCard
               item={item}
               busy={act.isPending}
@@ -218,10 +281,35 @@ export default function InboxPage(): ReactElement {
               onAction={(target, action) =>
                 act.mutate({ item: target, action })
               }
+              decision={
+                item.kind === 'decision'
+                  ? {
+                      actions: readInboxActions(item),
+                      pendingKey:
+                        pending?.itemId === item.id ? pending.key : null,
+                      onRun: (action, comment) => run(item, action, comment),
+                    }
+                  : undefined
+              }
             />
-          </li>
-        ))}
-      </ul>
+          )}
+        />
+        {list.hasNextPage ? (
+          <div className='flex justify-center'>
+            <Button
+              variant='outline'
+              size='sm'
+              disabled={list.isFetchingNextPage}
+              onClick={() => void list.fetchNextPage()}
+            >
+              {list.isFetchingNextPage ? (
+                <Spinner data-icon='inline-start' />
+              ) : null}
+              {t('np.pagination.loadMore')}
+            </Button>
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -232,15 +320,8 @@ export default function InboxPage(): ReactElement {
           title={t('np.inbox.title')}
           description={t('np.inbox.description')}
           actions={
-            <div className='flex flex-wrap gap-2'>
-              <Button
-                variant='outline'
-                nativeButton={false}
-                render={<Link to='approvals' />}
-              >
-                <ShieldCheckIcon data-icon='inline-start' />
-                {t('np.approvals.pageTitle')}
-              </Button>
+            <>
+              <NpShortcuts showTrigger />
               <Button
                 variant='outline'
                 disabled={readAll.isPending || unread[tab] === 0}
@@ -253,7 +334,7 @@ export default function InboxPage(): ReactElement {
                 )}
                 {t('np.inbox.readAll')}
               </Button>
-            </div>
+            </>
           }
         />
         <div className='space-y-4'>

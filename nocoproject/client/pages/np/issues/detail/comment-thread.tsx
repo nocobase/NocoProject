@@ -1,17 +1,16 @@
 import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import {
-  BotIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
   CircleDotIcon,
   ReplyIcon,
   RotateCcwIcon,
-  UserIcon,
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
+import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpMarkdown } from '@/components/np-markdown';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -181,7 +180,6 @@ function CommentBlock({
 }): ReactElement {
   const { t } = useTranslation();
   const format = useNpFormatters();
-  const Icon = comment.authorType === 'agent' ? BotIcon : UserIcon;
   const name = authorLabel(comment, context.agentName, t('np.common.unknown'));
   return (
     <div
@@ -192,12 +190,7 @@ function CommentBlock({
       )}
     >
       <header className='flex items-center gap-2 text-sm'>
-        <span
-          className='flex size-6 shrink-0 items-center justify-center rounded-full bg-muted'
-          aria-hidden='true'
-        >
-          <Icon className='size-3.5 text-muted-foreground' />
-        </span>
+        <NpActorAvatar type={comment.authorType} name={name} />
         <span className='truncate font-medium'>{name}</span>
         {comment.authorType === 'agent' ? (
           <Badge variant='outline'>{t('np.executor.agentMarker')}</Badge>

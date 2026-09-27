@@ -15,11 +15,12 @@ import {
   subIssuesSection,
   workflowSection,
 } from './brief-sections.js';
+import { captureLearningsSection, knowledgeCommands, knowledgeSection } from './brief-knowledge.js';
 
 export const BRIEF_BEGIN = '<!-- BEGIN NOCOPROJECT-RUNTIME (auto-managed; do not edit) -->';
 export const BRIEF_END = '<!-- END NOCOPROJECT-RUNTIME -->';
 
-export type BriefInput = Pick<ClaimedRunV1, 'agent' | 'issue' | 'agentTransitions' | 'statusCatalog' | 'project' | 'session'>;
+export type BriefInput = Pick<ClaimedRunV1, 'agent' | 'issue' | 'agentTransitions' | 'statusCatalog' | 'project' | 'session' | 'knowledge'>;
 
 function statusRules(input: BriefInput): string[] {
   if (input.agentTransitions.length === 0) return ['You may not change the issue status in this workspace.'];
@@ -61,17 +62,21 @@ export function buildBrief(input: BriefInput): string {
     `- \`nocoproject issue comment add ${key} --content-file ./reply.md [--parent <rootId>]\` — post a comment`,
     `- \`nocoproject issue status ${key} <statusKey>\` — change the issue status`,
     ...phase1Commands(key),
+    ...knowledgeCommands(),
     '',
     ...projectSection(input),
     '',
     ...repositoriesSection(input),
     '',
     ...skillsSection(input),
+    ...knowledgeSection(input),
     ...workflowSection(input),
     '',
     ...subIssuesSection(input),
     '',
     ...parentCoordinationSection(key),
+    '',
+    ...captureLearningsSection(),
     '',
     '## Status Rules',
     '',

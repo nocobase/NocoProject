@@ -6,8 +6,9 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { ClaimedProject, CommentForAgent, IssueForAgent, IssuePullRequestView, RunStatus } from '../../src/protocol.js';
+import type { ClaimedKnowledgeDoc, ClaimedProject, CommentForAgent, IssueForAgent, IssuePullRequestView, RunStatus } from '../../src/protocol.js';
 import type { ClaimedRunV1 as ClaimedRun } from '../../src/run-context.js';
+import { MockKnowledge } from './mock-knowledge.js';
 
 export const API_KEY = 'test-api-key-0123456789';
 export const BASE = '/main';
@@ -54,6 +55,8 @@ export interface EnqueueOptions {
   project?: ClaimedProject | null;
   issueExtras?: Partial<ClaimedRun['issue']>;
   agentExtras?: Partial<ClaimedRun['agent']>;
+  /** Iteration 3 claim extra; omitted from the payload when undefined (as an older server would). */
+  knowledge?: ClaimedKnowledgeDoc[];
 }
 
 export interface MockOptions {
@@ -81,6 +84,7 @@ export class MockServer {
   readonly dependencies: Dependency[] = [];
   readonly pullRequests = new Map<string, IssuePullRequestView[]>();
   readonly approvals: { id: string; issueId: string; fromStatus: string; toStatus: string }[] = [];
+  readonly knowledge = new MockKnowledge();
   private readonly sockets = new Set<WebSocket>();
   private server: Server;
   private wss: WebSocketServer;
@@ -167,6 +171,7 @@ export class MockServer {
       agent: { id: 'agent-1', name: 'Echo Bot', instructions: 'Be brief.', provider: provider as any, model: null, ...opts.agentExtras },
       issue: { id: issue.id, identifier: issue.identifier, title: issue.title, statusKey: issue.statusKey, ownerName: issue.ownerName, ...opts.issueExtras },
       ...(opts.project !== undefined ? { project: opts.project } : {}),
+      ...(opts.knowledge !== undefined ? { knowledge: opts.knowledge } : {}),
       statusCatalog: [],
       agentTransitions: TRANSITIONS,
       triggers,
@@ -289,6 +294,7 @@ export class MockServer {
       const project = run.claimed.project ?? null;
       return send(200, { data: { run: { id: runId }, agent: { id: 'agent-1', name: 'Echo Bot' }, issue, statusCatalog: [], agentTransitions: TRANSITIONS, project } });
     }
+    if (path.startsWith('/np/agent/knowledge')) return this.knowledge.route(method, path, body, run.claimed, send);
     if (path === '/np/agent/issues' && method === 'POST') return this.createIssue(body, run.claimed, send);
     const m = path.match(/^\/np\/agent\/issues\/([^/]+)(?:\/(comments|status|children|dependencies|pull-requests))?$/);
     const issue = m ? this.findIssue(decodeURIComponent(m[1] as string)) : undefined;

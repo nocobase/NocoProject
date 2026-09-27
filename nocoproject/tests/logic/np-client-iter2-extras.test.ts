@@ -20,12 +20,12 @@ import {
   commentSnippet,
 } from '../../client/pages/np/issues/detail/timeline.js';
 import { reorderResources } from '../../client/pages/np/projects/detail/resource-order.js';
-import { gitConnectionChanges } from '../../client/pages/np/settings/github-model.js';
+import { gitConnectionChanges } from '../../client/pages/np/config/github-model.js';
 import {
   priceDraft,
   priceProblems,
   pricesFromDrafts,
-} from '../../client/pages/np/settings/model-prices.js';
+} from '../../client/pages/np/config/model-prices.js';
 import type {
   ProjectResource,
   RunSummary,

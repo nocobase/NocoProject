@@ -19,19 +19,17 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from '@/components/ui/resizable';
+import { NpDetailLayout } from '@/components/np-detail-layout';
+import { NpDetailSkeleton } from '@/components/np-states';
+import { PageHeader } from '@/components/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useIsMobile } from '@/hooks/use-mobile';
 
 import { fetchMembers } from '../../api-collab.js';
 import { fetchProject } from '../../api-projects.js';
-import { fetchBoard, fetchMe } from '../../api.js';
+import { fetchMe } from '../../api.js';
 import { catalogFromWorkflow, npKeys } from '../../constants.js';
-import { IssueBoard } from '../../issues/board/board.js';
+import { type BoardColumnMore, IssueBoard } from '../../issues/board/board.js';
+import { useBoardPages } from '../../issues/use-issue-pages.js';
 import {
   canDeleteProject,
   canEditProject,
@@ -46,8 +44,9 @@ import { ProjectSidePanel } from './side-panel.js';
 /**
  * Route `/projects/:projectId` (§J 4): a covering child page over the project list. The project's issues fill a
  * board whose columns are its workflow's statuses (drag to change status, as on `/issues?view=board`); the
- * right-hand panel holds status, priority, lead, dates, progress, description, repositories and members. The
- * `resources/new` dialog renders in the outlet beside the layer.
+ * right-hand panel (fixed `w-80`, §H 3) holds status, priority, lead, dates, progress, description, repositories and
+ * members. The `resources/new` dialog and the batch entry drawer (`intake`, the project preselected) render in the
+ * outlet beside the layer.
  */
 export default function ProjectDetailPage(): ReactElement {
   const { projectId = '' } = useParams();
@@ -68,7 +67,6 @@ function ProjectDetailView({
 }): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
-  const isMobile = useIsMobile();
   const project = useQuery({
     queryKey: npKeys.project(projectId),
     queryFn: ({ signal }) => fetchProject(api, projectId, signal),
@@ -77,10 +75,7 @@ function ProjectDetailView({
       count < 2,
   });
   const filters = { projectId };
-  const board = useQuery({
-    queryKey: npKeys.board(filters),
-    queryFn: ({ signal }) => fetchBoard(api, filters, signal),
-  });
+  const board = useBoardPages(filters, true);
   const me = useQuery({ queryKey: npKeys.me, queryFn: () => fetchMe(api) });
   const members = useQuery({
     queryKey: npKeys.members,
@@ -130,29 +125,17 @@ function ProjectDetailView({
     );
   }
 
-  if (!project.data) {
-    return (
-      <div
-        role='status'
-        aria-label={t('status.loading')}
-        className='space-y-4 p-6 md:p-8'
-      >
-        <Skeleton className='h-4 w-40' />
-        <Skeleton className='h-8 w-1/2' />
-        <Skeleton className='h-64 w-full' />
-      </div>
-    );
-  }
+  if (!project.data) return <NpDetailSkeleton />;
 
   const viewer = viewerFrom(me.data?.userId, members.data);
   return (
     <ProjectLayout
       project={project.data}
-      groups={board.data}
+      groups={board.groups}
+      columnMore={board.more}
       workspaceMembers={members.data ?? []}
       canEdit={canEditProject(viewer, project.data)}
       canDelete={canDeleteProject(viewer)}
-      isMobile={isMobile}
     />
   );
 }
@@ -160,17 +143,17 @@ function ProjectDetailView({
 function ProjectLayout({
   project,
   groups,
+  columnMore,
   workspaceMembers,
   canEdit,
   canDelete,
-  isMobile,
 }: {
   readonly project: ProjectDetail;
   readonly groups: readonly BoardGroup[] | undefined;
+  readonly columnMore: Readonly<Record<string, BoardColumnMore>>;
   readonly workspaceMembers: readonly Member[];
   readonly canEdit: boolean;
   readonly canDelete: boolean;
-  readonly isMobile: boolean;
 }): ReactElement {
   const { t } = useTranslation();
   const catalog = catalogFromWorkflow(project.workflow);
@@ -179,59 +162,54 @@ function ProjectLayout({
     : progressFromGroups(groups ?? [], catalog);
 
   const main = (
-    <div className='space-y-4 p-6 md:p-8'>
+    <div className='space-y-6 p-6 md:p-8'>
       <Breadcrumbs />
-      <div className='flex flex-wrap items-center justify-between gap-3'>
-        <div className='flex min-w-0 items-center gap-2'>
-          <h1 className='truncate font-heading text-xl font-semibold'>
-            {project.name}
-          </h1>
-          {project.visibility === 'members' ? (
-            <LockIcon
-              className='size-4 text-muted-foreground'
-              aria-label={t('np.projects.visibility.members')}
-            />
-          ) : null}
-          <ProjectStatusBadge status={project.status} />
-        </div>
-        <div className='flex items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            nativeButton={false}
-            render={
-              <Link
-                to={{
-                  pathname: '/intake',
-                  search: `?project=${encodeURIComponent(project.id)}`,
-                }}
+      <PageHeader
+        title={
+          <span className='inline-flex min-w-0 items-center gap-2'>
+            <span className='truncate'>{project.name}</span>
+            {project.visibility === 'members' ? (
+              <LockIcon
+                className='size-4 shrink-0 text-muted-foreground'
+                aria-label={t('np.projects.visibility.members')}
               />
-            }
-          >
-            <ListPlusIcon data-icon='inline-start' />
-            {t('np.projectMore.batchAdd')}
-          </Button>
-          <Button
-            size='sm'
-            nativeButton={false}
-            render={
-              <Link
-                to={{
-                  pathname: '/issues/new',
-                  search: `?project=${encodeURIComponent(project.id)}`,
-                }}
-              />
-            }
-          >
-            <PlusIcon data-icon='inline-start' />
-            {t('np.issues.new')}
-          </Button>
-          <ProjectActions project={project} canDelete={canDelete} />
-        </div>
-      </div>
+            ) : null}
+            <ProjectStatusBadge status={project.status} />
+          </span>
+        }
+        description={project.description ?? undefined}
+        actions={
+          <>
+            <Button
+              variant='outline'
+              nativeButton={false}
+              render={<Link to='intake' />}
+            >
+              <ListPlusIcon data-icon='inline-start' />
+              {t('np.projectMore.batchAdd')}
+            </Button>
+            <Button
+              nativeButton={false}
+              render={
+                <Link
+                  to={{
+                    pathname: '/issues/new',
+                    search: `?project=${encodeURIComponent(project.id)}`,
+                  }}
+                />
+              }
+            >
+              <PlusIcon data-icon='inline-start' />
+              {t('np.issues.new')}
+            </Button>
+            <ProjectActions project={project} canDelete={canDelete} />
+          </>
+        }
+      />
       {groups ? (
         <IssueBoard
           groups={groups}
+          columnMore={columnMore}
           catalog={catalog}
           issueLink={(issue) => `/issues/${encodeURIComponent(issue.id)}`}
         />
@@ -257,23 +235,11 @@ function ProjectLayout({
     />
   );
 
-  if (isMobile) {
-    return (
-      <div className='flex flex-col'>
-        {main}
-        <div className='border-t'>{panel}</div>
-      </div>
-    );
-  }
   return (
-    <ResizablePanelGroup orientation='horizontal' className='h-full'>
-      <ResizablePanel defaultSize='72%' minSize='45%'>
-        <div className='h-full overflow-y-auto'>{main}</div>
-      </ResizablePanel>
-      <ResizableHandle withHandle />
-      <ResizablePanel defaultSize='28%' minSize='22%' maxSize='45%'>
-        <div className='h-full overflow-y-auto bg-muted/30'>{panel}</div>
-      </ResizablePanel>
-    </ResizablePanelGroup>
+    <NpDetailLayout
+      main={main}
+      aside={panel}
+      asideLabel={t('np.projects.sidePanel')}
+    />
   );
 }

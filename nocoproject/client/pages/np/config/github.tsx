@@ -2,8 +2,8 @@ import { ApiClientError, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertCircleIcon,
   CheckIcon,
+  LockIcon,
   CopyIcon,
   PlugZapIcon,
   RefreshCwIcon,
@@ -11,9 +11,7 @@ import {
 } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
-import { PageContainer } from '@/components/page-container';
-import { PageHeader } from '@/components/page-header';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { NpDetailSkeleton, NpEmpty, NpLoadError } from '@/components/np-states';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,7 +21,6 @@ import {
   FieldLabel,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
 
@@ -35,56 +32,61 @@ import {
 import { npKeys } from '../constants.js';
 import { useNpFormatters } from '../format.js';
 import type { GitConnectionView } from '../types.js';
+import { ConfigSectionHeading } from './config-section.js';
 import { generateSecret, gitConnectionChanges } from './github-model.js';
+import { SecretInput } from './secret-input.js';
+import { useWorkspaceViewer } from '../use-workspace-viewer.js';
 
 /**
- * Settings → GitHub (iteration 2 §C, owner/admin): the API base URL, the token used to read pull requests, and the
- * webhook secret GitHub signs deliveries with. Secrets are write-only — the page only shows whether each is set. The
- * webhook URL is what to paste into the repository's webhook settings; "Test connection" signs in with the token.
+ * Tab `/config/github` (iteration 2 §C, moved from the system settings shell in iteration 3 §G; owner/admin): the API
+ * base URL, the token used to read pull requests, and the webhook secret GitHub signs deliveries with. Secrets are
+ * write-only — the tab only shows whether each is set. The webhook URL is what to paste into the repository's webhook
+ * settings; "Test connection" signs in with the token. Members see why the tab is empty instead of a 403.
  */
-export default function GithubSettingsPage(): ReactElement {
+export default function GithubConfigTab(): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
+  const viewer = useWorkspaceViewer();
   const connection = useQuery({
     queryKey: npKeys.gitConnection,
     queryFn: () => fetchGitConnection(api),
+    enabled: viewer.isAdmin,
     retry: (count, error) =>
       !(error instanceof ApiClientError && error.status === 403) && count < 2,
   });
 
-  let content: ReactElement;
-  if (connection.isError && !connection.data) {
-    content = (
-      <Alert variant='destructive'>
-        <AlertCircleIcon />
-        <AlertTitle>{t('np.github.loadFailed')}</AlertTitle>
-        <AlertDescription>
-          {connection.error instanceof ApiClientError &&
-          connection.error.status === 403
-            ? t('np.github.adminOnly')
-            : t('np.common.requestFailed')}
-        </AlertDescription>
-      </Alert>
+  if (viewer.isLoading) return <NpDetailSkeleton />;
+  if (!viewer.isAdmin) {
+    return (
+      <NpEmpty
+        icon={<LockIcon />}
+        title={t('np.config.adminOnlyTitle')}
+        description={t('np.github.adminOnly')}
+      />
     );
-  } else if (!connection.data) {
-    content = <Skeleton className='h-64 w-full max-w-2xl' />;
-  } else {
-    content = (
+  }
+  if (connection.isError && !connection.data) {
+    return (
+      <NpLoadError
+        title={t('np.github.loadFailed')}
+        error={connection.error}
+        onRetry={() => void connection.refetch()}
+      />
+    );
+  }
+  if (!connection.data) return <NpDetailSkeleton />;
+  return (
+    <section className='space-y-4' aria-labelledby='np-config-github-heading'>
+      <ConfigSectionHeading
+        id='np-config-github-heading'
+        title={t('np.github.title')}
+        description={t('np.github.description')}
+      />
       <GithubForm
         key={`${connection.data.apiBaseUrl}:${connection.data.tokenSet}:${connection.data.webhookSecretSet}`}
         connection={connection.data}
       />
-    );
-  }
-
-  return (
-    <PageContainer>
-      <PageHeader
-        title={t('np.github.title')}
-        description={t('np.github.description')}
-      />
-      {content}
-    </PageContainer>
+    </section>
   );
 }
 
@@ -112,6 +114,9 @@ function GithubForm({
   const [clearToken, setClearToken] = useState(false);
   const [clearSecret, setClearSecret] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [generated, setGenerated] = useState(false);
   const changes = gitConnectionChanges(connection, {
     apiBaseUrl,
     token,
@@ -124,6 +129,12 @@ function GithubForm({
     mutationFn: () => saveGitConnection(api, changes),
     onSuccess: (next) => {
       toast.add({ type: 'success', title: t('np.github.saved') });
+      // Saved secrets are write-only: the typed or generated values leave the form once stored.
+      setToken('');
+      setWebhookSecret('');
+      setShowToken(false);
+      setShowSecret(false);
+      setGenerated(false);
       queryClient.setQueryData(npKeys.gitConnection, next);
       void queryClient.invalidateQueries({ queryKey: npKeys.gitConnection });
     },
@@ -200,16 +211,16 @@ function GithubForm({
           <SecretState set={connection.tokenSet && !clearToken} />
         </div>
         <div className='flex gap-2'>
-          <Input
+          <SecretInput
             id='np-github-token'
-            type='password'
-            autoComplete='off'
             value={token}
+            visible={showToken}
+            onVisibleChange={setShowToken}
             placeholder={
               connection.tokenSet ? t('np.github.keepValue') : 'ghp_…'
             }
-            onChange={(event) => {
-              setToken(event.target.value);
+            onChange={(value) => {
+              setToken(value);
               setClearToken(false);
             }}
           />
@@ -237,24 +248,28 @@ function GithubForm({
           <SecretState set={connection.webhookSecretSet && !clearSecret} />
         </div>
         <div className='flex gap-2'>
-          <Input
+          <SecretInput
             id='np-github-secret'
-            type='password'
-            autoComplete='off'
             value={webhookSecret}
+            visible={showSecret}
+            onVisibleChange={setShowSecret}
             placeholder={
               connection.webhookSecretSet ? t('np.github.keepValue') : ''
             }
-            onChange={(event) => {
-              setWebhookSecret(event.target.value);
+            onChange={(value) => {
+              setWebhookSecret(value);
               setClearSecret(false);
+              setGenerated(false);
             }}
           />
           <Button
             type='button'
             variant='outline'
             onClick={() => {
+              // Shown in plain text until saved, so it can be copied into `gh webhook forward --secret`.
               setWebhookSecret(generateSecret());
+              setShowSecret(true);
+              setGenerated(true);
               setClearSecret(false);
             }}
           >
@@ -275,7 +290,11 @@ function GithubForm({
             </Button>
           ) : null}
         </div>
-        <FieldDescription>{t('np.github.webhookSecretHint')}</FieldDescription>
+        <FieldDescription>
+          {generated
+            ? t('np.githubSecrets.generatedHint')
+            : t('np.github.webhookSecretHint')}
+        </FieldDescription>
       </Field>
       <Field>
         <FieldLabel htmlFor='np-github-webhook'>

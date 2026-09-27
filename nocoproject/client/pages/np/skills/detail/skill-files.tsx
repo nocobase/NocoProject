@@ -103,7 +103,7 @@ export function SkillFiles({
 
   return (
     <section
-      className='max-w-3xl space-y-3'
+      className='max-w-2xl space-y-3'
       aria-labelledby='np-skill-files-heading'
     >
       <div className='flex items-center justify-between gap-2'>

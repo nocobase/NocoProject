@@ -95,13 +95,22 @@ export function DependenciesSection({
   const add = useMutation({
     mutationFn: (dependsOnIssueId: string) =>
       addDependency(api, issue.id, { dependsOnIssueId, type: 'blockedBy' }),
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.add({ type: 'success', title: t('np.feedback.dependencyAdded') });
+      refresh();
+    },
     onError: failed,
   });
   const remove = useMutation({
     mutationFn: (dependencyId: string) =>
       removeDependency(api, issue.id, dependencyId),
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.add({
+        type: 'success',
+        title: t('np.feedback.dependencyRemoved'),
+      });
+      refresh();
+    },
     onError: failed,
   });
 

@@ -27,6 +27,7 @@ import type {
   IssueRef,
   IssueSubscriber,
   Label,
+  LabelColor,
   SubtaskSummary,
 } from './types-collab.js';
 
@@ -41,6 +42,8 @@ export interface StatusCatalogEntry {
   readonly key: string;
   readonly category: StatusCategory;
   readonly agentWritable: boolean;
+  /** The workflow's color for the status (iteration 3 §H 4); `statusColor` falls back to the built-in colors. */
+  readonly color?: LabelColor;
 }
 
 export type IssuePriority = 'urgent' | 'high' | 'medium' | 'low' | 'none';
@@ -237,6 +240,8 @@ export interface IssueDetail {
   readonly queuedRun: QueuedRun | null;
   /** The issue's usage when the detail carries it; the panel otherwise asks `GET /np/usage`. */
   readonly usage: UsageRow | null;
+  /** Iteration 3 §D: older activities page from here; null when the detail holds them all. */
+  readonly activitiesNextCursor?: string | null;
 }
 
 export interface AgentListItem {

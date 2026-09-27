@@ -1121,3 +1121,8 @@ export interface AgentDependencyRequest {
 
 export * from './protocol.phase1-iter2.js';
 // 服务端补充形状（CLI 不复制）
+
+// ---------- Phase 1 迭代 3（docs/phase1/iteration-3-contract.md §J） ----------
+
+export * from './protocol.phase1-iter3.js';
+// 服务端专用的组合类型（CLI 的 sync-protocol 去掉这一行）

@@ -95,41 +95,118 @@ describe('app client routes', () => {
     // pages each check their own page grant; their overlays and the issue detail inherit it.
     expect(pageAuthorizations(resolved.routes)).toEqual([
       { name: 'home', authorizedAs: null },
+      // Iteration 2's standalone pages are redirects now (no menu entry, so they sort before the ordered menu); the
+      // page they forward to checks its own grant.
+      { name: 'np-intake-redirect', authorizedAs: null },
+      { name: 'np-usage-redirect', authorizedAs: null },
       { name: 'np-inbox', authorizedAs: 'np-inbox' },
       { name: 'np-approvals', authorizedAs: 'np-inbox' },
+      { name: 'np-my-issues', authorizedAs: 'np-my-issues' },
+      { name: 'np-my-issues-owned', authorizedAs: 'np-my-issues' },
+      { name: 'np-my-issues-executing', authorizedAs: 'np-my-issues' },
       { name: 'np-issues', authorizedAs: 'np-issues' },
       { name: 'np-issue-new', authorizedAs: 'np-issues' },
+      { name: 'np-issue-intake', authorizedAs: 'np-issues' },
       { name: 'np-issue-detail', authorizedAs: 'np-issues' },
       { name: 'np-run-transcript', authorizedAs: 'np-issues' },
       { name: 'np-subtask-new', authorizedAs: 'np-issues' },
-      { name: 'np-intake', authorizedAs: 'np-intake' },
       { name: 'np-projects', authorizedAs: 'np-projects' },
       { name: 'np-project-new', authorizedAs: 'np-projects' },
       { name: 'np-project-detail', authorizedAs: 'np-projects' },
       { name: 'np-project-resource-new', authorizedAs: 'np-projects' },
+      { name: 'np-project-intake', authorizedAs: 'np-projects' },
       { name: 'np-agents', authorizedAs: 'np-agents' },
       { name: 'np-agent-new', authorizedAs: 'np-agents' },
       { name: 'np-agent-detail', authorizedAs: 'np-agents' },
+      { name: 'np-runtimes', authorizedAs: 'np-runtimes' },
+      { name: 'np-runtime-connect', authorizedAs: 'np-runtimes' },
       { name: 'np-skills', authorizedAs: 'np-skills' },
       { name: 'np-skill-new', authorizedAs: 'np-skills' },
       { name: 'np-skill-detail', authorizedAs: 'np-skills' },
-      { name: 'np-runtimes', authorizedAs: 'np-runtimes' },
-      { name: 'np-runtime-connect', authorizedAs: 'np-runtimes' },
-      { name: 'np-usage', authorizedAs: 'np-usage' },
+      { name: 'np-knowledge', authorizedAs: 'np-knowledge' },
+      { name: 'np-knowledge-new', authorizedAs: 'np-knowledge' },
+      { name: 'np-knowledge-detail', authorizedAs: 'np-knowledge' },
+      { name: 'np-reports', authorizedAs: 'np-reports' },
+      { name: 'np-reports-metrics', authorizedAs: 'np-reports' },
+      { name: 'np-reports-usage', authorizedAs: 'np-reports' },
+      { name: 'np-config', authorizedAs: 'np-config' },
+      { name: 'np-config-general', authorizedAs: 'np-config' },
+      { name: 'np-config-members', authorizedAs: 'np-config' },
+      { name: 'np-config-workflows', authorizedAs: 'np-config' },
+      { name: 'np-config-workflow-detail', authorizedAs: 'np-config' },
+      { name: 'np-config-labels', authorizedAs: 'np-config' },
+      { name: 'np-config-github', authorizedAs: 'np-config' },
     ]);
   });
 
-  it('pins the settings items the NocoProject settings pages are granted by', () => {
-    // Settings pages are owner/admin by server rule; their settings items still need registering and granting.
+  it('groups the NocoProject menu as the product plan §3.1 lays it out', () => {
+    // Iteration 3 §G: 收件箱 and 我的任务 on top, the 工作 and Agent 团队 groups, then 报表 and 设置 — in that order.
+    expect(menuTree(resolveRoutes().routes)).toEqual([
+      'navigation.inbox',
+      'navigation.myIssues',
+      {
+        group: 'navigation.work',
+        items: ['navigation.issues', 'navigation.projects'],
+      },
+      {
+        group: 'navigation.agentTeam',
+        items: [
+          'navigation.agents',
+          'navigation.runtimes',
+          'navigation.skills',
+          'navigation.knowledge',
+        ],
+      },
+      'navigation.reports',
+      'navigation.config',
+    ]);
+  });
+
+  it('registers no NocoProject page in the system settings shell', () => {
+    // Iteration 3 §G: members, GitHub and the NocoProject settings moved to /config; `defineSettingsRoutes` is gone.
     expect(settingsAuthorizations(resolveRoutes().settingsRouteTree)).toEqual(
-      expect.arrayContaining([
-        { name: 'np-members', authorizedAs: 'settings:np-members' },
-        { name: 'np-github', authorizedAs: 'settings:np-github' },
-        { name: 'np-settings', authorizedAs: 'settings:np-settings' },
-      ]),
+      [],
     );
   });
+
+  it('keeps the old standalone pages reachable as redirects without a menu entry', () => {
+    const resolved = resolveRoutes();
+    const flat = flatten(resolved.routes);
+    for (const path of ['/intake', '/usage', '/inbox/approvals']) {
+      const route = flat.find((candidate) => candidate.path === path);
+      expect(route?.path).toBe(path);
+      expect(route?.navigation).toBeUndefined();
+    }
+    expect(flat.find((route) => route.path === '/issues/intake')).toBeDefined();
+    expect(
+      flat.find((route) => route.path === '/projects/:projectId/intake'),
+    ).toBeDefined();
+  });
 });
+
+type MenuNode = string | { readonly group: string; readonly items: MenuNode[] };
+
+/** The menu as titles, in the order the sidebar shows them (by `navigation.order`, then registration). */
+function menuTree(routes: readonly AppClientRegisteredRoute[]): MenuNode[] {
+  return [...routes]
+    .filter((route) => route.navigation)
+    .sort((a, b) => (a.navigation?.order ?? 0) - (b.navigation?.order ?? 0))
+    .map((route): MenuNode => {
+      const title = String(route.navigation?.title);
+      const children = (route.children ?? []).filter(
+        (child) => child.navigation,
+      );
+      return route.componentLoader || children.length === 0
+        ? title
+        : { group: title, items: menuTree(children) };
+    });
+}
+
+function flatten(
+  routes: readonly AppClientRegisteredRoute[],
+): AppClientRegisteredRoute[] {
+  return routes.flatMap((route) => [route, ...flatten(route.children ?? [])]);
+}
 
 /** This application's own contribution, registered the way the client runtime registers it. */
 function resolveRoutes() {

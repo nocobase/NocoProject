@@ -1,15 +1,21 @@
 /**
  * `GET/PATCH /np/settings` (docs/phase1/iteration-2-contract.md §I): every member reads the workspace settings;
- * owner/admin change them. `prMergedStatus` must be `'none'` or a status of the default workflow.
+ * owner/admin change them. `prMergedStatus` must be `'none'` or a status of the default workflow. Iteration 3 §C adds
+ * `metricThresholds` (partial updates merge over the stored thresholds).
  */
 import type { Actor } from '../shared/activity.js';
 import { forbid, isAdmin, viewerOf } from '../shared/authz.js';
 import type { Conn, TxRunner } from '../shared/db.js';
 import { invalid } from '../shared/errors.js';
 import type {
+  MetricThresholds,
   ModelPrice,
-  UpdateWorkspaceSettingsRequest,
-  WorkspaceSettingsView,
+  UpdateWorkspaceSettingsRequestV3,
+  WorkspaceSettingsViewV3,
+} from '../shared/protocol.js';
+import {
+  METRIC_THRESHOLD_DIRECTIONS,
+  METRIC_THRESHOLD_KEYS,
 } from '../shared/protocol.js';
 import { validateBoolean } from '../shared/validate.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
@@ -18,11 +24,11 @@ import type { SettingsService, WorkspaceSettings } from './settings.service.js';
 const MAX_PRICES = 100;
 
 export interface WorkspaceSettingsService {
-  view(actor: Actor): Promise<WorkspaceSettingsView>;
+  view(actor: Actor): Promise<WorkspaceSettingsViewV3>;
   update(
     actor: Actor,
-    patch: UpdateWorkspaceSettingsRequest,
-  ): Promise<WorkspaceSettingsView>;
+    patch: UpdateWorkspaceSettingsRequestV3,
+  ): Promise<WorkspaceSettingsViewV3>;
 }
 
 function priceNumber(value: unknown, field: string): number {
@@ -63,10 +69,48 @@ export function validateModelPrices(value: unknown): ModelPrice[] {
   });
 }
 
+const RATE_KEYS: readonly (keyof MetricThresholds)[] = [
+  'aiShare',
+  'proposalAcceptRate',
+];
+
+/** Iteration 3: a partial `metricThresholds` merged over the stored one; rates within [0, 1], the rest ≥ 0. */
+export function validateThresholds(
+  value: unknown,
+  current: MetricThresholds,
+): MetricThresholds {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw invalid('INVALID_THRESHOLDS', 'metricThresholds must be an object.');
+  const input = value as Record<string, unknown>;
+  const result: Record<keyof MetricThresholds, number> = { ...current };
+  for (const [key, raw] of Object.entries(input)) {
+    if (!(METRIC_THRESHOLD_KEYS as readonly string[]).includes(key))
+      throw invalid(
+        'INVALID_THRESHOLDS',
+        `metricThresholds.${key} is not a known threshold (${Object.keys(METRIC_THRESHOLD_DIRECTIONS).join(', ')}).`,
+      );
+    const threshold = key as keyof MetricThresholds;
+    const max = RATE_KEYS.includes(threshold) ? 1 : Number.MAX_SAFE_INTEGER;
+    if (
+      typeof raw !== 'number' ||
+      !Number.isFinite(raw) ||
+      raw < 0 ||
+      raw > max
+    )
+      throw invalid(
+        'INVALID_THRESHOLDS',
+        `metricThresholds.${key} must be a number ${max === 1 ? 'between 0 and 1' : '≥ 0'}.`,
+      );
+    result[threshold] = raw;
+  }
+  return result;
+}
+
 async function patchValues(
   conn: Conn,
+  settings: SettingsService,
   workflows: WorkflowService,
-  patch: UpdateWorkspaceSettingsRequest,
+  patch: UpdateWorkspaceSettingsRequestV3,
 ): Promise<Partial<WorkspaceSettings>> {
   const values: {
     -readonly [K in keyof WorkspaceSettings]?: WorkspaceSettings[K];
@@ -96,6 +140,11 @@ async function patchValues(
   }
   if (patch.modelPrices !== undefined)
     values.modelPrices = validateModelPrices(patch.modelPrices);
+  if (patch.metricThresholds !== undefined)
+    values.metricThresholds = validateThresholds(
+      patch.metricThresholds,
+      (await settings.read(conn)).metricThresholds,
+    );
   return values;
 }
 
@@ -107,7 +156,7 @@ export function createWorkspaceSettingsService(deps: {
   async function view(
     conn: Conn,
     actor: Actor,
-  ): Promise<WorkspaceSettingsView> {
+  ): Promise<WorkspaceSettingsViewV3> {
     const viewer = await viewerOf(conn, actor);
     return {
       ...(await deps.settings.read(conn)),
@@ -121,7 +170,12 @@ export function createWorkspaceSettingsService(deps: {
       await deps.tx.run(async (tx) => {
         if (!isAdmin(await viewerOf(tx.conn, actor)))
           forbid('Only an owner or admin may change the workspace settings.');
-        const values = await patchValues(tx.conn, deps.workflows, patch ?? {});
+        const values = await patchValues(
+          tx.conn,
+          deps.settings,
+          deps.workflows,
+          patch ?? {},
+        );
         if (Object.keys(values).length > 0)
           await deps.settings.write(tx.conn, values);
       });

@@ -8,7 +8,9 @@ import { Link } from 'react-router';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NpStatusBadge } from '@/components/np-badges';
 import type { NpRichTextHandle } from '@/components/np-rich-text-editor';
-import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
 
 import { fetchMembers } from '../../api-collab.js';
 import { npKeys } from '../../constants.js';
@@ -26,11 +28,13 @@ import { IssueDescription, IssueTitle } from './issue-content.js';
 import { ProposalsCard } from './proposals-card.js';
 import { PullRequestsSection } from './pull-requests-section.js';
 import { SubtasksSection } from './subtasks-section.js';
-import { buildTimeline } from './timeline.js';
+import { buildTimeline, mergeActivities } from './timeline.js';
+import { useOlderActivities } from './use-older-activities.js';
 
 /**
- * The main column: parent link, heading, description, pending approvals, executor proposals, pull requests,
- * sub-issues, dependencies, the activity timeline and the comment composer pinned under it.
+ * The main column: parent link, heading, description, pending approvals, executor proposals, then pull requests,
+ * sub-issues and dependencies as cards, the activity timeline (older activities on demand, virtualized when long,
+ * iteration 3 §D / §H 8) and the comment composer pinned under it (⌘Enter sends).
  */
 export function IssueMain({
   detail,
@@ -61,7 +65,15 @@ export function IssueMain({
     members.data?.find((member) => member.userId === userId)?.name ??
     (userId === me?.userId ? me.name : userId);
 
-  const timeline = useMemo(() => buildTimeline(detail), [detail]);
+  const older = useOlderActivities(issue.id, detail.activitiesNextCursor);
+  const timeline = useMemo(
+    () =>
+      buildTimeline({
+        ...detail,
+        activities: mergeActivities(older.activities, detail.activities),
+      }),
+    [detail, older.activities],
+  );
   const replyToName = replyTo
     ? (replyTo.authorName ??
       (replyTo.authorType === 'agent' ? agentName(replyTo.authorId) : null))
@@ -70,7 +82,7 @@ export function IssueMain({
   return (
     <>
       <div className='min-h-0 flex-1 overflow-y-auto'>
-        <div className='mx-auto w-full max-w-3xl space-y-6 p-6 md:p-8'>
+        <div className='w-full space-y-6 p-6 md:p-8'>
           <div className='space-y-3'>
             <Breadcrumbs />
             {detail.parent ? (
@@ -91,7 +103,7 @@ export function IssueMain({
               </Link>
             ) : null}
             <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-              <span className='font-mono'>{issue.identifier}</span>
+              <span className='font-mono text-xs'>{issue.identifier}</span>
               <NpStatusBadge
                 statusKey={issue.statusKey}
                 catalog={detail.statusCatalog}
@@ -111,27 +123,48 @@ export function IssueMain({
             proposals={detail.proposals}
             agents={agents}
           />
-          <Separator />
-          <PullRequestsSection
-            issueId={issue.id}
-            pullRequests={detail.pullRequests}
-          />
-          <Separator />
-          <SubtasksSection
-            issueId={issue.id}
-            subtasks={detail.subtasks}
-            catalog={detail.statusCatalog}
-          />
-          <Separator />
-          <DependenciesSection detail={detail} />
-          <Separator />
+          <Card>
+            <CardContent>
+              <PullRequestsSection
+                issueId={issue.id}
+                pullRequests={detail.pullRequests}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent>
+              <SubtasksSection
+                issueId={issue.id}
+                subtasks={detail.subtasks}
+                catalog={detail.statusCatalog}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent>
+              <DependenciesSection detail={detail} />
+            </CardContent>
+          </Card>
           <section className='space-y-4' aria-labelledby='np-activity-heading'>
-            <h2
-              id='np-activity-heading'
-              className='font-heading text-base font-semibold'
-            >
-              {t('np.activity.title')}
-            </h2>
+            <div className='flex items-center justify-between gap-2'>
+              <h2
+                id='np-activity-heading'
+                className='font-heading text-base font-semibold'
+              >
+                {t('np.activity.title')}
+              </h2>
+              {older.hasMore ? (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  disabled={older.loading}
+                  onClick={older.loadMore}
+                >
+                  {older.loading ? <Spinner data-icon='inline-start' /> : null}
+                  {t('np.activity.loadOlder')}
+                </Button>
+              ) : null}
+            </div>
             <ActivityTimeline
               entries={timeline}
               statusCatalog={detail.statusCatalog}
@@ -149,7 +182,7 @@ export function IssueMain({
         </div>
       </div>
       <div className='sticky bottom-0 border-t bg-background'>
-        <div className='mx-auto w-full max-w-3xl px-6 py-3 md:px-8'>
+        <div className='w-full px-6 py-3 md:px-8'>
           <CommentComposer
             issueId={issue.id}
             executor={{ type: issue.executorType, id: issue.executorId }}

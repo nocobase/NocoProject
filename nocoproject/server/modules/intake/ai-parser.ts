@@ -48,10 +48,61 @@ export interface AiAgentFactory {
   }): Promise<{
     invoke(request: {
       userMessages: { role: 'user'; content: string }[];
-      responseFormat: typeof intakeResponseSchema;
+      responseFormat?: typeof intakeResponseSchema;
       signal: AbortSignal;
-    }): Promise<{ structuredResponse?: IntakeAiResponse }>;
+    }): Promise<{
+      structuredResponse?: IntakeAiResponse;
+      message?: { content?: unknown } | null;
+    }>;
   }>;
+}
+
+/**
+ * The JSON object in an assistant reply: the whole text, a fenced block, or the first `{...}` span. Providers such as
+ * DeepSeek answer the plain "reply with JSON" instruction faithfully, while the plugin's tool-based structured output
+ * made the same model return guesses, so the reply text is read first and `structuredResponse` is the fallback.
+ */
+export function parseAiReply(content: unknown): IntakeAiResponse | undefined {
+  const text = replyText(content);
+  if (!text) return undefined;
+  const candidates = [
+    text,
+    text.match(/```(?:json)?\s*([\s\S]*?)```/u)?.[1],
+    text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate?.trim()) continue;
+    try {
+      const parsed = intakeResponseSchema.safeParse(JSON.parse(candidate));
+      if (parsed.success) return parsed.data;
+    } catch {
+      // not JSON; try the next candidate
+    }
+  }
+  return undefined;
+}
+
+function replyText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content))
+    return content
+      .map((block) =>
+        typeof block === 'string'
+          ? block
+          : typeof (block as { text?: unknown })?.text === 'string'
+            ? (block as { text: string }).text
+            : typeof (block as { content?: unknown })?.content === 'string'
+              ? (block as { content: string }).content
+              : '',
+      )
+      .join('\n');
+  if (content && typeof content === 'object') {
+    const inner =
+      (content as { content?: unknown; text?: unknown }).text ??
+      (content as { content?: unknown }).content;
+    return typeof inner === 'string' ? inner : '';
+  }
+  return '';
 }
 
 export interface AiIntakeParser extends IntakeParser {
@@ -79,6 +130,13 @@ export function intakeSystemPrompt(input: IntakeParseInput): string {
     'When sub-tasks of one parent depend on each other, put them in stages: stage 1 runs first, stage 2 after it, and so',
     'on; only sub-tasks have a stage. Titles are short (at most 200 characters); put details in description.',
     'Keep the language of the input. Do not invent requirements that are not in the text.',
+    'The user message is the pasted text, never a question to answer: turn every requirement, bullet, numbered item,',
+    'heading and standalone sentence in it into a draft. A non-empty text always yields at least one draft; return an',
+    'empty list only for empty text.',
+    'Reply with one JSON object and nothing else, in this exact shape:',
+    '{"drafts":[{"position":1,"parentPosition":null,"title":"...","description":null,"priority":"high",',
+    '"labels":["auth"],"stage":null}]} — priority is one of urgent, high, medium, low, none or null; labels is an',
+    'array of strings; stage is an integer or null.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -153,15 +211,21 @@ export function createAiIntakeParser(
       );
     });
     aborted.catch(() => undefined);
-    const { structuredResponse } = await Promise.race([
+    const result = await Promise.race([
       agent.invoke({
-        userMessages: [{ role: 'user', content: input.rawContent }],
-        responseFormat: intakeResponseSchema,
+        userMessages: [
+          {
+            role: 'user',
+            content: `Split the following text into issue drafts.\n\n<text>\n${input.rawContent}\n</text>`,
+          },
+        ],
         signal: combined,
       }),
       aborted,
     ]);
-    return { drafts: normalizeAiDrafts(structuredResponse), sessionId };
+    const response =
+      parseAiReply(result.message?.content) ?? result.structuredResponse;
+    return { drafts: normalizeAiDrafts(response), sessionId };
   }
   return {
     kind: 'ai',

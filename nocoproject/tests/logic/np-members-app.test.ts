@@ -118,6 +118,11 @@ describe('NocoProject members through the application', () => {
       'np-runtimes',
       'np-inbox',
       'np-projects',
+      // Iteration 3 (seed 2026093000002_np_iter3_page_grants).
+      'np-my-issues',
+      'np-knowledge',
+      'np-reports',
+      'np-config',
     ]) {
       expect(snapshot.permissions).toContainEqual(
         expect.objectContaining({
@@ -126,16 +131,19 @@ describe('NocoProject members through the application', () => {
         }),
       );
     }
-    expect(snapshot.permissions).toContainEqual(
+    // Iteration 3: the NocoProject settings items are no longer registered (settings live in `/config`).
+    expect(snapshot.permissions).not.toContainEqual(
       expect.objectContaining({
         resource: { type: 'settings', id: 'np-members' },
-        actions: expect.arrayContaining(['read']),
       }),
     );
 
     const issues = await member.get('/np/issues');
     expect(issues.status).toBe(200);
-    await expect(issues.json()).resolves.toEqual({ data: [] });
+    await expect(issues.json()).resolves.toEqual({
+      data: [],
+      nextCursor: null,
+    });
 
     const members = (await (await member.get('/np/members')).json()) as {
       data: { userId: string; role: string; email: string | null }[];

@@ -2,20 +2,11 @@ import { ApiClientError, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import { AlertCircleIcon } from 'lucide-react';
 import { type ReactElement, useMemo } from 'react';
 
 import { DataTable } from '@/components/data-table';
-import { PageContainer } from '@/components/page-container';
-import { PageHeader } from '@/components/page-header';
-import {
-  Alert,
-  AlertAction,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
+import { NpActorAvatar } from '@/components/np-actor-avatar';
+import { NpListSkeleton, NpLoadError } from '@/components/np-states';
 import {
   Select,
   SelectContent,
@@ -23,13 +14,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
 
 import { fetchMembers, updateMemberRole } from '../api-collab.js';
 import { fetchMe } from '../api.js';
 import { npKeys } from '../constants.js';
-import { initials } from '../format.js';
 import {
   type Viewer,
   canChangeMemberRole,
@@ -37,6 +26,7 @@ import {
   viewerFrom,
 } from '../permissions.js';
 import type { Member, MemberRole } from '../types.js';
+import { ConfigSectionHeading } from './config-section.js';
 
 function RoleSelect({
   member,
@@ -89,11 +79,11 @@ function RoleSelect({
 }
 
 /**
- * Settings route `/settings/members` (§J 6): the workspace members and their roles. Everyone listed can open it,
- * but only owner/admin change roles, only an owner grants or revokes owner, and the last owner keeps the role
- * (`memberRoleOptions`); `PATCH /np/members/:userId` enforces the same rules.
+ * Tab `/config/members` (iteration 1 §J 6, moved into the front-end settings in iteration 3 §G): the workspace
+ * members and their roles. Everyone can open it, but only owner/admin change roles, only an owner grants or revokes
+ * owner, and the last owner keeps the role (`memberRoleOptions`); `PATCH /np/members/:userId` enforces the same rules.
  */
-export default function MembersSettingsPage(): ReactElement {
+export default function MembersConfigTab(): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
   const queryClient = useQueryClient();
@@ -136,9 +126,7 @@ export default function MembersSettingsPage(): ReactElement {
         header: t('np.members.columns.name'),
         cell: ({ row }) => (
           <div className='flex items-center gap-2'>
-            <Avatar size='sm'>
-              <AvatarFallback>{initials(row.original.name)}</AvatarFallback>
-            </Avatar>
+            <NpActorAvatar type='user' name={row.original.name} />
             <span className='font-medium'>{row.original.name}</span>
             {row.original.userId === viewer?.userId ? (
               <span className='text-xs text-muted-foreground'>
@@ -176,40 +164,15 @@ export default function MembersSettingsPage(): ReactElement {
 
   let content: ReactElement;
   if (members.isError && !rows) {
-    const forbidden =
-      members.error instanceof ApiClientError && members.error.status === 403;
     content = (
-      <Alert variant='destructive'>
-        <AlertCircleIcon />
-        <AlertTitle>{t('np.members.loadFailed')}</AlertTitle>
-        <AlertDescription>
-          {forbidden ? t('np.common.forbidden') : t('np.common.requestFailed')}
-        </AlertDescription>
-        {forbidden ? null : (
-          <AlertAction>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => void members.refetch()}
-            >
-              {t('status.retry')}
-            </Button>
-          </AlertAction>
-        )}
-      </Alert>
+      <NpLoadError
+        title={t('np.members.loadFailed')}
+        error={members.error}
+        onRetry={() => void members.refetch()}
+      />
     );
   } else if (!rows) {
-    content = (
-      <div
-        role='status'
-        aria-label={t('status.loading')}
-        className='space-y-2 rounded-lg border p-4'
-      >
-        {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className='h-8 w-full' />
-        ))}
-      </div>
-    );
+    content = <NpListSkeleton rows={4} />;
   } else {
     content = (
       <DataTable
@@ -223,12 +186,13 @@ export default function MembersSettingsPage(): ReactElement {
   }
 
   return (
-    <PageContainer>
-      <PageHeader
+    <section className='space-y-4' aria-labelledby='np-config-members-heading'>
+      <ConfigSectionHeading
+        id='np-config-members-heading'
         title={t('np.members.title')}
         description={t('np.members.description')}
       />
       {content}
-    </PageContainer>
+    </section>
   );
 }

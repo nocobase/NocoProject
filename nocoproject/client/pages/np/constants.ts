@@ -10,20 +10,62 @@ import type {
   UsageQuery,
   Workflow,
 } from './types.js';
+import type { MetricsQuery } from './types-iter3.js';
 
 /**
  * The Phase 0 status catalog (protocol §1.1). The issue detail returns the authoritative catalog; this copy covers
  * the list page, whose endpoint does not return one, and the create form.
  */
 export const DEFAULT_STATUS_CATALOG: readonly StatusCatalogEntry[] = [
-  { key: 'backlog', category: 'unstarted', agentWritable: false },
-  { key: 'todo', category: 'unstarted', agentWritable: false },
-  { key: 'in_progress', category: 'started', agentWritable: true },
-  { key: 'in_review', category: 'started', agentWritable: true },
-  { key: 'blocked', category: 'started', agentWritable: true },
-  { key: 'done', category: 'done', agentWritable: false },
-  { key: 'cancelled', category: 'closed', agentWritable: false },
+  {
+    key: 'backlog',
+    category: 'unstarted',
+    agentWritable: false,
+    color: 'gray',
+  },
+  { key: 'todo', category: 'unstarted', agentWritable: false, color: 'blue' },
+  {
+    key: 'in_progress',
+    category: 'started',
+    agentWritable: true,
+    color: 'yellow',
+  },
+  {
+    key: 'in_review',
+    category: 'started',
+    agentWritable: true,
+    color: 'purple',
+  },
+  { key: 'blocked', category: 'started', agentWritable: true, color: 'red' },
+  { key: 'done', category: 'done', agentWritable: false, color: 'green' },
+  {
+    key: 'cancelled',
+    category: 'closed',
+    agentWritable: false,
+    color: 'gray',
+  },
 ];
+
+/** A status's color: the catalog's (from the workflow), else the built-in one, else by category. */
+export function statusColor(
+  statusKey: string,
+  catalog: readonly StatusCatalogEntry[] = DEFAULT_STATUS_CATALOG,
+): LabelColor {
+  const entry =
+    catalog.find((candidate) => candidate.key === statusKey) ??
+    DEFAULT_STATUS_CATALOG.find((candidate) => candidate.key === statusKey);
+  if (entry?.color) return entry.color;
+  const fallback =
+    DEFAULT_STATUS_CATALOG.find((candidate) => candidate.key === statusKey)
+      ?.color ?? null;
+  if (fallback) return fallback;
+  const category = entry?.category ?? 'unstarted';
+  return category === 'done'
+    ? 'green'
+    : category === 'started'
+      ? 'yellow'
+      : 'gray';
+}
 
 /** Locale keys under `np.status.*` are the status keys with the underscore removed (`in_progress` → `inProgress`). */
 export function statusLabelKey(statusKey: string): string {
@@ -129,6 +171,26 @@ export const npKeys = {
   agentEnvAudits: (id: string) => ['np', 'agent-env', id, 'audits'] as const,
   usage: (query: UsageQuery) => ['np', 'usage', query] as const,
   settings: ['np', 'settings'] as const,
+  // Phase 1 iteration 3. Pages and columns sit under `issues`, activities under `issue(id)`, so the existing
+  // realtime invalidations refetch every loaded page.
+  issuePages: (filters: IssueFilters) =>
+    ['np', 'issues', 'pages', filters] as const,
+  boardV3: (filters: IssueFilters) =>
+    ['np', 'issues', 'board-v3', filters] as const,
+  boardColumn: (filters: IssueFilters, statusKey: string) =>
+    ['np', 'issues', 'column', filters, statusKey] as const,
+  issueSearch: (q: string) => ['np', 'issues', 'search', q] as const,
+  issueActivities: (id: string, cursor: string | null) =>
+    ['np', 'issue', id, 'activities', cursor] as const,
+  knowledge: ['np', 'knowledge'] as const,
+  knowledgeList: (filters: { projectId?: string; q?: string }) =>
+    ['np', 'knowledge', 'list', filters] as const,
+  knowledgeDoc: (id: string) => ['np', 'knowledge', 'doc', id] as const,
+  knowledgeVersion: (id: string, version: number) =>
+    ['np', 'knowledge', 'doc', id, 'version', version] as const,
+  knowledgeProposals: ['np', 'knowledge', 'proposals'] as const,
+  metrics: (query: MetricsQuery) => ['np', 'metrics', query] as const,
+  workflow: (id: string) => ['np', 'workflows', id] as const,
 };
 
 /** Dormant statuses (§ terminology): backlog, or any status whose category is done or closed. */
@@ -161,6 +223,7 @@ export function catalogFromWorkflow(
   return statuses.map((status) => ({
     key: status.key,
     category: status.category,
+    color: status.color,
     agentWritable:
       DEFAULT_STATUS_CATALOG.find((entry) => entry.key === status.key)
         ?.agentWritable ?? false,

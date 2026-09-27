@@ -5,12 +5,17 @@
  *
  * Compiled views are cached in memory per template id, and the project → template mapping per project id. The
  * project service invalidates a project's entry when its `workflowId` changes; `invalidate()` drops everything
- * (template edits arrive in iteration 3). The cache is per process, like the rest of the in-process state.
+ * (template edits arrive in iteration 3). The cache is per process, like the rest of the in-process state. Iteration 3
+ * §F: list and get report `projectCount`; the definition is returned as stored (read-only visualization).
  */
 import type { Conn, TxRunner } from '../shared/db.js';
-import { bool, fromJson, iso, str, unique } from '../shared/db.js';
+import { bool, fromJson, iso, num, str, unique } from '../shared/db.js';
 import { conflict, notFound } from '../shared/errors.js';
-import type { Workflow, WorkflowDefinition } from '../shared/protocol.js';
+import type {
+  Workflow,
+  WorkflowDefinition,
+  WorkflowListItem,
+} from '../shared/protocol.js';
 import {
   BUILTIN_DEFINITION,
   builtinWorkflow,
@@ -19,8 +24,9 @@ import {
 } from '../issue/status.js';
 
 export interface WorkflowService {
-  list(): Promise<Workflow[]>;
-  get(id: string): Promise<Workflow>;
+  /** Iteration 3 §F: each row carries `projectCount` (the default template counts projects without a template). */
+  list(): Promise<WorkflowListItem[]>;
+  get(id: string): Promise<WorkflowListItem>;
   /** The view for a project (its template, or the default one); `null` means "no project". */
   forProject(conn: Conn, projectId: string | null): Promise<WorkflowView>;
   forIssue(
@@ -65,6 +71,28 @@ export function mapWorkflow(row: Record<string, unknown>): Workflow {
       : BUILTIN_DEFINITION,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
+  };
+}
+
+/** Projects per template id; projects without one count for the default template. */
+async function projectCounts(conn: Conn): Promise<Map<string | null, number>> {
+  const rows = await conn.query
+    .selectFrom('projects')
+    .select((eb) => ['workflowId', eb.fn.countAll().as('count')])
+    .groupBy('workflowId')
+    .execute();
+  return new Map(rows.map((row) => [str(row.workflowId), num(row.count)]));
+}
+
+function withCount(
+  workflow: Workflow,
+  counts: Map<string | null, number>,
+): WorkflowListItem {
+  return {
+    ...workflow,
+    projectCount:
+      (counts.get(workflow.id) ?? 0) +
+      (workflow.isDefault ? (counts.get(null) ?? 0) : 0),
   };
 }
 
@@ -128,17 +156,22 @@ export function createWorkflowService(deps: { tx: TxRunner }): WorkflowService {
 
   return {
     async list() {
-      const rows = await deps.tx
-        .read()
-        .query.selectFrom('workflowTemplates')
+      const conn = deps.tx.read();
+      const rows = await conn.query
+        .selectFrom('workflowTemplates')
         .selectAll()
         .orderBy('isDefault', 'desc')
         .orderBy('name', 'asc')
         .execute();
-      return rows.map(mapWorkflow);
+      const counts = await projectCounts(conn);
+      return rows.map((row) => withCount(mapWorkflow(row), counts));
     },
     async get(id) {
-      return (await loadView(deps.tx.read(), id)).workflow;
+      const conn = deps.tx.read();
+      return withCount(
+        (await loadView(conn, id)).workflow,
+        await projectCounts(conn),
+      );
     },
     forProject,
     forIssue: (conn, issue) => forProject(conn, issue.projectId),

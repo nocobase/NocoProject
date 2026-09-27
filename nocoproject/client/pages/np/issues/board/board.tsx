@@ -20,6 +20,9 @@ import { type ReactElement, useMemo, useState } from 'react';
 
 import { NpStartDialog } from '@/components/np-start-dialog';
 import { NpStatusBadge } from '@/components/np-badges';
+import { NpVirtualList } from '@/components/np-virtual-list';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
 import { statusLabelKey } from '../../constants.js';
@@ -37,14 +40,23 @@ import {
 } from './board-model.js';
 import { useBoardMove } from './use-board-move.js';
 
+/** "Load more" of one column (§D), from `useBoardPages`. */
+export interface BoardColumnMore {
+  readonly hasMore: boolean;
+  readonly loading: boolean;
+  readonly onLoadMore: () => void;
+}
+
 function Column({
   column,
   catalog,
   issueLink,
+  more,
 }: {
   readonly column: BoardColumn;
   readonly catalog: readonly StatusCatalogEntry[];
   readonly issueLink?: IssueLink;
+  readonly more?: BoardColumnMore;
 }): ReactElement {
   const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({
@@ -65,7 +77,9 @@ function Column({
       >
         <NpStatusBadge statusKey={column.statusKey} catalog={catalog} />
         <span className='text-xs text-muted-foreground tabular-nums'>
-          {column.issues.length}
+          {more?.hasMore
+            ? t('np.pagination.countMore', { count: column.issues.length })
+            : column.issues.length}
         </span>
       </h3>
       <SortableContext
@@ -73,19 +87,38 @@ function Column({
         items={column.issues.map((issue) => issue.id)}
         strategy={verticalListSortingStrategy}
       >
-        <ul
+        <div
           ref={setNodeRef}
           className='flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2'
         >
-          {column.issues.map((issue) => (
-            <BoardCard key={issue.id} issue={issue} issueLink={issueLink} />
-          ))}
           {column.issues.length === 0 ? (
-            <li className='flex flex-1 items-center justify-center rounded-lg border border-dashed p-4 text-xs text-muted-foreground'>
+            <p className='flex flex-1 items-center justify-center rounded-lg border border-dashed p-4 text-xs text-muted-foreground'>
               {t('np.board.emptyColumn')}
-            </li>
+            </p>
+          ) : (
+            <NpVirtualList
+              as='ul'
+              gapClassName='space-y-2'
+              items={column.issues}
+              itemKey={(issue) => issue.id}
+              renderItem={(issue) => (
+                <BoardCard issue={issue} issueLink={issueLink} />
+              )}
+            />
+          )}
+          {more?.hasMore ? (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='w-full'
+              disabled={more.loading}
+              onClick={more.onLoadMore}
+            >
+              {more.loading ? <Spinner data-icon='inline-start' /> : null}
+              {t('np.pagination.loadMore')}
+            </Button>
           ) : null}
-        </ul>
+        </div>
       </SortableContext>
     </section>
   );
@@ -94,17 +127,20 @@ function Column({
 /**
  * The issue board (§J 1): a column per workflow status, cards dragged between columns to change status. Order inside
  * a column follows the server (latest activity first) and is not persisted, so a drop within the same column does
- * nothing.
+ * nothing. A column shows its first page with "load more" (iteration 3 §D) and virtualizes past 100 cards (§H 8).
  */
 export function IssueBoard({
   groups,
   catalog,
   issueLink,
+  columnMore,
 }: {
   readonly groups: readonly BoardGroup[];
   readonly catalog: readonly StatusCatalogEntry[];
   /** Where a card's title links; defaults to the issue beside the current page, keeping the query string. */
   readonly issueLink?: IssueLink;
+  /** Per status key; a column without an entry has no "load more". */
+  readonly columnMore?: Readonly<Record<string, BoardColumnMore>>;
 }): ReactElement {
   const { t } = useTranslation();
   const move = useBoardMove(catalog);
@@ -184,6 +220,7 @@ export function IssueBoard({
               column={column}
               catalog={catalog}
               issueLink={issueLink}
+              more={columnMore?.[column.statusKey]}
             />
           ))}
         </div>

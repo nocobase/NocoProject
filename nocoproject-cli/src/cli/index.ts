@@ -5,6 +5,7 @@ import { Command } from 'commander';
 import { CLI_VERSION, PROTOCOL_VERSION } from '../version.js';
 import { registerDaemonCommands } from './daemon.js';
 import { registerIssueCommands } from './issue.js';
+import { registerKbCommands } from './kb.js';
 import { registerLoginCommand } from './login.js';
 import { registerPrCommands } from './pr.js';
 import { registerProjectCommands } from './project.js';
@@ -37,6 +38,7 @@ export function buildProgram(): Command {
   registerProjectCommands(program);
   registerRepoCommands(program);
   registerPrCommands(program);
+  registerKbCommands(program);
   return program;
 }
 

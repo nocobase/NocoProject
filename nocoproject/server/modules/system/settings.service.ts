@@ -1,6 +1,7 @@
 /**
  * The single `systemSettings` row: the issue prefix, the issue counter and (iteration 1) the `settings` json.
- * Iteration 2 adds `modelPrices` and `intakeParser` to the json; missing keys read as their defaults.
+ * Iteration 2 adds `modelPrices` and `intakeParser` to the json, iteration 3 `metricThresholds`; missing keys read as
+ * their defaults.
  */
 import type { Conn } from '../shared/db.js';
 import {
@@ -12,7 +13,15 @@ import {
   str,
   toJson,
 } from '../shared/db.js';
-import type { IntakeParserSetting, ModelPrice } from '../shared/protocol.js';
+import type {
+  IntakeParserSetting,
+  MetricThresholds,
+  ModelPrice,
+} from '../shared/protocol.js';
+import {
+  DEFAULT_METRIC_THRESHOLDS,
+  METRIC_THRESHOLD_KEYS,
+} from '../shared/protocol.js';
 
 export const SETTINGS_ID = 'default';
 const DEFAULT_PREFIX = 'NP';
@@ -29,6 +38,8 @@ export interface WorkspaceSettings {
   readonly prMergedStatus: string;
   readonly modelPrices: readonly ModelPrice[];
   readonly intakeParser: IntakeParserSetting;
+  /** Iteration 3: acceptance metric thresholds (missing keys take the defaults). */
+  readonly metricThresholds: MetricThresholds;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -36,7 +47,23 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   prMergedStatus: 'done',
   modelPrices: [],
   intakeParser: 'auto',
+  metricThresholds: DEFAULT_METRIC_THRESHOLDS,
 };
+
+function normalizeThresholds(value: unknown): MetricThresholds {
+  const stored = (value && typeof value === 'object' ? value : {}) as Partial<
+    Record<keyof MetricThresholds, unknown>
+  >;
+  const result: Record<keyof MetricThresholds, number> = {
+    ...DEFAULT_METRIC_THRESHOLDS,
+  };
+  for (const key of METRIC_THRESHOLD_KEYS) {
+    const candidate = stored[key];
+    if (typeof candidate === 'number' && Number.isFinite(candidate))
+      result[key] = candidate;
+  }
+  return result;
+}
 
 export interface SettingsService {
   read(conn: Conn): Promise<WorkspaceSettings>;
@@ -104,6 +131,7 @@ function normalize(stored: Partial<WorkspaceSettings>): WorkspaceSettings {
       stored.intakeParser === 'heuristic'
         ? 'heuristic'
         : DEFAULT_WORKSPACE_SETTINGS.intakeParser,
+    metricThresholds: normalizeThresholds(stored.metricThresholds),
   };
 }
 

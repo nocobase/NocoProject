@@ -4,6 +4,7 @@ import { LockIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router';
 
+import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpPriorityLabel } from '@/components/np-badges';
 
 import { useNpFormatters } from '../format.js';
@@ -53,7 +54,13 @@ export function useProjectColumns(): ColumnDef<ProjectListItem, unknown>[] {
         header: t('np.projects.columns.lead'),
         cell: ({ row }) =>
           row.original.leadName ? (
-            <span className='text-sm'>{row.original.leadName}</span>
+            <NpActorAvatar
+              type='user'
+              name={row.original.leadName}
+              size='xs'
+              showName
+              className='text-sm'
+            />
           ) : (
             <span className='text-muted-foreground'>—</span>
           ),

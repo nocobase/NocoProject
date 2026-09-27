@@ -42,6 +42,8 @@ export interface RawIssueDetail extends Partial<Issue> {
   readonly approvals?: readonly ApprovalRequest[];
   readonly queuedRun?: QueuedRun | null;
   readonly usage?: UsageRow | null;
+  /** Iteration 3 §D: the detail carries the newest 50 activities; older ones page from this cursor. */
+  readonly activitiesNextCursor?: string | null;
 }
 
 function byCreatedAt(
@@ -127,6 +129,10 @@ export function normalizeIssueDetail(raw: RawIssueDetail): IssueDetail {
     approvals: raw.approvals ?? [],
     queuedRun: raw.queuedRun ?? null,
     usage: raw.usage ?? null,
+    activitiesNextCursor:
+      typeof raw.activitiesNextCursor === 'string' && raw.activitiesNextCursor
+        ? raw.activitiesNextCursor
+        : null,
     issue,
     threads: normalizeComments(raw.comments ?? []),
     activities: [...(raw.activities ?? [])].sort(byCreatedAt),

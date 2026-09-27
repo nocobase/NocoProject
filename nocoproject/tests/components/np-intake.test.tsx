@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import IntakePage from '../../client/pages/np/intake/index.js';
+import IntakeDrawer from '../../client/pages/np/intake/drawer.js';
 import { answer, type RequestOptions, renderNp } from './np-harness.js';
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
@@ -48,6 +48,37 @@ afterEach(() => {
 });
 
 describe('batch entry', () => {
+  it('opens as a drawer over the project page with the project preselected', async () => {
+    const user = userEvent.setup();
+    const posted: unknown[] = [];
+    api.request.mockImplementation(
+      answer({
+        ...COMMON,
+        'POST np/intake/batches': (options: RequestOptions) => {
+          posted.push(options.json);
+          return { data: { batch: BATCH, drafts: [] } };
+        },
+      }),
+    );
+    await renderNp(<IntakeDrawer />, {
+      url: '/projects/p1/intake',
+      path: '/projects/:projectId/intake',
+    });
+    expect(
+      await screen.findByRole('dialog', { name: 'Batch entry' }),
+    ).toBeVisible();
+    await user.type(
+      screen.getByRole('textbox', { name: 'Text to split into issues' }),
+      'One',
+    );
+    await user.click(screen.getByRole('button', { name: 'Split into drafts' }));
+    await waitFor(() =>
+      expect(posted).toEqual([
+        { source: 'paste', rawContent: 'One', projectId: 'p1' },
+      ]),
+    );
+  });
+
   it('parses pasted text for the preselected project and opens the drafts', async () => {
     const user = userEvent.setup();
     const posted: unknown[] = [];
@@ -72,7 +103,10 @@ describe('batch entry', () => {
         },
       }),
     );
-    await renderNp(<IntakePage />, { url: '/intake?project=p1' });
+    await renderNp(<IntakeDrawer />, {
+      url: '/issues/intake?project=p1',
+      path: '/issues/intake',
+    });
 
     await user.type(
       screen.getByRole('textbox', { name: 'Text to split into issues' }),
@@ -117,7 +151,10 @@ describe('batch entry', () => {
         },
       }),
     );
-    await renderNp(<IntakePage />, { url: '/intake?batch=b1' });
+    await renderNp(<IntakeDrawer />, {
+      url: '/issues/intake?batch=b1',
+      path: '/issues/intake',
+    });
 
     const problems = await screen.findByRole('list', {
       name: 'Problems in row 2',
@@ -186,7 +223,10 @@ describe('batch entry', () => {
         },
       }),
     );
-    await renderNp(<IntakePage />, { url: '/intake?batch=b1' });
+    await renderNp(<IntakeDrawer />, {
+      url: '/issues/intake?batch=b1',
+      path: '/issues/intake',
+    });
     await user.click(
       await screen.findByRole('button', { name: 'Create 1 issues' }),
     );

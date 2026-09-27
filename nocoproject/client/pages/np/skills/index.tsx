@@ -7,6 +7,7 @@ import { type ReactElement, useMemo } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router';
 
 import { DataTable } from '@/components/data-table';
+import { NpShortcuts } from '@/components/np-shortcuts';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -164,6 +165,7 @@ export default function SkillsPage(): ReactElement {
           </Button>
         }
       />
+      <NpShortcuts />
       {content}
       <Outlet />
     </PageContainer>

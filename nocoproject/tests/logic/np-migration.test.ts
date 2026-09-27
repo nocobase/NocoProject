@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * The Phase 0 migration and seed against a real PostgreSQL: up, indexes (including the partial pending-run index),
- * seed idempotency, down, and up again.
+ * The NocoProject migrations and seeds against a real PostgreSQL: up, indexes (including the partial pending-run
+ * index), seed idempotency, down, and up again; each iteration's batch rolls back alone.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { createMigrator, createSeeder } from '@nocobase/db';
@@ -9,6 +9,7 @@ import { createMigrator, createSeeder } from '@nocobase/db';
 import {
   MIGRATIONS_DIR,
   NP_PHASE1_ITER2_TABLES,
+  NP_PHASE1_ITER3_TABLES,
   NP_PHASE1_TABLES,
   NP_TABLES,
   SEEDS_DIR,
@@ -195,6 +196,50 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     await db!.knex.raw(`DELETE FROM "${db!.schema}".approval_requests`);
   });
 
+  it('adds the iteration 3 knowledge tables and list indexes', async () => {
+    expect(await tables(db!)).toEqual(
+      expect.arrayContaining([...NP_PHASE1_ITER3_TABLES]),
+    );
+    const defs = await indexes(db!);
+    expect(defs.get('np_knowledge_docs_project_slug_unique')).toMatch(
+      /UNIQUE.*\(project_id, slug\)/u,
+    );
+    expect(defs.get('np_knowledge_doc_versions_unique')).toMatch(
+      /UNIQUE.*\(doc_id, version\)/u,
+    );
+    expect(defs.get('np_knowledge_proposals_status_project_idx')).toContain(
+      '(status, project_id)',
+    );
+    expect(defs.get('np_issues_project_status_updated_idx')).toContain(
+      '(project_id, status_key, updated_at)',
+    );
+    expect(defs.get('np_issues_owner_status_idx')).toContain(
+      '(owner_user_id, status_key)',
+    );
+    expect(defs.get('np_issues_executor_status_idx')).toContain(
+      '(executor_type, executor_id, status_key)',
+    );
+    expect(defs.get('np_activities_issue_created_idx')).toContain(
+      '(issue_id, created_at',
+    );
+    expect(defs.get('np_inbox_items_user_kind_resolved_idx')).toContain(
+      '(user_id, kind, resolved_at, created_at',
+    );
+    // System-level documents store project_id '' so the unique index covers them.
+    const insert = (id: string, projectId: string) =>
+      db!.knex.raw(
+        `INSERT INTO "${db!.schema}".knowledge_docs (id, project_id, title, slug, content, version, updated_by_type,
+           created_at, updated_at) VALUES (?, ?, 't', 'same', '', 1, 'user', now(), now())`,
+        [id, projectId],
+      );
+    await insert('k1', '');
+    await expect(insert('k2', '')).rejects.toThrow(
+      /np_knowledge_docs_project_slug_unique/u,
+    );
+    await insert('k3', 'p1');
+    await db!.knex.raw(`DELETE FROM "${db!.schema}".knowledge_docs`);
+  });
+
   it('enforces one pending run per agent, subject and thread scope', async () => {
     const insert = (id: string, status: string, scope: string | null) =>
       db!.knex.raw(
@@ -223,6 +268,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
         '2026092900002_np_workflow_with_approval',
         '2026092900003_np_iter2_page_grants',
         '2026092900004_np_github_settings_grant',
+        '2026093000002_np_iter3_page_grants',
       ]),
     );
     const workflows = (await db!.knex.raw(
@@ -261,6 +307,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026093000001_np_phase1_iter3',
       '2026092900001_np_phase1_iter2',
       '2026092800001_np_phase1_iter1',
       '2026092700001_np_phase0',
@@ -270,6 +317,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
       ...NP_TABLES,
       ...PHASE1_ALL_TABLES,
       ...NP_PHASE1_ITER2_TABLES,
+      ...NP_PHASE1_ITER3_TABLES,
     ])
       expect(remaining).not.toContain(table);
     const defs = await indexes(db!);
@@ -282,13 +330,48 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     expect((await indexes(db!)).has('np_runs_pending_unique')).toBe(true);
   });
 
-  it('rolls back the iteration 2 batch alone', async () => {
+  it('rolls back the iteration 3 batch alone', async () => {
     await migrator().rollback();
+    await migrator().upTo('2026092900001_np_phase1_iter2');
+    const applied = await migrator().latest();
+    expect(applied.executed).toEqual(['2026093000001_np_phase1_iter3']);
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual(['2026093000001_np_phase1_iter3']);
+    const remaining = await tables(db!);
+    for (const table of NP_PHASE1_ITER3_TABLES)
+      expect(remaining).not.toContain(table);
+    expect(remaining).toEqual(
+      expect.arrayContaining([...NP_PHASE1_ITER2_TABLES]),
+    );
+    const defs = await indexes(db!);
+    for (const name of [
+      'np_issues_project_status_updated_idx',
+      'np_issues_owner_status_idx',
+      'np_issues_executor_status_idx',
+      'np_issues_updated_idx',
+      'np_activities_issue_created_idx',
+      'np_inbox_items_user_kind_resolved_idx',
+    ])
+      expect(defs.has(name)).toBe(false);
+    expect(defs.has('np_approval_requests_pending_unique')).toBe(true);
+    await migrator().latest();
+  });
+
+  it('rolls back an iteration 2 + 3 batch and keeps iteration 1', async () => {
+    // Start from an empty schema whatever batches the previous cases left.
+    while ((await migrator().rollback()).rolledBack.length > 0);
     await migrator().upTo('2026092800001_np_phase1_iter1');
     const applied = await migrator().latest();
-    expect(applied.executed).toEqual(['2026092900001_np_phase1_iter2']);
+    expect(applied.executed).toEqual([
+      '2026092900001_np_phase1_iter2',
+      '2026093000001_np_phase1_iter3',
+    ]);
+    // Applied together, they are one batch: rollback reverts iteration 3 first, then iteration 2.
     const rolledBack = await migrator().rollback();
-    expect(rolledBack.rolledBack).toEqual(['2026092900001_np_phase1_iter2']);
+    expect(rolledBack.rolledBack).toEqual([
+      '2026093000001_np_phase1_iter3',
+      '2026092900001_np_phase1_iter2',
+    ]);
     const remaining = await tables(db!);
     for (const table of NP_PHASE1_ITER2_TABLES)
       expect(remaining).not.toContain(table);

@@ -1,6 +1,7 @@
 import type { AppResource } from './en-US.js';
 import npCollabZhCN from './np-zh-CN.js';
 import npIter2ZhCN from './np-iter2-zh-CN.js';
+import npIter3ZhCN from './np-iter3-zh-CN.js';
 
 const zhCN: AppResource = {
   'auth.welcome': '欢迎回来',
@@ -128,12 +129,13 @@ const zhCN: AppResource = {
     projects: '项目',
     agents: 'Agent',
     runtimes: '运行时',
-    members: '成员',
-    intake: '批量录入',
+    myIssues: '我的任务',
+    work: '工作',
+    agentTeam: 'Agent 团队',
     skills: '技能',
-    usage: '用量统计',
-    github: 'GitHub',
-    nocoproject: 'NocoProject',
+    knowledge: '知识库',
+    reports: '报表',
+    config: '设置',
     open: '打开导航',
     close: '关闭导航',
     expand: '展开导航',
@@ -163,6 +165,7 @@ const zhCN: AppResource = {
   np: {
     ...npCollabZhCN,
     ...npIter2ZhCN,
+    ...npIter3ZhCN,
     common: {
       online: '在线',
       offline: '离线',
@@ -227,6 +230,7 @@ const zhCN: AppResource = {
       title: '任务',
       description: '人和编码 Agent 的工作。把 Agent 设为执行者即可开始运行。',
       new: '新建任务',
+      moreCreate: '更多创建方式',
       searchPlaceholder: '按标题或编号搜索',
       searchLabel: '搜索任务',
       statusFilterLabel: '按状态筛选',
@@ -288,6 +292,7 @@ const zhCN: AppResource = {
       title: '动态',
       empty: '暂无动态。',
       system: '系统',
+      loadOlder: '加载更早的动态',
       actions: {
         created: '创建了任务',
         statusChanged: '修改了状态',
@@ -319,6 +324,10 @@ const zhCN: AppResource = {
         skillsChanged: '修改了技能',
         intakeConfirmed: '从批量录入创建了任务',
         intakeReverted: '撤回了批量录入',
+        knowledgeProposed: '建议修改知识库',
+        knowledgeUpdated: '根据建议更新了知识库',
+        deliveryAccepted: '接受了交付',
+        changesRequested: '要求修改',
         updated: '更新了任务',
       },
       run: {

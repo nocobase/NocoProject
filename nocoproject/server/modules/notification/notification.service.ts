@@ -20,10 +20,13 @@
  * | approval_decided    | info     | requester (member), else the owner | the request was approved or rejected      |
  * | pr_review           | decision | owner              | a ready PR on an issue executed by an agent               |
  * | pr_merged           | info     | subscribers        | a linked PR was merged                                    |
+ * | knowledge_proposal  | decision | project lead(s), else owner/admin | an agent proposed a knowledge change (iteration 3) |
+ * | knowledge_decided   | info     | source issue owner | the proposal was accepted or rejected                     |
  *
  * Nobody is notified of their own action. Decision items resolve when the matching action is done (status leaves
  * in_review / blocked; every proposal on the parent decided; the approval request decided or cancelled; the PR merged
- * or closed); `run_failed` items are archived when the issue reaches in_review or a terminal status. Every recipient
+ * or closed; the knowledge proposal decided; a delivery accepted or sent back — iteration 3). `agent_blocked` also
+ * resolves for a member who replies on the issue (not a `/note`) and for everyone when the executor changes. `run_failed` items are archived when the issue reaches in_review or a terminal status. Every recipient
  * gets `inbox.changed` (realtime `np:inbox`). `body` is an English fallback; `payload` carries what the browser
  * renders from (`type` + `payload`), including `identifier` and `issueTitle` on every item.
  */
@@ -31,6 +34,7 @@ import type { Tx } from '../shared/db.js';
 import { str, unique } from '../shared/db.js';
 import type { DomainEvent, EventActor } from '../shared/events.js';
 import type { IssueV1 } from '../shared/protocol.js';
+import { isNote } from '../collaboration/mentions.js';
 import { findIssue } from '../issue/issue.records.js';
 import {
   onApprovalDecided,
@@ -44,6 +48,11 @@ import {
   archiveRunFailed,
   resolveItems,
 } from './inbox.store.js';
+import {
+  onDeliveryDecided,
+  onKnowledgeDecided,
+  onKnowledgeProposed,
+} from './knowledge-notices.js';
 import { Round, type NotificationDeps } from './round.js';
 
 export type { NotificationDeps } from './round.js';
@@ -154,6 +163,14 @@ async function onIssueUpdated(
       payload: { from: changes.owner.from, fromName },
     });
   }
+  // A reassigned issue no longer waits on the blocked agent (iteration 3 §E `reassign`).
+  if (changes.executor)
+    round.touch(
+      await resolveItems(round.tx, {
+        type: 'agent_blocked',
+        issueId: issue.id,
+      }),
+    );
   if (changes.executor?.to.type === 'user' && changes.executor.to.id) {
     await round.subscribe(issue.id, [changes.executor.to.id], 'executor');
     await round.notify(issue, [changes.executor.to.id], actor, {
@@ -192,10 +209,20 @@ async function onComment(
     .select('content')
     .where('id', '=', event.commentId)
     .executeTakeFirst();
+  const content = str(comment?.content) ?? '';
+  // A member's reply to a blocked agent is their decision (iteration 3 §E `reply`); a note does not reach the agent.
+  if (actor.type === 'user' && !isNote(content))
+    round.touch(
+      await resolveItems(round.tx, {
+        type: 'agent_blocked',
+        issueId: issue.id,
+        userId: actor.id,
+      }),
+    );
   const payload = {
     commentId: event.commentId,
     source: 'comment',
-    excerpt: (str(comment?.content) ?? '').slice(0, EXCERPT_LENGTH),
+    excerpt: content.slice(0, EXCERPT_LENGTH),
   };
   await round.notify(issue, mentioned, actor, {
     type: 'mentioned',
@@ -368,6 +395,12 @@ async function handle(round: Round, event: DomainEvent): Promise<void> {
       return onPullRequestMerged(round, event);
     case 'pr.closed':
       return onPullRequestClosed(round, event);
+    case 'knowledge.proposed':
+      return onKnowledgeProposed(round, event);
+    case 'knowledge.decided':
+      return onKnowledgeDecided(round, event);
+    case 'delivery.decided':
+      return onDeliveryDecided(round, event);
     default:
       return;
   }

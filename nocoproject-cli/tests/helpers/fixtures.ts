@@ -63,3 +63,15 @@ export function iter2Run(overrides: Partial<ClaimedRunV1['issue']> = {}, agent: 
     },
   };
 }
+
+/** A claimed run carrying the iteration-3 knowledge index (one project and one system document). */
+export function iter3Run(overrides: Partial<ClaimedRunV1> = {}): ClaimedRunV1 {
+  return {
+    ...iter2Run(),
+    knowledge: [
+      { id: 'kd1', slug: 'api-conventions', title: 'API conventions', summary: 'Error envelope,\npagination and naming rules.', projectId: 'p1' },
+      { id: 'kd2', slug: 'release-process', title: 'Release process', summary: '', projectId: null },
+    ],
+    ...overrides,
+  };
+}

@@ -3,6 +3,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo } from 'react';
 import { Link, useLocation } from 'react-router';
 
+import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpLabelChip } from '@/components/np-labels';
 
 import { DataTableColumnHeader } from '@/components/data-table-column-header';
@@ -16,8 +17,13 @@ import { ISSUE_PRIORITIES } from '../constants.js';
 import { useNpFormatters } from '../format.js';
 import type { IssueListItem } from '../types.js';
 
-/** Column definitions for the issue list. The identifier links to the detail page so rows are keyboard-reachable. */
-export function useIssueColumns(): ColumnDef<IssueListItem, unknown>[] {
+/**
+ * Column definitions for the issue list. The identifier links to the detail page so rows are keyboard-reachable:
+ * beside the list (keeping its query string), or under `detailBase` for a page such as `/my-issues`.
+ */
+export function useIssueColumns(
+  detailBase?: string,
+): ColumnDef<IssueListItem, unknown>[] {
   const { t } = useTranslation();
   const format = useNpFormatters();
   const { search } = useLocation();
@@ -38,7 +44,11 @@ export function useIssueColumns(): ColumnDef<IssueListItem, unknown>[] {
           a.original.identifier.localeCompare(b.original.identifier),
         cell: ({ row }) => (
           <Link
-            to={{ pathname: encodeURIComponent(row.original.id), search }}
+            to={
+              detailBase
+                ? `${detailBase}/${encodeURIComponent(row.original.id)}`
+                : { pathname: encodeURIComponent(row.original.id), search }
+            }
             onClick={(event) => event.stopPropagation()}
             className='font-mono text-xs text-muted-foreground hover:text-foreground hover:underline'
           >
@@ -92,7 +102,13 @@ export function useIssueColumns(): ColumnDef<IssueListItem, unknown>[] {
         header: t('np.issues.columns.owner'),
         cell: ({ row }) =>
           row.original.ownerName ? (
-            <span className='text-sm'>{row.original.ownerName}</span>
+            <NpActorAvatar
+              type='user'
+              name={row.original.ownerName}
+              size='xs'
+              showName
+              className='text-sm'
+            />
           ) : (
             <span className='text-muted-foreground'>—</span>
           ),
@@ -128,6 +144,6 @@ export function useIssueColumns(): ColumnDef<IssueListItem, unknown>[] {
         ),
       },
     ],
-    [t, format, search],
+    [t, format, search, detailBase],
   );
 }

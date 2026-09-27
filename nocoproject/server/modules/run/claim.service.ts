@@ -1,6 +1,7 @@
 /**
  * Batch claim for a daemon (protocol.md §4 `runs/claim`). Iteration 2 adds `agent.env` (decrypted — this payload only
- * travels on the daemon route), `agent.skills`, `issue.executionMode` and `issue.pullRequests`.
+ * travels on the daemon route), `agent.skills`, `issue.executionMode` and `issue.pullRequests`; iteration 3 the
+ * `knowledge` index (the run's project documents, then system-level ones; no content) from the knowledge service.
  *
  * Each claimed run is its own short transaction: runtime advisory lock → claim SQL → run token insert. The payload
  * for the daemon is assembled after commit; if that fails the run stays `dispatched` and the lease rule re-queues it.
@@ -25,6 +26,7 @@ import {
   type ClaimedRun,
   type ClaimedRunPhase1Extras,
   type ClaimedRunPhase2Extras,
+  type ClaimedRunPhase3Extras,
   type ClaimedTriggerComment,
   type DaemonClaimRequest,
   type DaemonClaimResponse,
@@ -32,6 +34,7 @@ import {
 } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
 import { claimEnv } from '../agent/env.service.js';
+import type { KnowledgeService } from '../knowledge/knowledge.service.js';
 import { claimedPullRequests } from '../git/git.records.js';
 import { findIssue, issueRef } from '../issue/issue.records.js';
 import { claimSkills } from '../skill/skill.service.js';
@@ -67,12 +70,16 @@ export interface ClaimDeps {
   readonly users: UserDirectory;
   readonly workflows: WorkflowService;
   readonly secrets: SecretBox;
+  /** Iteration 3: the knowledge index of the claim payload. */
+  readonly knowledge: () => KnowledgeService;
 }
 
 /** A claim payload with the iteration-1 extras merged in (contract §I). */
 export type ClaimedRunV1 = ClaimedRun & ClaimedRunPhase1Extras;
 /** ...and the iteration-2 extras (iteration-2 contract §L). */
 export type ClaimedRunV2 = ClaimedRunV1 & ClaimedRunPhase2Extras;
+/** ...and the iteration-3 `knowledge` index (iteration-3 contract §B). */
+export type ClaimedRunV3 = ClaimedRunV2 & ClaimedRunPhase3Extras;
 
 async function delegationTargets(
   conn: Conn,
@@ -209,7 +216,7 @@ async function buildClaimedRun(
   runId: string,
   token: string,
   serverUrl: string,
-): Promise<ClaimedRunV2 | null> {
+): Promise<ClaimedRunV3 | null> {
   const conn = deps.tx.read();
   const run = await findRun(conn, runId);
   if (!run || !run.runtimeId) return null;
@@ -296,6 +303,7 @@ async function buildClaimedRun(
     },
     server: { url: serverUrl, protocolVersion: PROTOCOL_VERSION },
     leaseSeconds: CLAIM_LEASE_SECONDS,
+    knowledge: await deps.knowledge().claimIndex(conn, issue.projectId),
   };
 }
 
@@ -334,7 +342,7 @@ export function createClaimService(deps: ClaimDeps): ClaimService {
           claimed.push(result);
         }
       }
-      const runs: ClaimedRunV2[] = [];
+      const runs: ClaimedRunV3[] = [];
       for (const { runId, token } of claimed) {
         const payload = await buildClaimedRun(deps, runId, token, serverUrl);
         if (payload) runs.push(payload);

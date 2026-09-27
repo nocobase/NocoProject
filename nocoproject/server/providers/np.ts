@@ -1,31 +1,30 @@
 /**
- * NocoProject provider: binds every module service to its token, connects domain events to realtime topics, registers
- * the `np-members`, `np-settings` and `np-github` settings items with the authorization plugin (titles are
- * i18n keys in the application namespace), and runs the run sweeper every 30 seconds (which also purges old webhook
- * delivery records).
+ * NocoProject provider: binds every module service to its token, connects domain events to realtime topics and runs
+ * the run sweeper every 30 seconds (which also purges old webhook delivery records).
  *
  * Iteration 2: the secret key for stored secrets comes from the `nocoproject` configuration section
  * (`NOCOPROJECT_SECRET_KEY`), falling back to a key derived from `auth.secret` with a warning; the AI intake parser is
  * built from the AI employee plugin's agent factory when that plugin is registered.
  *
- * Page grants for the NocoProject pages (and `read` on the settings items) are given to the default `member`
- * permission set once, by the seeds `2026092800003_np_member_page_grants`, `2026092900003_np_iter2_page_grants` and
- * `2026092900004_np_github_settings_grant`, so administrators can still edit them.
+ * Iteration 3 (docs/phase1/iteration-3-contract.md §A, §G): the settings items `np-members`, `np-settings` and
+ * `np-github` are no longer registered — settings moved into the application's own `/config` page (page `np-config`).
+ * The members, settings and GitHub APIs keep enforcing owner/admin themselves.
+ *
+ * Page grants for the NocoProject pages are given to the default `member` permission set once, by the seeds
+ * `2026092800003_np_member_page_grants`, `2026092900003_np_iter2_page_grants`, `2026092900004_np_github_settings_grant`
+ * and `2026093000002_np_iter3_page_grants`, so administrators can still edit them.
  */
 import {
-  agentServiceFactoryToken,
-  aiConversationsManagerToken,
+  aiManagerToken,
   type AIApplicationConfig,
 } from '@nocobase/app-plugin-ai-employee/server';
 import type { AuthConfig } from '@nocobase/app-plugin-authentication/server';
-import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
 import type { Application } from '@nocobase/app-server/application';
 import { idGeneratorToken } from '@nocobase/app-server/id-generator';
 import { loggingToken } from '@nocobase/app-server/logging';
 import { realtimeServiceToken } from '@nocobase/app-server/realtime';
 import { createCronJobManager, type CronJobManager } from '@nocobase/cron';
 import { databaseManagerToken } from '@nocobase/db';
-import { APP_NS } from '@nocobase/i18n';
 import {
   createServiceToken,
   ServiceProvider,
@@ -44,6 +43,9 @@ import {
   type AiIntakeParser,
 } from '../modules/intake/ai-parser.js';
 import type { IntakeService } from '../modules/intake/intake.service.js';
+import type { DeliveryService } from '../modules/issue/delivery.service.js';
+import type { KnowledgeService } from '../modules/knowledge/knowledge.service.js';
+import type { MetricsService } from '../modules/metrics/metrics.service.js';
 import type { ApprovalGateway } from '../modules/shared/approval.js';
 import {
   createSecretBox,
@@ -152,17 +154,12 @@ export const npWorkspaceSettingsServiceToken: ServiceToken<WorkspaceSettingsServ
     'nocoproject/workspace-settings-service',
   );
 
-/** The settings item the members settings page declares (`settings:np-members`). */
-export const NP_MEMBERS_SETTINGS_ID = 'np-members';
-/** Iteration 2: workspace settings (`/settings/nocoproject`) and the GitHub connection page. */
-export const NP_SETTINGS_SETTINGS_ID = 'np-settings';
-export const NP_GITHUB_SETTINGS_ID = 'np-github';
-
-/**
- * Titles are keys in the application's locale (`client/locales/en-US.ts` `navigation.*`, the same keys the settings
- * routes use), translated where they are shown (iteration 2 §K).
- */
-const title = (key: string) => ({ key, ns: APP_NS });
+export const npKnowledgeServiceToken: ServiceToken<KnowledgeService> =
+  createServiceToken<KnowledgeService>('nocoproject/knowledge-service');
+export const npMetricsServiceToken: ServiceToken<MetricsService> =
+  createServiceToken<MetricsService>('nocoproject/metrics-service');
+export const npDeliveryServiceToken: ServiceToken<DeliveryService> =
+  createServiceToken<DeliveryService>('nocoproject/delivery-service');
 
 /** Binds a module token to the member of `NpServices` it exposes. */
 function bindModule<K extends keyof NpServices>(
@@ -230,6 +227,9 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npSkillServiceToken, 'skills');
     bindModule(container, npUsageServiceToken, 'usage');
     bindModule(container, npWorkspaceSettingsServiceToken, 'workspaceSettings');
+    bindModule(container, npKnowledgeServiceToken, 'knowledge');
+    bindModule(container, npMetricsServiceToken, 'metrics');
+    bindModule(container, npDeliveryServiceToken, 'deliveries');
   }
 
   /** The key for stored secrets (see `shared/crypto.ts`); warns once when it is derived from `auth.secret`. */
@@ -247,83 +247,41 @@ export default class NpProvider extends ServiceProvider<Application> {
   }
 
   /**
-   * The AI intake parser over the AI employee plugin: a conversation owned by the member, then a fixed agent with no
-   * tools, run as that member (no roles, not root). Null when the plugin is not registered.
+   * The AI intake parser as one direct model call on the first enabled LLM service (runtime-extensions.md §"A direct
+   * model call"): no conversation, no tool loop. The plugin's agent path with a tool-bound `responseFormat` made
+   * DeepSeek answer with guesses, while the plain "reply with JSON" instruction is answered faithfully. Null when the
+   * plugin is not registered.
    */
   private aiIntakeParser(): AiIntakeParser | null {
     const { container } = this.app;
-    if (
-      !container.has(agentServiceFactoryToken) ||
-      !container.has(aiConversationsManagerToken)
-    )
-      return null;
-    const logger = container.has(loggingToken)
-      ? container.resolve(loggingToken).getLogger('nocoproject')
-      : undefined;
+    if (!container.has(aiManagerToken)) return null;
     return createAiIntakeParser({
-      createSession: async (userId, sessionTitle) =>
-        (
-          await container
-            .resolve(aiConversationsManagerToken)
-            .create({ userId, title: sessionTitle })
-        ).sessionId,
-      createAgent: async ({ sessionId, userId, systemPrompt }) => {
-        const agent = await container
-          .resolve(agentServiceFactoryToken)
-          .createAgent({
-            sessionId,
-            systemPrompt,
-            tools: [],
-            actor: { id: userId, roles: [], isRoot: false },
-            runtime: { logger: logger as never },
-          });
-        return {
-          invoke: async (request) => await agent.invoke(request),
-        };
-      },
+      // A direct call has no conversation, so there is no session to record.
+      createSession: async () => '',
+      createAgent: async ({ systemPrompt }) => ({
+        invoke: async ({ userMessages }) => {
+          const ai = container.resolve(aiManagerToken);
+          const model = await ai.llmProviderManager.resolveModel();
+          const { provider } = await ai.llmProviderManager.getLLMService(model);
+          const reply = (await provider.invoke({
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...userMessages,
+            ],
+          } as never)) as { content?: unknown } | null;
+          return { message: { content: reply?.content } };
+        },
+      }),
     });
   }
 
   public override async boot(): Promise<void> {
     const { container } = this.app;
-    this.registerSettingsItem();
     if (!container.has(realtimeServiceToken)) return;
     this.topics = connectRealtime(
       container.resolve(realtimeServiceToken),
       container.resolve(npServicesToken).bus,
     );
-  }
-
-  /**
-   * `settings:np-members` (contract §B): every member may open the page (granted by the seed); the members API
-   * itself only lets owners and admins change roles. Re-registering an identical item is a no-op.
-   */
-  private registerSettingsItem(): void {
-    const { container } = this.app;
-    if (!container.has(authorizationToken)) return;
-    const authz = container.resolve(authorizationToken);
-    if (!authz.ui.sections.has('nocoproject'))
-      authz.ui.sections.add({
-        name: 'nocoproject',
-        title: title('navigation.nocoproject'),
-        parent: 'administration',
-      });
-    const items = [
-      { id: NP_MEMBERS_SETTINGS_ID, key: 'navigation.members' },
-      { id: NP_SETTINGS_SETTINGS_ID, key: 'navigation.nocoproject' },
-      { id: NP_GITHUB_SETTINGS_ID, key: 'navigation.github' },
-    ];
-    for (const item of items) {
-      authz.settings.add({
-        id: item.id,
-        title: title(item.key),
-        actions: [{ name: 'read', title: 'Open' }],
-      });
-      authz.ui.place(
-        { type: 'settings', id: item.id },
-        { section: 'nocoproject' },
-      );
-    }
   }
 
   public override async start(): Promise<void> {

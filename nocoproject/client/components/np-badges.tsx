@@ -1,13 +1,14 @@
 import { useTranslation } from '@nocobase/i18n/client';
-import { BotIcon, UserIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 
+import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
-  CATEGORY_BADGE,
+  LABEL_DOT_CLASS,
   RUN_BADGE,
   statusCategory,
+  statusColor,
   statusLabelKey,
 } from '@/pages/np/constants';
 import type {
@@ -17,7 +18,10 @@ import type {
   StatusCatalogEntry,
 } from '@/pages/np/types';
 
-/** An issue status as a Badge whose variant follows the status category. */
+/**
+ * An issue status: an outline Badge with a dot in the status's color from the catalog (the workflow's color, §H 4).
+ * The name carries the meaning; a closed status is also struck through.
+ */
 export function NpStatusBadge({
   statusKey,
   catalog,
@@ -31,12 +35,20 @@ export function NpStatusBadge({
   const category = statusCategory(statusKey, catalog);
   return (
     <Badge
-      variant={CATEGORY_BADGE[category]}
+      variant='outline'
+      data-status={statusKey}
       className={cn(
         category === 'closed' && 'text-muted-foreground line-through',
         className,
       )}
     >
+      <span
+        aria-hidden='true'
+        className={cn(
+          'size-1.5 shrink-0 rounded-full',
+          LABEL_DOT_CLASS[statusColor(statusKey, catalog)],
+        )}
+      />
       {t(statusLabelKey(statusKey), { defaultValue: statusKey })}
     </Badge>
   );
@@ -139,13 +151,9 @@ export function NpExecutor({
       </span>
     );
   }
-  const Icon = type === 'agent' ? BotIcon : UserIcon;
   return (
     <span className='inline-flex min-w-0 items-center gap-1.5 text-sm'>
-      <Icon
-        className='size-3.5 shrink-0 text-muted-foreground'
-        aria-hidden='true'
-      />
+      <NpActorAvatar type={type} name={name} size='xs' />
       <span className='truncate'>{name}</span>
       {type === 'agent' ? (
         <Badge variant='outline'>{t('np.executor.agentMarker')}</Badge>

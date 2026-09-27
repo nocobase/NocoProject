@@ -7,7 +7,7 @@ import { unique } from '../shared/db.js';
 import type { EventActor } from '../shared/events.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
-  InboxItemTypeV2,
+  InboxItemTypeV3,
   InboxKind,
   IssueV1,
 } from '../shared/protocol.js';
@@ -23,7 +23,7 @@ export interface NotificationDeps {
 }
 
 export interface Notice {
-  readonly type: InboxItemTypeV2;
+  readonly type: InboxItemTypeV3;
   readonly kind: InboxKind;
   readonly body: string;
   readonly payload?: Readonly<Record<string, unknown>>;

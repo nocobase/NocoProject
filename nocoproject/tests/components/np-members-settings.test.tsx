@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import locales from '../../client/locales/index.js';
-import MembersSettingsPage from '../../client/pages/np/settings/members.js';
+import MembersSettingsPage from '../../client/pages/np/config/members.js';
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
 

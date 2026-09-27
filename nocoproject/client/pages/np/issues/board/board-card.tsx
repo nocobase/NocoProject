@@ -120,11 +120,11 @@ export function BoardCard({
   } = useSortable({ id: issue.id, data: { statusKey: issue.statusKey } });
 
   return (
-    <li
+    <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        'cursor-grab touch-none list-none rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing',
+        'cursor-grab touch-none rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing',
         isDragging && 'opacity-40',
       )}
       {...attributes}
@@ -133,6 +133,6 @@ export function BoardCard({
       {...listeners}
     >
       <BoardCardFace issue={issue} issueLink={issueLink} />
-    </li>
+    </div>
   );
 }

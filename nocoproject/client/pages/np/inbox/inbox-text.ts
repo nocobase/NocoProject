@@ -36,7 +36,7 @@ export function inboxBodyText(
     values: { actor, ...values },
   });
 
-  switch (item.type) {
+  switch (item.type as string) {
     case 'review_requested':
       return to ? key('review_requested', { to: status(to) }) : null;
     case 'status_changed':
@@ -91,6 +91,22 @@ export function inboxBodyText(
       return typeof number === 'number' && repo
         ? key(item.type, { repo, number })
         : null;
+    }
+    // Iteration 3 §B: an agent's knowledge proposal, and its outcome for the source issue's owner.
+    case 'knowledge_proposal': {
+      const doc = text(payload.docTitle) ?? text(payload.title);
+      if (!doc) return null;
+      return payload.isNew === true
+        ? key('knowledge_proposal_new', { doc })
+        : key('knowledge_proposal', { doc });
+    }
+    case 'knowledge_decided': {
+      const doc = text(payload.docTitle) ?? text(payload.title);
+      const decision = text(payload.decision) ?? text(payload.status);
+      if (!doc || (decision !== 'accepted' && decision !== 'rejected')) {
+        return null;
+      }
+      return key(`knowledge_${decision}`, { doc });
     }
     default:
       return null;

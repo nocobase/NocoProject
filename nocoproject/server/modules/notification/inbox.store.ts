@@ -21,17 +21,18 @@ import {
 import type { IdSource } from '../shared/ids.js';
 import type {
   ActorType,
-  InboxItemTypeV2,
-  InboxItemV2,
+  InboxItemTypeV3,
+  InboxItemV3,
   InboxKind,
   SubscriptionReason,
 } from '../shared/protocol.js';
 import { issuesByIds } from '../issue/issue.records.js';
+import { inboxActions } from './inbox.actions.js';
 
 export interface NewInboxItem {
   readonly userId: string;
   readonly kind: InboxKind;
-  readonly type: InboxItemTypeV2;
+  readonly type: InboxItemTypeV3;
   readonly issueId: string | null;
   readonly title: string;
   readonly body: string;
@@ -44,7 +45,7 @@ export interface NewInboxItem {
 
 export function dedupeKey(
   userId: string,
-  type: InboxItemTypeV2,
+  type: InboxItemTypeV3,
   issueId: string | null,
 ): string {
   return `user:${userId}:${type}:${issueId ?? '-'}`;
@@ -117,28 +118,52 @@ export async function deliver(
   return item.userId;
 }
 
-/** Resolves unresolved items of `type` on an issue; returns the affected users. */
+/** Resolves unresolved items of `type` on an issue (only `userId`'s when given); returns the affected users. */
 export async function resolveItems(
   tx: Tx,
-  filter: { type: InboxItemTypeV2; issueId: string },
+  filter: { type: InboxItemTypeV3; issueId: string; userId?: string | null },
 ): Promise<string[]> {
-  const rows = await tx.conn.query
+  let select = tx.conn.query
     .selectFrom('inboxItems')
-    .select('userId')
+    .select(['id', 'userId'])
     .where('type', '=', filter.type)
     .where('issueId', '=', filter.issueId)
-    .where('resolvedAt', 'is', null)
-    .execute();
+    .where('resolvedAt', 'is', null);
+  if (filter.userId) select = select.where('userId', '=', filter.userId);
+  return resolveRows(tx, await select.execute());
+}
+
+async function resolveRows(
+  tx: Tx,
+  rows: readonly Record<string, unknown>[],
+): Promise<string[]> {
   if (rows.length === 0) return [];
   const timestamp = now();
   await tx.conn.query
     .updateTable('inboxItems')
     .set({ resolvedAt: timestamp, updatedAt: timestamp })
-    .where('type', '=', filter.type)
-    .where('issueId', '=', filter.issueId)
+    .where('id', 'in', unique(rows.map((row) => str(row.id))))
     .where('resolvedAt', 'is', null)
     .execute();
   return unique(rows.map((row) => str(row.userId)));
+}
+
+/** Resolves unresolved items of `type` whose dedupe key ends with `suffix` (cards keyed by something other than the issue). */
+export async function resolveByDedupeSuffix(
+  tx: Tx,
+  type: InboxItemTypeV3,
+  suffix: string,
+): Promise<string[]> {
+  const rows = await tx.conn.query
+    .selectFrom('inboxItems')
+    .select(['id', 'userId', 'dedupeKey'])
+    .where('type', '=', type)
+    .where('resolvedAt', 'is', null)
+    .execute();
+  return resolveRows(
+    tx,
+    rows.filter((row) => (str(row.dedupeKey) ?? '').endsWith(suffix)),
+  );
 }
 
 /** Archives the issue's live `run_failed` items (the issue reached review or a terminal status). */
@@ -256,21 +281,33 @@ export async function activeSubscribers(
 export async function mapInboxItems(
   conn: Conn,
   rows: readonly Record<string, unknown>[],
-): Promise<InboxItemV2[]> {
+): Promise<InboxItemV3[]> {
   const issues = await issuesByIds(
     conn,
     rows.map((row) => str(row.issueId)),
   );
   return rows.map((row) => {
     const issueId = str(row.issueId);
+    const type = (str(row.type) ?? 'commented') as InboxItemTypeV3;
+    const issueIdentifier = issueId
+      ? (issues.get(issueId)?.identifier ?? null)
+      : null;
+    const stored = fromJson<Record<string, unknown>>(row.payload);
+    const resolvedAt = isoOrNull(row.resolvedAt);
+    // Iteration 3 §E: actions are computed on read, so items written earlier get them too.
+    const actions = inboxActions({
+      type,
+      issueId,
+      issueIdentifier,
+      payload: stored,
+      resolvedAt,
+    });
     return {
       id: str(row.id) ?? '',
       kind: row.kind === 'decision' ? 'decision' : 'info',
-      type: (str(row.type) ?? 'commented') as InboxItemTypeV2,
+      type,
       issueId,
-      issueIdentifier: issueId
-        ? (issues.get(issueId)?.identifier ?? null)
-        : null,
+      issueIdentifier,
       title: str(row.title) ?? '',
       body: str(row.body) ?? '',
       actorType: (str(row.actorType) as ActorType | null) ?? null,
@@ -278,8 +315,8 @@ export async function mapInboxItems(
       count: num(row.count, 1),
       readAt: isoOrNull(row.readAt),
       archivedAt: isoOrNull(row.archivedAt),
-      resolvedAt: isoOrNull(row.resolvedAt),
-      payload: fromJson<Record<string, unknown>>(row.payload),
+      resolvedAt,
+      payload: { ...stored, actions },
       createdAt: iso(row.createdAt),
       updatedAt: iso(row.updatedAt),
     };
