@@ -32,7 +32,7 @@ plist 在 `~/Library/LaunchAgents/`，用显式 Node 24 路径（`/opt/homebrew/
 
 ## GitHub
 
-- CI：`.github/workflows/ci.yml`（`app` 带 PostgreSQL 服务容器；`cli`）。main 受分支保护：需要 `app`、`cli` 通过。
+- CI：`.github/workflows/ci.yml`（`app` 带 PostgreSQL 服务容器；`cli`），每次推送与 PR 都跑。分支保护在私有仓库需要 GitHub Pro，未开启；合并前看 PR 上的检查结果。
 - 合并 PR 由负责人做；合并后 webhook 把任务改为 done（`prMergedStatus`）。
 
 ## 设置
