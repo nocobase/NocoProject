@@ -4,6 +4,7 @@ import npCollabEnUS from './np-en-US.js';
 import npIter2EnUS from './np-iter2-en-US.js';
 import npIter3EnUS from './np-iter3-en-US.js';
 import npDesignEnUS from './np-design-en-US.js';
+import npIter4EnUS from './np-iter4-en-US.js';
 
 const enUS = {
   'auth.welcome': 'Welcome back',
@@ -141,6 +142,7 @@ const enUS = {
     agents: 'Agents',
     runtimes: 'Runtimes',
     myIssues: 'My issues',
+    pm: 'Project manager',
     work: 'Work',
     agentTeam: 'Agent team',
     skills: 'Skills',
@@ -178,6 +180,7 @@ const enUS = {
     ...npIter2EnUS,
     ...npIter3EnUS,
     ...npDesignEnUS,
+    ...npIter4EnUS,
     common: {
       online: 'Online',
       offline: 'Offline',
@@ -198,6 +201,8 @@ const enUS = {
     status: {
       backlog: 'Backlog',
       todo: 'Todo',
+      analysis: 'Analysis',
+      proposalReview: 'Proposal review',
       inProgress: 'In progress',
       inReview: 'In review',
       blocked: 'Blocked',
@@ -230,6 +235,8 @@ const enUS = {
       dependencyReleased: 'Unblocked',
       childBatchDone: 'Sub-issues done',
       proposalAccepted: 'Proposal accepted',
+      designApproved: 'Proposal approved',
+      retrospective: 'Retrospective',
     },
     executor: {
       none: 'Unassigned',
@@ -343,6 +350,12 @@ const enUS = {
         knowledgeUpdated: 'updated the knowledge base from a proposal',
         deliveryAccepted: 'accepted the delivery',
         changesRequested: 'requested changes',
+        processSelected: 'set the process',
+        designProposed: 'submitted a design proposal',
+        designApproved: 'approved the proposal',
+        designChangesRequested: 'sent the proposal back',
+        designSkipped: 'skipped the design step',
+        retrospectiveDone: 'wrote the retrospective',
         updated: 'updated the issue',
       },
       run: {
@@ -438,27 +451,6 @@ const enUS = {
         specificUsers: 'Specific people',
         everyone: 'Everyone',
       },
-    },
-    agentForm: {
-      title: 'New agent',
-      description: 'An agent runs one coding tool on one of your runtimes.',
-      name: 'Name',
-      nameRequired: 'Enter a name.',
-      descriptionLabel: 'Description',
-      instructions: 'Instructions',
-      instructionsPlaceholder:
-        'Who this agent is and how it should work. Included in every run.',
-      instructionsRequired: 'Enter the instructions.',
-      runtime: 'Runtime',
-      runtimePlaceholder: 'Choose a runtime',
-      runtimeRequired: 'Choose a runtime.',
-      noRuntimes: 'No runtime is connected yet.',
-      provider: 'Provider',
-      providerPlaceholder: 'From the runtime',
-      model: 'Model',
-      maxConcurrentRuns: 'Max concurrent runs',
-      maxInvalid: 'Enter a whole number from 1 to 100.',
-      created: 'Agent {{name}} created',
     },
     runtimes: {
       title: 'Runtimes',

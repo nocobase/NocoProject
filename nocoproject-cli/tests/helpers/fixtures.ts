@@ -75,3 +75,14 @@ export function iter3Run(overrides: Partial<ClaimedRunV1> = {}): ClaimedRunV1 {
     ...overrides,
   };
 }
+
+/** A claimed run carrying the iteration-4 extras (issue process, design approval, agent kind). */
+export function iter4Run(issue: Partial<ClaimedRunV1['issue']> = {}, agent: Partial<ClaimedRunV1['agent']> = {}, overrides: Partial<ClaimedRunV1> = {}): ClaimedRunV1 {
+  const base = iter3Run();
+  return {
+    ...base,
+    issue: { ...base.issue, process: 'design_first', designApprovedAt: null, designProposal: null, ...issue },
+    agent: { ...base.agent, kind: 'coder', reasoningEffort: null, ...agent },
+    ...overrides,
+  };
+}

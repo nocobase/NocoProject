@@ -5,6 +5,8 @@
  *   codex exec --json --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -C <workDir> [-m model] <prompt>
  * Resume:
  *   codex exec resume --json --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox [-m model] <sessionId> <prompt>
+ * Both add `-c model_reasoning_effort="<effort>"` when the agent has a `reasoningEffort` (codex 0.154 accepts
+ * none / minimal / low / medium / high / xhigh / max).
  * (`exec resume` accepts neither `-s` nor `-C`; the bypass flag is accepted by both. Agents need
  * network access and write access outside the workDir — the repo cache — so no sandbox.)
  * stdin is closed right away: with a piped stdin Codex appends it to the prompt.
@@ -207,8 +209,9 @@ export function codexUsage(state: CodexParseState, model: string | undefined): R
 
 const COMMON_FLAGS = ['--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox'];
 
-export function buildCodexArgs(spec: Pick<RunSpec, 'model' | 'resumeSessionId' | 'prompt' | 'workDir'>): string[] {
+export function buildCodexArgs(spec: Pick<RunSpec, 'model' | 'resumeSessionId' | 'prompt' | 'workDir' | 'reasoningEffort'>): string[] {
   const model = spec.model ? ['-m', spec.model] : [];
+  if (spec.reasoningEffort) model.push('-c', `model_reasoning_effort="${spec.reasoningEffort}"`);
   if (spec.resumeSessionId) return ['exec', 'resume', ...COMMON_FLAGS, ...model, spec.resumeSessionId, spec.prompt];
   return ['exec', ...COMMON_FLAGS, '-C', spec.workDir, ...model, spec.prompt];
 }

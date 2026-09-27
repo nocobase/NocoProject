@@ -23,7 +23,16 @@ function isExecutable(path: string): boolean {
 }
 
 /** Runs `<path> --version` with a timeout and returns the first version-looking line. */
-export function probeVersion(path: string, args: readonly string[] = ['--version'], timeoutMs = 10_000): Promise<string | null> {
+export async function probeVersion(path: string, args: readonly string[] = ['--version'], timeoutMs = 10_000): Promise<string | null> {
+  const out = await probeOutput(path, args, timeoutMs);
+  if (out === null) return null;
+  const line = out.split('\n').map((l) => l.trim()).find((l) => /\d+\.\d+/.test(l));
+  const match = line?.match(/\d+\.\d+(?:\.\d+)?(?:[-+][\w.]+)?/);
+  return match ? match[0] : line ?? null;
+}
+
+/** Runs `<path> <args>` with a timeout and returns stdout + stderr, or null on failure / non-zero exit. */
+export function probeOutput(path: string, args: readonly string[], timeoutMs = 10_000): Promise<string | null> {
   return new Promise((resolve) => {
     let out = '';
     let child: ChildProcess;
@@ -45,10 +54,7 @@ export function probeVersion(path: string, args: readonly string[] = ['--version
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0) return resolve(null);
-      const line = out.split('\n').map((l) => l.trim()).find((l) => /\d+\.\d+/.test(l));
-      const match = line?.match(/\d+\.\d+(?:\.\d+)?(?:[-+][\w.]+)?/);
-      resolve(match ? match[0] : line ?? null);
+      resolve(code === 0 ? out : null);
     });
   });
 }

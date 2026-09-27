@@ -3,7 +3,9 @@ import {
   closestCorners,
   pointerWithin,
 } from '@dnd-kit/core';
+import { issueProcess } from '../../api-iter4.js';
 import { needsStartConfirmation } from '../../start-confirmation.js';
+import { DESIGN_STATUS_KEYS } from '../../types-iter4.js';
 import type {
   BoardGroup,
   IssueListItem,
@@ -20,7 +22,8 @@ export interface BoardColumn {
  * The board's columns: one per status of the workflow, in its order, each holding the issues in that status. Moves
  * still waiting for the server (`overrides`, issue id → target status) are shown in their target column so a card
  * does not jump back while its PATCH is in flight. An issue in a status the catalog does not know gets a trailing
- * column rather than disappearing.
+ * column rather than disappearing. The design-first columns (分析中, 方案待审; iteration 4 §B) show only while one of
+ * them holds an issue or a visible issue follows the design-first process (`withoutIdleDesignColumns`).
  */
 export function buildBoardColumns(
   catalog: readonly StatusCatalogEntry[],
@@ -39,7 +42,23 @@ export function buildBoardColumns(
       columns.set(statusKey, [...(columns.get(statusKey) ?? []), moved]);
     }
   }
-  return [...columns].map(([statusKey, issues]) => ({ statusKey, issues }));
+  return withoutIdleDesignColumns(
+    [...columns].map(([statusKey, issues]) => ({ statusKey, issues })),
+  );
+}
+
+/** Drops the empty design-first columns when no visible issue is design-first (iteration 4 §B). */
+export function withoutIdleDesignColumns(
+  columns: readonly BoardColumn[],
+): BoardColumn[] {
+  const designFirst = columns.some((column) =>
+    column.issues.some((issue) => issueProcess(issue) === 'design_first'),
+  );
+  if (designFirst) return [...columns];
+  return columns.filter(
+    (column) =>
+      !DESIGN_STATUS_KEYS.has(column.statusKey) || column.issues.length > 0,
+  );
 }
 
 export type BoardMovePlan =

@@ -9,7 +9,8 @@
  * An agent may bind only to a runtime the caller owns or a public runtime. Only the owner or an owner/admin may edit
  * an agent, its access list and its delegation list (`agentDelegationGrants`: agents it may hand sub-issues to
  * without a proposal). Setting a delegation target requires access to that target. Iteration 2: `skillIds` mounts
- * skills (`agentSkills`, whole-set replace); rows carry `skillIds` and `skills`.
+ * skills (`agentSkills`, whole-set replace); rows carry `skillIds` and `skills`. Iteration 4: `kind` (coder | manager)
+ * and `reasoningEffort` (`agent.fields.ts`).
  */
 import type { Actor } from '../shared/activity.js';
 import {
@@ -26,16 +27,25 @@ import { iso, isoOrNull, now, num, str, unique } from '../shared/db.js';
 import { invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
-  AgentAccessLevel,
-  AgentListItemV2,
+  AgentListItemV4,
+  AgentPhase4Fields,
   AgentProvider,
   AgentV1,
-  CreateAgentRequestV2,
-  UpdateAgentRequestV2,
+  CreateAgentRequestV4,
+  UpdateAgentRequestV4,
 } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
 import { optionalText, requiredName, stringList } from '../shared/validate.js';
 import { activeRunCounts } from '../run/run.queries.js';
+import {
+  agentKindOf,
+  isAccessLevel,
+  reasoningEffortOf,
+  validateAccess,
+  validateConcurrency,
+  validateKind,
+  validateReasoningEffort,
+} from './agent.fields.js';
 import { isAgentProvider, isOnline } from '../runtime/runtime.records.js';
 import {
   replaceAgentSkills,
@@ -45,14 +55,14 @@ import {
 export const DEFAULT_MAX_CONCURRENT_RUNS = 6;
 
 export interface AgentService {
-  list(actor: Actor): Promise<AgentListItemV2[]>;
-  get(actor: Actor, id: string): Promise<AgentListItemV2>;
-  create(actor: Actor, input: CreateAgentRequestV2): Promise<AgentListItemV2>;
+  list(actor: Actor): Promise<AgentListItemV4[]>;
+  get(actor: Actor, id: string): Promise<AgentListItemV4>;
+  create(actor: Actor, input: CreateAgentRequestV4): Promise<AgentListItemV4>;
   update(
     actor: Actor,
     id: string,
-    patch: UpdateAgentRequestV2,
-  ): Promise<AgentListItemV2>;
+    patch: UpdateAgentRequestV4,
+  ): Promise<AgentListItemV4>;
 }
 
 export interface AgentDeps {
@@ -61,13 +71,9 @@ export interface AgentDeps {
   readonly users: UserDirectory;
 }
 
-function isAccessLevel(value: unknown): value is AgentAccessLevel {
-  return (
-    value === 'ownerOnly' || value === 'specificUsers' || value === 'everyone'
-  );
-}
-
-export function mapAgent(row: Record<string, unknown>): AgentV1 {
+export function mapAgent(
+  row: Record<string, unknown>,
+): AgentV1 & AgentPhase4Fields {
   return {
     id: str(row.id) ?? '',
     name: str(row.name) ?? '',
@@ -79,33 +85,12 @@ export function mapAgent(row: Record<string, unknown>): AgentV1 {
     model: str(row.model),
     maxConcurrentRuns: num(row.maxConcurrentRuns, DEFAULT_MAX_CONCURRENT_RUNS),
     access: isAccessLevel(row.access) ? row.access : 'ownerOnly',
+    kind: agentKindOf(row.kind),
+    reasoningEffort: reasoningEffortOf(row.reasoningEffort),
     archivedAt: isoOrNull(row.archivedAt),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
-}
-
-function validateConcurrency(value: unknown): number {
-  if (
-    !Number.isInteger(value) ||
-    (value as number) < 1 ||
-    (value as number) > 100
-  ) {
-    throw invalid(
-      'INVALID_MAX_CONCURRENT_RUNS',
-      'maxConcurrentRuns must be an integer between 1 and 100.',
-    );
-  }
-  return value as number;
-}
-
-function validateAccess(value: unknown): AgentAccessLevel {
-  if (!isAccessLevel(value))
-    throw invalid(
-      'INVALID_ACCESS',
-      'access must be ownerOnly, specificUsers or everyone.',
-    );
-  return value;
 }
 
 /** The runtime exists, runs `provider`, and the caller owns it or it is public. */
@@ -214,8 +199,8 @@ async function decorate(
   deps: AgentDeps,
   conn: Conn,
   viewer: Viewer,
-  agents: readonly AgentV1[],
-): Promise<AgentListItemV2[]> {
+  agents: readonly (AgentV1 & AgentPhase4Fields)[],
+): Promise<AgentListItemV4[]> {
   const agentIds = agents.map((agent) => agent.id);
   const runtimeIds = unique(agents.map((agent) => agent.runtimeId));
   const runtimes = runtimeIds.length
@@ -284,7 +269,10 @@ async function decorate(
   });
 }
 
-async function findAgent(conn: Conn, id: string): Promise<AgentV1> {
+async function findAgent(
+  conn: Conn,
+  id: string,
+): Promise<AgentV1 & AgentPhase4Fields> {
   const row = await conn.query
     .selectFrom('agents')
     .selectAll()
@@ -298,7 +286,7 @@ async function getAgent(
   deps: AgentDeps,
   actor: Actor,
   id: string,
-): Promise<AgentListItemV2> {
+): Promise<AgentListItemV4> {
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
   const [item] = await decorate(deps, conn, viewer, [
@@ -310,8 +298,8 @@ async function getAgent(
 async function createAgent(
   deps: AgentDeps,
   actor: Actor,
-  input: CreateAgentRequestV2,
-): Promise<AgentListItemV2> {
+  input: CreateAgentRequestV4,
+): Promise<AgentListItemV4> {
   const name = requiredName(input?.name);
   if (!isAgentProvider(input.provider))
     throw invalid('INVALID_PROVIDER', 'provider is not supported.');
@@ -346,6 +334,11 @@ async function createAgent(
           input.access === undefined
             ? 'ownerOnly'
             : validateAccess(input.access),
+        kind: input.kind === undefined ? 'coder' : validateKind(input.kind),
+        reasoningEffort:
+          input.reasoningEffort === undefined
+            ? null
+            : validateReasoningEffort(input.reasoningEffort),
         archivedAt: null,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -383,7 +376,7 @@ async function patchValues(
   tx: Tx,
   viewer: Viewer,
   current: AgentV1,
-  patch: UpdateAgentRequestV2,
+  patch: UpdateAgentRequestV4,
 ): Promise<Record<string, unknown>> {
   const values: Record<string, unknown> = {};
   if (patch.name !== undefined) values.name = requiredName(patch.name);
@@ -399,6 +392,9 @@ async function patchValues(
   if (patch.maxConcurrentRuns !== undefined)
     values.maxConcurrentRuns = validateConcurrency(patch.maxConcurrentRuns);
   if (patch.access !== undefined) values.access = validateAccess(patch.access);
+  if (patch.kind !== undefined) values.kind = validateKind(patch.kind);
+  if (patch.reasoningEffort !== undefined)
+    values.reasoningEffort = validateReasoningEffort(patch.reasoningEffort);
   if (patch.provider !== undefined && !isAgentProvider(patch.provider))
     throw invalid('INVALID_PROVIDER', 'provider is not supported.');
   if (patch.provider !== undefined || patch.runtimeId !== undefined) {
@@ -430,8 +426,8 @@ async function updateAgent(
   deps: AgentDeps,
   actor: Actor,
   id: string,
-  patch: UpdateAgentRequestV2,
-): Promise<AgentListItemV2> {
+  patch: UpdateAgentRequestV4,
+): Promise<AgentListItemV4> {
   await deps.tx.run(async (tx) => {
     const viewer = await viewerOf(tx.conn, actor);
     const current = await findAgent(tx.conn, id);

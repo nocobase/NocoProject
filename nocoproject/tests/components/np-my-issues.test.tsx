@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Route } from 'react-router';
+import { Route, useLocation } from 'react-router';
+import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ApprovalsRedirect from '../../client/pages/np/inbox/approvals.js';
@@ -37,6 +38,12 @@ const MINE: IssueListItem = {
   executorName: 'Zhou',
   updatedAt: new Date().toISOString(),
 };
+
+/** Prints where a redirect landed. */
+function SearchProbe(): ReactElement {
+  const location = useLocation();
+  return <p data-testid='search'>{location.search}</p>;
+}
 
 function respond(options: RequestOptions): Promise<unknown> {
   switch (options.path) {
@@ -111,20 +118,17 @@ describe('my issues (§G)', () => {
 });
 
 describe('redirects kept for old links (§G)', () => {
-  it('sends /intake to the batch entry drawer and /usage to the usage tab', async () => {
+  it('sends /intake to the AI tab of the new issue dialog, keeping the project and the batch', async () => {
     await renderNpRoutes(
       <>
         <Route path='/intake' element={<IntakeRedirect />} />
-        <Route path='/usage' element={<UsageRedirect />} />
-        <Route path='/issues/intake' element={<p>issues drawer</p>} />
-        <Route path='/projects/:id/intake' element={<p>project drawer</p>} />
-        <Route path='/reports/usage' element={<p>usage tab</p>} />
-        <Route path='/inbox/approvals' element={<ApprovalsRedirect />} />
-        <Route path='/inbox' element={<p>inbox</p>} />
+        <Route path='/issues/new' element={<SearchProbe />} />
       </>,
       { url: '/intake?project=p1&batch=b1' },
     );
-    expect(await screen.findByText('project drawer')).toBeVisible();
+    expect(await screen.findByTestId('search')).toHaveTextContent(
+      '?tab=ai&project=p1&batch=b1',
+    );
   });
 
   it('sends /inbox/approvals to the decisions list', async () => {

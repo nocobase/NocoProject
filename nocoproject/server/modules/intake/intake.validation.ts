@@ -6,16 +6,18 @@
  * `validation.errors` (English sentences; the browser shows them as they are) and blocks `confirm`:
  * title required and at most 200 characters; `parentPosition` must name an earlier draft; `stage` only on a draft
  * with a parent (a batch split from an issue gives every draft one); priority in the enum; labels are short
- * strings; an agent executor must be one the member who entered the batch may invoke; users must exist.
+ * strings; an agent executor must be one the member who entered the batch may invoke; users must exist. Iteration 4:
+ * `process` is auto, direct or design_first; a project manager agent cannot be the executor.
  */
 import { canInvokeAgent, loadAgentAccess } from '../shared/authz.js';
 import type { Conn } from '../shared/db.js';
 import { isArrayValue } from '../shared/db.js';
 import { invalid } from '../shared/errors.js';
 import type {
-  IntakeDraftFields,
+  IntakeDraftFieldsV4,
   IntakeDraftInput,
 } from '../shared/protocol.js';
+import { DEFAULT_PROCESSES } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
 import { isIssuePriority } from '../issue/issue.records.js';
 import { MAX_DRAFTS, MAX_TITLE_LENGTH } from './parser.js';
@@ -68,12 +70,15 @@ function structure(value: unknown): IntakeDraftInput[] {
     return {
       position: position as number,
       parentPosition: parent as number | null,
-      fields: fields as IntakeDraftFields,
+      fields: fields as IntakeDraftFieldsV4,
     };
   });
 }
 
-function fieldErrors(fields: IntakeDraftFields, hasParent: boolean): string[] {
+function fieldErrors(
+  fields: IntakeDraftFieldsV4,
+  hasParent: boolean,
+): string[] {
   const errors: string[] = [];
   const title = typeof fields.title === 'string' ? fields.title.trim() : '';
   if (!title) errors.push('title is required');
@@ -110,12 +115,17 @@ function fieldErrors(fields: IntakeDraftFields, hasParent: boolean): string[] {
       errors.push('stage must be an integer between 0 and 1000');
     else if (!hasParent) errors.push('stage only applies to a sub-task');
   }
+  if (
+    fields.process !== undefined &&
+    !(DEFAULT_PROCESSES as readonly unknown[]).includes(fields.process)
+  )
+    errors.push('process must be auto, direct or design_first');
   return errors;
 }
 
 async function referenceErrors(
   ctx: DraftContext,
-  fields: IntakeDraftFields,
+  fields: IntakeDraftFieldsV4,
 ): Promise<string[]> {
   const errors: string[] = [];
   const executor = fields.executor;
@@ -128,6 +138,8 @@ async function referenceErrors(
       errors.push('the executor agent does not exist');
     else if (!(await canInvokeAgent(ctx.conn, ctx.creatorId, agent)))
       errors.push('you do not have access to the executor agent');
+    else if (await isManagerAgent(ctx.conn, agent.id))
+      errors.push('a project manager agent cannot execute issues');
   } else if (executor && executor.type === 'user') {
     if (
       typeof executor.id !== 'string' ||
@@ -145,6 +157,15 @@ async function referenceErrors(
       errors.push('the owner does not exist');
   }
   return errors;
+}
+
+async function isManagerAgent(conn: Conn, agentId: string): Promise<boolean> {
+  const row = await conn.query
+    .selectFrom('agents')
+    .select('kind')
+    .where('id', '=', agentId)
+    .executeTakeFirst();
+  return row?.kind === 'manager';
 }
 
 /** Validates a whole draft list; see the file comment for what is structural and what is per draft. */

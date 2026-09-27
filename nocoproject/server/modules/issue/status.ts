@@ -20,7 +20,10 @@ import type {
 /** The status new issues start in. */
 export const DEFAULT_STATUS = 'todo';
 
-/** Used when the database holds no default template (the seed normally writes it). Same as the seed. */
+/**
+ * Used when the database holds no default template (the seed normally writes it). Same as the seeds, including the
+ * iteration 4 design-first statuses and transitions (`2026100100002_np_iter4_workflow_statuses`).
+ */
 export const BUILTIN_DEFINITION: WorkflowDefinition = {
   statuses: [
     {
@@ -35,6 +38,20 @@ export const BUILTIN_DEFINITION: WorkflowDefinition = {
       name: 'Todo',
       category: 'unstarted',
       color: 'blue',
+      builtIn: true,
+    },
+    {
+      key: 'analysis',
+      name: 'Analysis',
+      category: 'started',
+      color: 'orange',
+      builtIn: true,
+    },
+    {
+      key: 'proposal_review',
+      name: 'Proposal Review',
+      category: 'started',
+      color: 'purple',
       builtIn: true,
     },
     {
@@ -81,6 +98,13 @@ export const BUILTIN_DEFINITION: WorkflowDefinition = {
     { from: 'in_progress', to: 'blocked', actors: ['agent'] },
     { from: 'in_progress', to: 'todo', actors: ['system'] },
     { from: '*', to: 'done', actors: ['system'] },
+    { from: 'todo', to: 'analysis', actors: ['agent', 'user'] },
+    { from: 'analysis', to: 'proposal_review', actors: ['agent', 'user'] },
+    { from: 'proposal_review', to: 'analysis', actors: ['user', 'system'] },
+    { from: 'proposal_review', to: 'in_progress', actors: ['system', 'user'] },
+    { from: 'analysis', to: 'blocked', actors: ['agent', 'user'] },
+    { from: 'proposal_review', to: 'blocked', actors: ['agent', 'user'] },
+    { from: 'blocked', to: 'analysis', actors: ['agent'] },
   ],
   childBatchDoneWakesParentExecutor: true,
 };

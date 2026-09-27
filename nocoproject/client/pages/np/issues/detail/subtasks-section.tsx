@@ -71,7 +71,7 @@ export function SubtasksSection({
     mutationFn: () => createIntakeBatch(api, { source: 'issue', issueId }),
     onSuccess: (detail) =>
       void navigate(
-        `/issues/intake?batch=${encodeURIComponent(detail.batch.id)}`,
+        `/issues/new?tab=ai&batch=${encodeURIComponent(detail.batch.id)}`,
       ),
     onError: () =>
       toast.add({

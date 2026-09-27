@@ -30,6 +30,8 @@ import { IssueDescription, IssueTitle } from './issue-content.js';
 import { ProposalsCard } from './proposals-card.js';
 import { PullRequestsSection } from './pull-requests-section.js';
 import { SubtasksSection } from './subtasks-section.js';
+import { commentTag } from '../../api-iter4.js';
+import { NpProcessBadge } from '../process-fields.js';
 import { buildTimeline, mergeActivities } from './timeline.js';
 import { useIssueDecisions } from './use-issue-decisions.js';
 import { useOlderActivities } from './use-older-activities.js';
@@ -153,6 +155,7 @@ export function IssueMain({
                 statusKey={issue.statusKey}
                 catalog={detail.statusCatalog}
               />
+              <NpProcessBadge issue={issue} />
               {project ? (
                 <Link
                   to={`/projects/${encodeURIComponent(project.id)}`}
@@ -288,6 +291,7 @@ export function IssueMain({
               agentName={agentName}
               userName={userName}
               replyingToId={replyTo?.id ?? null}
+              commentTag={(comment) => commentTag(comment, detail.runs)}
               onReply={(comment) => {
                 setReplyTo(comment);
                 editorRef.current?.focus();

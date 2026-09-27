@@ -2,7 +2,9 @@
  * Confirming an intake batch (docs/phase1/iteration-2-contract.md §E): the drafts are validated again, then every
  * issue is inserted parents first (`originType = 'intake'`, `originId = batchId`, creator = the member who entered
  * the batch, activity `issue_created` with `intakeBatchId`). Only after all of them exist do the trigger rules run for
- * those executed by an agent, so a later stage sees its earlier siblings and is deferred as blocked.
+ * those executed by an agent, so a later stage sees its earlier siblings and is deferred as blocked. Iteration 4: each
+ * issue's process comes from the draft's `process` (else `settings.defaultProcess`; `auto` = the heuristic, no model
+ * call per draft) and is recorded as `process_selected`.
  */
 import type { Actor } from '../shared/activity.js';
 import {
@@ -18,7 +20,8 @@ import type {
   ConfirmIntakeResponse,
   ExecutorInput,
   IntakeBatch,
-  IssueV2,
+  IntakeDraftFieldsV4,
+  IssueV4,
 } from '../shared/protocol.js';
 import {
   resolveExecutor,
@@ -26,6 +29,7 @@ import {
   validateTitle,
 } from '../issue/issue.fields.js';
 import { issueRef } from '../issue/issue.records.js';
+import { processActivity, selectProcess } from '../issue/process.js';
 import { DEFAULT_STATUS } from '../issue/status.js';
 import { ensureLabelsByName } from '../label/label.service.js';
 import { draftsOf, setBatchStatus } from './intake.records.js';
@@ -88,13 +92,23 @@ export async function confirmBatch(
       )
     : null;
   const { autoExecuteSubtasksDefault } = await deps.settings.read(tx.conn);
-  const created = new Map<number, IssueV2>();
+  const created = new Map<number, IssueV4>();
   for (const draft of validated) {
+    const fields = draft.fields as IntakeDraftFieldsV4;
+    const selection = await selectProcess(
+      deps,
+      tx.conn,
+      {
+        process: fields.process,
+        title: fields.title,
+        description: fields.description ?? '',
+      },
+      { userId: creatorId, useAi: false },
+    );
     const parent =
       draft.parentPosition !== null
         ? (created.get(draft.parentPosition) ?? null)
         : sourceIssue;
-    const fields = draft.fields;
     const issue = await deps.issues().insertIssue(tx, creator, {
       title: validateTitle(fields.title),
       description: fields.description ?? '',
@@ -119,7 +133,14 @@ export async function confirmBatch(
       createdById: creatorId,
       originType: 'intake',
       originId: batch.id,
+      process: selection.process,
       activityDetails: { intakeBatchId: batch.id },
+    });
+    await deps.activity.record(tx.conn, {
+      issueId: issue.id,
+      actor: creator,
+      action: 'process_selected',
+      details: processActivity(selection),
     });
     created.set(draft.position, issue);
     await tx.conn.query

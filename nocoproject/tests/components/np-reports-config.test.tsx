@@ -292,7 +292,78 @@ describe('settings in the front end (§G)', () => {
       expect(within(tabs).queryByRole('link', { name: 'GitHub' })).toBeNull(),
     );
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
-    expect(screen.getByRole('switch')).toHaveAttribute('data-disabled');
+    for (const control of screen.getAllByRole('switch')) {
+      expect(control).toHaveAttribute('data-disabled');
+    }
+  });
+
+  it('edits the default process, the project manager and the retrospective switch (iteration 4)', async () => {
+    const user = userEvent.setup();
+    const patched: unknown[] = [];
+    api.request.mockImplementation(
+      answer({
+        ...members('owner'),
+        'GET np/settings': {
+          data: {
+            canEdit: true,
+            defaultProcess: 'auto',
+            pmAgentId: null,
+            retrospectiveOnDone: true,
+          },
+        },
+        'GET np/workflows': { data: [] },
+        'GET np/agents': {
+          data: [
+            {
+              id: 'a1',
+              name: 'Claude Coder',
+              provider: 'claude',
+              runtimeId: 'r1',
+            },
+            {
+              id: 'pm',
+              name: 'Project Manager',
+              provider: 'opencode',
+              runtimeId: 'r1',
+              kind: 'manager',
+            },
+          ],
+        },
+        'PATCH np/settings': (options: RequestOptions) => {
+          patched.push(options.json);
+          return { data: options.json };
+        },
+      }),
+    );
+    await renderNpRoutes(configRoutes(), { url: '/config/general' });
+    const agentSelect = await screen.findByRole('combobox', {
+      name: 'Project manager agent',
+    });
+    await user.click(agentSelect);
+    expect(
+      await screen.findByRole('option', { name: 'Project Manager' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Claude Coder' })).toBeNull();
+    await user.click(screen.getByRole('option', { name: 'Project Manager' }));
+    await user.click(screen.getByRole('combobox', { name: 'Default process' }));
+    await user.click(
+      await screen.findByRole('option', { name: 'Design first' }),
+    );
+    await user.click(
+      screen.getByRole('switch', {
+        name: 'Retrospective when an issue is done',
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(patched).toEqual([
+        expect.objectContaining({
+          defaultProcess: 'design_first',
+          pmAgentId: 'pm',
+          retrospectiveOnDone: false,
+        }),
+      ]),
+    );
   });
 
   it('shows labels read-only to a member and manageable to an owner', async () => {

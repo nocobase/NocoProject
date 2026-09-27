@@ -48,7 +48,7 @@ function readContent(opts: { content?: string; contentFile?: string }): string {
     if (!existsSync(path)) throw new CliError(`content file not found: ${path}`, EXIT.validation, 'FILE_NOT_FOUND');
     content = readFileSync(path, 'utf8');
   }
-  if (!content || !content.trim()) throw new CliError('comment content is empty', EXIT.validation, 'EMPTY_CONTENT');
+  if (!content || !content.trim()) throw new CliError('content is empty', EXIT.validation, 'EMPTY_CONTENT');
   return content;
 }
 
@@ -121,6 +121,22 @@ export function registerIssueCommands(program: Command): void {
         }
         if (opts.json) printJson(result.data ?? { ok: true, statusKey });
         else printLine(`status set to ${statusKey}`);
+      }),
+    );
+
+  issue
+    .command('design-proposal [issue]')
+    .description('Submit the design proposal of a design-first issue (a `proposal` comment); then set `proposal_review`')
+    .option('--content-file <path>', 'the whole proposal in Markdown')
+    .option('--json', 'JSON output')
+    .action(
+      action(async (arg: string | undefined, opts: JsonOpt & { contentFile?: string }) => {
+        if (!opts.contentFile) throw new CliError('--content-file is required', EXIT.validation, 'CONTENT_REQUIRED');
+        const content = readContent({ contentFile: opts.contentFile });
+        const ctx = runTokenContext();
+        const comment = (await ctx.api.designProposal(await resolveIssueId(arg, ctx), content)) as { id?: string } | undefined;
+        if (opts.json) printJson(comment);
+        else printLine(`design proposal posted (comment ${comment?.id ?? '?'}); now set the status to proposal_review`);
       }),
     );
 

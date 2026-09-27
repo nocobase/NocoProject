@@ -1,7 +1,8 @@
 // @vitest-environment node
 /**
  * The NocoProject migrations and seeds against a real PostgreSQL: up, indexes (including the partial pending-run
- * index), seed idempotency, down, and up again; each iteration's batch rolls back alone.
+ * index), seed idempotency (iteration 4: the design-first statuses on both templates), down, and up again; each
+ * iteration's batch rolls back alone.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { createMigrator, createSeeder } from '@nocobase/db';
@@ -240,6 +241,37 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     await db!.knex.raw(`DELETE FROM "${db!.schema}".knowledge_docs`);
   });
 
+  it('adds the iteration 4 issue and agent columns with their defaults', async () => {
+    const defaults = (await db!.knex.raw(
+      `SELECT table_name, column_name, column_default, is_nullable FROM information_schema.columns
+       WHERE table_schema = ? AND table_name IN ('issues', 'agents')
+         AND column_name IN ('process', 'design_approved_at', 'design_approved_by_id', 'kind', 'reasoning_effort')
+       ORDER BY table_name, column_name`,
+      [db!.schema],
+    )) as {
+      rows: {
+        table_name: string;
+        column_name: string;
+        column_default: string | null;
+        is_nullable: string;
+      }[];
+    };
+    expect(
+      defaults.rows.map((row) => [
+        row.table_name,
+        row.column_name,
+        row.column_default?.replace(/::character varying$/u, '') ?? null,
+        row.is_nullable,
+      ]),
+    ).toEqual([
+      ['agents', 'kind', "'coder'", 'NO'],
+      ['agents', 'reasoning_effort', null, 'YES'],
+      ['issues', 'design_approved_at', null, 'YES'],
+      ['issues', 'design_approved_by_id', null, 'YES'],
+      ['issues', 'process', "'direct'", 'NO'],
+    ]);
+  });
+
   it('enforces one pending run per agent, subject and thread scope', async () => {
     const insert = (id: string, status: string, scope: string | null) =>
       db!.knex.raw(
@@ -269,6 +301,8 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
         '2026092900003_np_iter2_page_grants',
         '2026092900004_np_github_settings_grant',
         '2026093000002_np_iter3_page_grants',
+        '2026100100002_np_iter4_workflow_statuses',
+        '2026100100003_np_iter4_page_grants',
       ]),
     );
     const workflows = (await db!.knex.raw(
@@ -285,6 +319,46 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
       ]),
     );
     expect(workflows.rows).toHaveLength(2);
+    // Iteration 4: both templates gained analysis and proposal_review after todo, and their transitions.
+    const definitions = (await db!.knex.raw(
+      `SELECT id, definition FROM "${db!.schema}".workflow_templates ORDER BY id`,
+    )) as { rows: { id: string; definition: unknown }[] };
+    for (const row of definitions.rows) {
+      const definition = (
+        typeof row.definition === 'string'
+          ? JSON.parse(row.definition)
+          : row.definition
+      ) as {
+        statuses: { key: string; category: string }[];
+        transitions: { from: string; to: string; actors: string[] }[];
+      };
+      expect(definition.statuses.map((status) => status.key)).toEqual([
+        'backlog',
+        'todo',
+        'analysis',
+        'proposal_review',
+        'in_progress',
+        'in_review',
+        'blocked',
+        'done',
+        'cancelled',
+      ]);
+      expect(
+        definition.statuses.find((status) => status.key === 'analysis')
+          ?.category,
+      ).toBe('started');
+      expect(definition.transitions).toEqual(
+        expect.arrayContaining([
+          { from: 'todo', to: 'analysis', actors: ['agent', 'user'] },
+          {
+            from: 'proposal_review',
+            to: 'in_progress',
+            actors: ['system', 'user'],
+          },
+          { from: 'blocked', to: 'analysis', actors: ['agent'] },
+        ]),
+      );
+    }
     await db!.knex.raw(
       `UPDATE "${db!.schema}".system_settings SET issue_counter = 7`,
     );
@@ -307,6 +381,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026100100001_np_phase1_iter4',
       '2026093000001_np_phase1_iter3',
       '2026092900001_np_phase1_iter2',
       '2026092800001_np_phase1_iter1',
@@ -333,7 +408,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back the iteration 3 batch alone', async () => {
     await migrator().rollback();
     await migrator().upTo('2026092900001_np_phase1_iter2');
-    const applied = await migrator().latest();
+    const applied = await migrator().upTo('2026093000001_np_phase1_iter3');
     expect(applied.executed).toEqual(['2026093000001_np_phase1_iter3']);
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual(['2026093000001_np_phase1_iter3']);
@@ -357,7 +432,31 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     await migrator().latest();
   });
 
-  it('rolls back an iteration 2 + 3 batch and keeps iteration 1', async () => {
+  it('rolls back the iteration 4 batch alone', async () => {
+    await migrator().rollback();
+    await migrator().upTo('2026093000001_np_phase1_iter3');
+    const applied = await migrator().latest();
+    expect(applied.executed).toEqual(['2026100100001_np_phase1_iter4']);
+    expect(await columns(db!, 'issues')).toContain('process');
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual(['2026100100001_np_phase1_iter4']);
+    const issueColumns = await columns(db!, 'issues');
+    for (const column of [
+      'process',
+      'design_approved_at',
+      'design_approved_by_id',
+    ])
+      expect(issueColumns).not.toContain(column);
+    const agentColumns = await columns(db!, 'agents');
+    expect(agentColumns).not.toContain('kind');
+    expect(agentColumns).not.toContain('reasoning_effort');
+    expect(await tables(db!)).toEqual(
+      expect.arrayContaining([...NP_PHASE1_ITER3_TABLES]),
+    );
+    await migrator().latest();
+  });
+
+  it('rolls back an iteration 2 + 3 + 4 batch and keeps iteration 1', async () => {
     // Start from an empty schema whatever batches the previous cases left.
     while ((await migrator().rollback()).rolledBack.length > 0);
     await migrator().upTo('2026092800001_np_phase1_iter1');
@@ -365,10 +464,12 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     expect(applied.executed).toEqual([
       '2026092900001_np_phase1_iter2',
       '2026093000001_np_phase1_iter3',
+      '2026100100001_np_phase1_iter4',
     ]);
-    // Applied together, they are one batch: rollback reverts iteration 3 first, then iteration 2.
+    // Applied together, they are one batch: rollback reverts iteration 4 first, then 3, then 2.
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026100100001_np_phase1_iter4',
       '2026093000001_np_phase1_iter3',
       '2026092900001_np_phase1_iter2',
     ]);

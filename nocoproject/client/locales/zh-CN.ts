@@ -3,6 +3,7 @@ import npCollabZhCN from './np-zh-CN.js';
 import npIter2ZhCN from './np-iter2-zh-CN.js';
 import npIter3ZhCN from './np-iter3-zh-CN.js';
 import npDesignZhCN from './np-design-zh-CN.js';
+import npIter4ZhCN from './np-iter4-zh-CN.js';
 
 const zhCN: AppResource = {
   'auth.welcome': '欢迎回来',
@@ -131,6 +132,7 @@ const zhCN: AppResource = {
     agents: 'Agent',
     runtimes: '运行时',
     myIssues: '我的任务',
+    pm: '项目经理',
     work: '工作',
     agentTeam: 'Agent 团队',
     skills: '技能',
@@ -168,6 +170,7 @@ const zhCN: AppResource = {
     ...npIter2ZhCN,
     ...npIter3ZhCN,
     ...npDesignZhCN,
+    ...npIter4ZhCN,
     common: {
       online: '在线',
       offline: '离线',
@@ -188,6 +191,8 @@ const zhCN: AppResource = {
     status: {
       backlog: '待规划',
       todo: '待处理',
+      analysis: '分析中',
+      proposalReview: '方案待审',
       inProgress: '进行中',
       inReview: '待审核',
       blocked: '受阻',
@@ -220,6 +225,8 @@ const zhCN: AppResource = {
       dependencyReleased: '阻塞解除',
       childBatchDone: '子任务完成',
       proposalAccepted: '建议已确认',
+      designApproved: '方案已批准',
+      retrospective: '任务总结',
     },
     executor: {
       none: '未指派',
@@ -330,6 +337,12 @@ const zhCN: AppResource = {
         knowledgeUpdated: '根据建议更新了知识库',
         deliveryAccepted: '接受了交付',
         changesRequested: '要求修改',
+        processSelected: '设定了流程',
+        designProposed: '提交了设计方案',
+        designApproved: '批准了方案',
+        designChangesRequested: '打回了方案',
+        designSkipped: '跳过了方案设计',
+        retrospectiveDone: '写了任务总结',
         updated: '更新了任务',
       },
       run: {
@@ -422,27 +435,6 @@ const zhCN: AppResource = {
         specificUsers: '指定成员',
         everyone: '所有人',
       },
-    },
-    agentForm: {
-      title: '新建 Agent',
-      description: '一个 Agent 在你的某个运行时上使用一种编码工具。',
-      name: '名称',
-      nameRequired: '请输入名称。',
-      descriptionLabel: '简介',
-      instructions: '指令',
-      instructionsPlaceholder:
-        '这个 Agent 是谁、应当如何工作。每次运行都会带上。',
-      instructionsRequired: '请输入指令。',
-      runtime: '运行时',
-      runtimePlaceholder: '选择运行时',
-      runtimeRequired: '请选择运行时。',
-      noRuntimes: '还没有连接任何运行时。',
-      provider: '工具',
-      providerPlaceholder: '由运行时决定',
-      model: '模型',
-      maxConcurrentRuns: '最大并发运行数',
-      maxInvalid: '请输入 1 到 100 之间的整数。',
-      created: '已创建 Agent {{name}}',
     },
     runtimes: {
       title: '运行时',

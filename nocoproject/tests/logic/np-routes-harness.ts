@@ -24,6 +24,8 @@ import {
   npUsageServiceToken,
   npWorkspaceSettingsServiceToken,
   npDeliveryServiceToken,
+  npDesignServiceToken,
+  npPmServiceToken,
   npKnowledgeServiceToken,
   npMetricsServiceToken,
   npClaimServiceToken,
@@ -245,6 +247,8 @@ export async function build(
   } as never);
   container.instance(npMetricsServiceToken, {} as never);
   container.instance(npDeliveryServiceToken, {} as never);
+  container.instance(npDesignServiceToken, {} as never);
+  container.instance(npPmServiceToken, {} as never);
   const router = await contribution.createRouter({
     container,
     publicBasePath: '/main',

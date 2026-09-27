@@ -7,6 +7,10 @@
  */
 import type { ActorType, ExecutorRef, IssuePriority } from './types.js';
 import type { MetricThresholds } from './types-iter3.js';
+import type {
+  ProcessChoice,
+  WorkspaceSettingsPhase1Iter4,
+} from './types-iter4.js';
 
 export type ExecutionMode = 'task' | 'session';
 
@@ -198,6 +202,8 @@ export interface IntakeDraftFields {
   readonly stage?: number | null;
   readonly executor?: ExecutorRef | null;
   readonly ownerUserId?: string | null;
+  /** Iteration 4 §D: the draft's process; missing or `auto` lets the server decide. */
+  readonly process?: ProcessChoice | null;
 }
 
 export interface IntakeDraftInput {
@@ -297,6 +303,10 @@ export interface WorkspaceSettings {
   readonly issuePrefix?: string;
   /** Iteration 3 §C: the targets the acceptance metrics are held to. */
   readonly metricThresholds?: MetricThresholds;
+  // Iteration 4 §A: the default process, the project manager agent and the retrospective switch.
+  readonly defaultProcess?: WorkspaceSettingsPhase1Iter4['defaultProcess'];
+  readonly pmAgentId?: WorkspaceSettingsPhase1Iter4['pmAgentId'];
+  readonly retrospectiveOnDone?: WorkspaceSettingsPhase1Iter4['retrospectiveOnDone'];
   /** Whether the viewer may change the settings (owner/admin). */
   readonly canEdit?: boolean;
   readonly [key: string]: unknown;
@@ -310,6 +320,9 @@ export type WorkspaceSettingsInput = Partial<
     | 'intakeParser'
     | 'modelPrices'
     | 'metricThresholds'
+    | 'defaultProcess'
+    | 'pmAgentId'
+    | 'retrospectiveOnDone'
   >
 >;
 

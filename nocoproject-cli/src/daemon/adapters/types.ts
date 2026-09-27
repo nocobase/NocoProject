@@ -1,4 +1,4 @@
-import type { AgentProvider, FailureReason, RunEventType, RunUsageInput } from '../../protocol.js';
+import type { AgentProvider, FailureReason, ReasoningEffort, RunEventType, RunUsageInput } from '../../protocol.js';
 
 export interface AgentEvent {
   readonly type: RunEventType;
@@ -18,6 +18,8 @@ export interface RunSpec {
   readonly env: Record<string, string>;
   readonly model?: string;
   readonly resumeSessionId?: string;
+  /** Iteration 4: the agent's `reasoningEffort`; each adapter maps it to its own flag. */
+  readonly reasoningEffort?: ReasoningEffort;
 }
 
 export interface RunResult {

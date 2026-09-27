@@ -7,12 +7,7 @@ import { type ReactElement, useState } from 'react';
 import { NpDetailSkeleton } from '@/components/np-states';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-} from '@/components/ui/field';
+import { Field, FieldError, FieldLabel } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
@@ -24,8 +19,9 @@ import { PropertySelect } from '../issues/detail/property-fields.js';
 import { BatchEditor } from './batch-editor.js';
 
 /**
- * The two panels of batch entry (iteration 2 §E): the composer that sends pasted text to the parser, and the editor
- * of one parsed batch. The drawer (`drawer.tsx`) switches between them by `?batch=`.
+ * The two panels of batch entry (iteration 2 §E), now the AI 整理 tab of "新建任务" (iteration 4 §D): the composer that
+ * sends the description or pasted list to the parser, and the editor of one parsed batch. The dialog
+ * (`issues/new.tsx`) switches between them by `?batch=`.
  */
 export function IntakeComposer({
   initialProjectId,
@@ -68,6 +64,7 @@ export function IntakeComposer({
       ),
   });
 
+  const tooLong = rawContent.length > 50_000;
   return (
     <section className='space-y-4'>
       {error ? (
@@ -76,46 +73,41 @@ export function IntakeComposer({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <Field className='max-w-sm'>
-        <FieldLabel htmlFor='np-intake-project'>
-          {t('np.issueForm.projectLabel')}
-        </FieldLabel>
-        <PropertySelect
-          id='np-intake-project'
-          size='default'
-          options={(projects.data ?? []).map((project) => ({
-            value: project.id,
-            label: project.name,
-          }))}
-          value={projectId}
-          noneLabel={t('np.issueForm.noProject')}
-          onChange={setProjectId}
-        />
-      </Field>
-      <Field data-invalid={parse.isError ? true : undefined}>
+      <Field data-invalid={parse.isError || tooLong ? true : undefined}>
         <FieldLabel htmlFor='np-intake-raw'>
-          {t('np.intake.rawLabel')}
+          {t('np.newIssue.requirementLabel')}
         </FieldLabel>
         <Textarea
           id='np-intake-raw'
           value={rawContent}
-          rows={10}
-          className='font-mono text-sm'
-          placeholder={t('np.intake.rawPlaceholder')}
+          rows={8}
+          className='min-h-40'
+          autoFocus
+          placeholder={t('np.newIssue.requirementPlaceholder')}
           onChange={(event) => setRawContent(event.target.value)}
         />
-        {parse.isError ? null : (
-          <FieldDescription>{t('np.intake.rawHint')}</FieldDescription>
-        )}
-        {rawContent.length > 50_000 ? (
-          <FieldError>{t('np.intake.rawTooLong')}</FieldError>
-        ) : null}
+        {tooLong ? <FieldError>{t('np.intake.rawTooLong')}</FieldError> : null}
       </Field>
-      <div className='flex justify-end'>
+      <div className='flex flex-wrap items-end gap-3'>
+        <Field className='max-w-xs flex-1'>
+          <FieldLabel htmlFor='np-intake-project'>
+            {t('np.issueForm.projectLabel')}
+          </FieldLabel>
+          <PropertySelect
+            id='np-intake-project'
+            size='default'
+            options={(projects.data ?? []).map((project) => ({
+              value: project.id,
+              label: project.name,
+            }))}
+            value={projectId}
+            noneLabel={t('np.issueForm.noProject')}
+            onChange={setProjectId}
+          />
+        </Field>
         <Button
-          disabled={
-            parse.isPending || !rawContent.trim() || rawContent.length > 50_000
-          }
+          className='ml-auto'
+          disabled={parse.isPending || !rawContent.trim() || tooLong}
           onClick={() => {
             setError(undefined);
             parse.mutate();
@@ -126,7 +118,7 @@ export function IntakeComposer({
           ) : (
             <WandSparklesIcon data-icon='inline-start' />
           )}
-          {parse.isPending ? t('np.intake.parsing') : t('np.intake.parse')}
+          {parse.isPending ? t('np.newIssue.parsing') : t('np.newIssue.parse')}
         </Button>
       </div>
     </section>

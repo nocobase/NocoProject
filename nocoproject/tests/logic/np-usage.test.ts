@@ -301,6 +301,10 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
       intakeParser: 'auto',
       // Iteration 3 §C: the defaults until an owner/admin sets them (np-metrics.test.ts covers PATCH).
       metricThresholds: DEFAULT_METRIC_THRESHOLDS,
+      // Iteration 4 §A (np-pm.test.ts covers PATCH).
+      defaultProcess: 'auto',
+      pmAgentId: null,
+      retrospectiveOnDone: true,
       issuePrefix: 'NP',
       canEdit: false,
     });

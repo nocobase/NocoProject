@@ -9,7 +9,8 @@
  *
  * Iteration 2 adds the injectable edges tests replace: the secret box, the GitHub client, the AI intake parser and
  * the approval gateway (the "替换检查清单" test runs the suite with an in-memory gateway). Iteration 3 adds the
- * knowledge base, the acceptance metrics and the delivery decisions (`createIteration3Services`).
+ * knowledge base, the acceptance metrics and the delivery decisions (`createIteration3Services`); iteration 4 the
+ * process classifier, the design decisions and the project manager (`services.iter4.ts`).
  */
 import type { DatabaseManager } from '@nocobase/db';
 import type { IdGeneratorService } from '@nocobase/snowflake';
@@ -44,6 +45,12 @@ import {
   type WebhookService,
 } from './git/webhook.service.js';
 import type { AiIntakeParser } from './intake/ai-parser.js';
+import type { AiProcessClassifier } from './intake/process-classifier.js';
+import {
+  buildProcessClassifier,
+  createIteration4Services,
+  type Iteration4Services,
+} from './services.iter4.js';
 import { createHeuristicIntakeParser } from './intake/heuristic-parser.js';
 import {
   createIntakeService,
@@ -131,20 +138,14 @@ import {
   createProjectService,
   type ProjectService,
 } from './project/project.service.js';
-import { createClaimService, type ClaimService } from './run/claim.service.js';
-import {
-  createRunRecoveryService,
-  type FailureDeps,
-  type RunRecoveryService,
-} from './run/failure.js';
-import {
-  createRunEventService,
-  type RunEventService,
-} from './run/run-events.js';
-import { createRunQueries, type RunQueries } from './run/run.queries.js';
-import { createRunService, type RunService } from './run/run.service.js';
-import { createSweeperService, type SweeperService } from './run/sweeper.js';
-import { createRunTokenService, type RunTokenService } from './run/token.js';
+import type { ClaimService } from './run/claim.service.js';
+import type { RunRecoveryService } from './run/failure.js';
+import type { RunEventService } from './run/run-events.js';
+import type { RunQueries } from './run/run.queries.js';
+import type { RunService } from './run/run.service.js';
+import type { SweeperService } from './run/sweeper.js';
+import type { RunTokenService } from './run/token.js';
+import { createRunModules } from './services.runs.js';
 import {
   createRuntimeService,
   type RuntimeService,
@@ -204,6 +205,9 @@ export interface NpServices {
   readonly knowledge: KnowledgeService;
   readonly metrics: MetricsService;
   readonly deliveries: DeliveryService;
+  // Iteration 4.
+  readonly design: Iteration4Services['design'];
+  readonly pm: Iteration4Services['pm'];
 }
 
 /** What an alternative approval gateway gets to build itself (tests: the in-memory double). */
@@ -224,6 +228,8 @@ export interface NpServiceDeps {
   readonly aiIntake?: AiIntakeParser | null;
   /** Whether an LLM service is configured (`ai.llmServices` not empty). */
   readonly aiConfigured?: () => boolean;
+  /** Iteration 4: the AI process classifier; null or absent = heuristic only. */
+  readonly aiProcess?: AiProcessClassifier | null;
   /** Replaces the database approval gateway (the replacement checklist test). */
   readonly approvalGateway?: (
     context: ApprovalGatewayContext,
@@ -278,17 +284,6 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
   const settings = createSettingsService();
   const workflows = createWorkflowService({ tx });
 
-  const failureDeps: FailureDeps = {
-    tx,
-    ids,
-    collaborators: () => ({
-      scheduleRetry: (unit, failed, maxAttempts, reason) =>
-        services.triggers.retryFailedRun(unit, failed, maxAttempts, reason),
-      resetAbandonedIssue: (unit, issueId) =>
-        services.issues.resetAbandonedIssue(unit, issueId),
-    }),
-  };
-
   Object.assign(services, {
     bus,
     tx,
@@ -329,6 +324,7 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       workflows,
       triggers: () => services.triggers,
       approvals: () => services.approvals,
+      classifier: buildProcessClassifier(deps.aiProcess, deps.aiConfigured),
     }),
     issueQueries: createIssueQueries({
       tx,
@@ -351,25 +347,12 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       runs: () => services.runs,
       workflows,
       activity,
+      settings,
     }),
-    runs: createRunService({ tx, ids }),
-    runRecovery: createRunRecoveryService({
-      ...failureDeps,
-      manualRetry: (unit, run, actor) =>
-        services.triggers.manualRetry(unit, run, actor),
-    }),
-    runEvents: createRunEventService({ tx, ids }),
-    runQueries: createRunQueries({ tx }),
-    claims: createClaimService({
-      tx,
-      ids,
-      users,
-      workflows,
-      secrets,
-      knowledge: () => services.knowledge,
-    }),
-    runTokens: createRunTokenService({ tx }),
-    sweeper: createSweeperService(failureDeps),
+    ...createRunModules(
+      { tx, ids, users, activity, workflows, secrets },
+      services,
+    ),
     ...createIteration2Services(
       { deps, tx, ids, users, activity, settings, workflows, secrets, github },
       services,
@@ -377,6 +360,10 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
     ),
     ...createIteration3Services(
       { tx, ids, users, activity, settings, workflows },
+      services,
+    ),
+    ...createIteration4Services(
+      { tx, users, activity, settings, workflows },
       services,
     ),
   } satisfies NpServices);
@@ -440,6 +427,7 @@ function createIteration2Services(
       heuristic: createHeuristicIntakeParser(),
       ai: deps.aiIntake ?? null,
       aiConfigured: deps.aiConfigured ?? (() => false),
+      classifier: buildProcessClassifier(null, undefined),
     }),
     reactions: createReactionService({ tx, ids, activity }),
     agentEnv: createAgentEnvService({ tx, ids, users, secrets }),

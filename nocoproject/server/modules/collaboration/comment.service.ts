@@ -50,6 +50,8 @@ export interface CommentCreateOptions {
   readonly outer?: Tx;
   /** false = record the comment without running the trigger rules (an acceptance note). Default true. */
   readonly trigger?: boolean;
+  /** Iteration 4: `proposal` = a design proposal (a top-level comment; agent comments never trigger). */
+  readonly kind?: 'proposal';
 }
 
 export interface CommentService {
@@ -160,7 +162,10 @@ async function mapComments(
       authorId,
       authorName,
       content: str(row.content) ?? '',
-      kind: row.kind === 'system' ? 'system' : 'comment',
+      // Iteration 4 adds `proposal` (CommentKindV4); the iteration-1 type lists only comment / system.
+      kind: (row.kind === 'system' || row.kind === 'proposal'
+        ? row.kind
+        : 'comment') as CommentV2['kind'],
       parentId: str(row.parentId),
       rootId: str(row.rootId) ?? id,
       sourceRunId: str(row.sourceRunId),
@@ -183,7 +188,7 @@ async function create(
   input: CreateCommentRequest,
   options: CommentCreateOptions = {},
 ): Promise<CreateCommentResponse> {
-  const content = typeof input?.content === 'string' ? input.content : '';
+  let content = typeof input?.content === 'string' ? input.content : '';
   if (content.trim() === '')
     throw invalid('INVALID_COMMENT', 'content is required.');
   if (content.length > MAX_CONTENT_LENGTH)
@@ -200,6 +205,14 @@ async function create(
           await requireInvokeAgent(tx.conn, viewer.userId, agentId);
     } else {
       issue = await findIssue(tx.conn, issueIdOrKey);
+      // A project manager's retrospective (iteration 4 §C) is always an internal note, whether or not the model
+      // remembered the `/note` prefix: it must never notify anyone or wake an executor.
+      if (
+        actor.runId &&
+        !isNote(content) &&
+        (await isRetrospectiveRun(tx, actor.runId))
+      )
+        content = `/note\n${content}`;
     }
     if (!issue) throw notFound('Issue');
     let parent: CommentV2 | null = null;
@@ -225,7 +238,7 @@ async function create(
       authorType: actor.type,
       authorId: actor.id,
       content,
-      kind: 'comment',
+      kind: options.kind ?? 'comment',
       parentId: parent?.id ?? null,
       // The thread root is the parent's root: resolving it once at insert makes "topmost parent" a column read.
       rootId: parent?.rootId ?? id,
@@ -386,4 +399,14 @@ export function createCommentService(deps: CommentDeps): CommentService {
     listForIssue: (...args) => commentListForIssue(deps, ...args),
     pageForIssue: (...args) => commentPageForIssue(deps, ...args),
   };
+}
+
+async function isRetrospectiveRun(tx: Tx, runId: string): Promise<boolean> {
+  const row = await tx.conn.query
+    .selectFrom('runTriggers')
+    .select('id')
+    .where('runId', '=', runId)
+    .where('type', '=', 'retrospective')
+    .executeTakeFirst();
+  return row !== undefined;
 }

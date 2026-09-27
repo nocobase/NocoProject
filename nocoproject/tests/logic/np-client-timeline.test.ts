@@ -51,6 +51,8 @@ describe('issue detail normalization', () => {
     expect(detail.statusCatalog.map((entry) => entry.key)).toEqual([
       'backlog',
       'todo',
+      'analysis',
+      'proposal_review',
       'in_progress',
       'in_review',
       'blocked',

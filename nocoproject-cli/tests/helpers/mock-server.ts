@@ -9,6 +9,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type { ClaimedKnowledgeDoc, ClaimedProject, CommentForAgent, IssueForAgent, IssuePullRequestView, RunStatus } from '../../src/protocol.js';
 import type { ClaimedRunV1 as ClaimedRun } from '../../src/run-context.js';
 import { MockKnowledge } from './mock-knowledge.js';
+import { MockPm } from './mock-pm.js';
 
 export const API_KEY = 'test-api-key-0123456789';
 export const BASE = '/main';
@@ -44,8 +45,20 @@ export interface Dependency {
   readonly type: string;
 }
 
-/** A mock issue; `approvalRequired` gates agent status changes (all, or only to the listed keys) with 202. */
-export type MockIssue = IssueForAgent & { approvalRequired?: boolean | readonly string[] };
+/**
+ * A mock issue; `approvalRequired` gates agent status changes (all, or only to the listed keys) with 202.
+ * Iteration 4: `process` / `designApprovedAt` / `designProposal` go into the claim payload, and a
+ * design-first issue without approval refuses `in_progress` with 403 `DESIGN_NOT_APPROVED`.
+ */
+export type MockIssue = IssueForAgent & {
+  approvalRequired?: boolean | readonly string[];
+  process?: 'direct' | 'design_first';
+  designApprovedAt?: string | null;
+  designProposal?: { commentId: string; content: string; createdAt: string } | null;
+  projectId?: string | null;
+  ownerUserId?: string;
+  updatedAt?: string;
+};
 
 export interface EnqueueOptions {
   provider?: string;
@@ -70,6 +83,10 @@ const TRANSITIONS = [
   { from: 'blocked', to: 'in_progress' },
   { from: 'in_progress', to: 'in_review' },
   { from: 'in_progress', to: 'blocked' },
+  { from: 'todo', to: 'analysis' },
+  { from: 'analysis', to: 'proposal_review' },
+  { from: 'analysis', to: 'blocked' },
+  { from: 'proposal_review', to: 'blocked' },
 ];
 
 export class MockServer {
@@ -85,6 +102,7 @@ export class MockServer {
   readonly pullRequests = new Map<string, IssuePullRequestView[]>();
   readonly approvals: { id: string; issueId: string; fromStatus: string; toStatus: string }[] = [];
   readonly knowledge = new MockKnowledge();
+  readonly pm = new MockPm(this);
   private readonly sockets = new Set<WebSocket>();
   private server: Server;
   private wss: WebSocketServer;
@@ -169,7 +187,15 @@ export class MockServer {
       run: { id: runId, agentId: 'agent-1', runtimeId: runtime?.id ?? 'rt-missing', attempt: 1, priority: 0, createdAt: new Date().toISOString() },
       token: `npr_${randomBytes(20).toString('hex')}`,
       agent: { id: 'agent-1', name: 'Echo Bot', instructions: 'Be brief.', provider: provider as any, model: null, ...opts.agentExtras },
-      issue: { id: issue.id, identifier: issue.identifier, title: issue.title, statusKey: issue.statusKey, ownerName: issue.ownerName, ...opts.issueExtras },
+      issue: {
+        id: issue.id,
+        identifier: issue.identifier,
+        title: issue.title,
+        statusKey: issue.statusKey,
+        ownerName: issue.ownerName,
+        ...(issue.process ? { process: issue.process, designApprovedAt: issue.designApprovedAt ?? null, designProposal: issue.designProposal ?? null } : {}),
+        ...opts.issueExtras,
+      },
       ...(opts.project !== undefined ? { project: opts.project } : {}),
       ...(opts.knowledge !== undefined ? { knowledge: opts.knowledge } : {}),
       statusCatalog: [],
@@ -295,14 +321,16 @@ export class MockServer {
       return send(200, { data: { run: { id: runId }, agent: { id: 'agent-1', name: 'Echo Bot' }, issue, statusCatalog: [], agentTransitions: TRANSITIONS, project } });
     }
     if (path.startsWith('/np/agent/knowledge')) return this.knowledge.route(method, path, body, run.claimed, send);
+    if (path.startsWith('/np/agent/pm/')) return this.pm.route(method, path, url, run.claimed, send);
     if (path === '/np/agent/issues' && method === 'POST') return this.createIssue(body, run.claimed, send);
-    const m = path.match(/^\/np\/agent\/issues\/([^/]+)(?:\/(comments|status|children|dependencies|pull-requests))?$/);
+    const m = path.match(/^\/np\/agent\/issues\/([^/]+)(?:\/(comments|status|children|dependencies|pull-requests|design-proposal))?$/);
     const issue = m ? this.findIssue(decodeURIComponent(m[1] as string)) : undefined;
     if (!m || !issue) return send(404, { code: 'ISSUE_NOT_FOUND', message: path });
     if (!m[2]) return send(200, { data: issue });
     if (m[2] === 'children') return send(200, { data: this.children(issue.id) });
     if (m[2] === 'dependencies') return this.dependencyRoute(method, issue.id, url, body, send);
     if (m[2] === 'pull-requests') return this.pullRequestRoute(method, issue.id, body, send);
+    if (m[2] === 'design-proposal') return this.pm.designProposal(issue.id, body, run.claimed, send);
     if (m[2] === 'comments' && method === 'GET') return send(200, { data: this.comments.get(issue.id) ?? [] });
     if (m[2] === 'comments') {
       const id = `c${++this.seq}`;
@@ -321,6 +349,7 @@ export class MockServer {
     }
     const allowed = TRANSITIONS.some((t) => t.from === issue.statusKey && t.to === body.statusKey);
     if (!allowed) return send(403, { code: 'TRANSITION_NOT_ALLOWED', message: `${issue.statusKey} → ${body.statusKey}` });
+    if (issue.process === 'design_first' && !issue.designApprovedAt && body.statusKey === 'in_progress') return send(403, { code: 'DESIGN_NOT_APPROVED', message: 'the design is not approved yet' });
     const gate = issue.approvalRequired;
     if (gate === true || (Array.isArray(gate) && gate.includes(body.statusKey))) {
       const pendingApproval = {

@@ -22,10 +22,13 @@
  * | pr_merged           | info     | subscribers        | a linked PR was merged                                    |
  * | knowledge_proposal  | decision | project lead(s), else owner/admin | an agent proposed a knowledge change (iteration 3) |
  * | knowledge_decided   | info     | source issue owner | the proposal was accepted or rejected                     |
+ * | design_review       | decision | owner              | the issue enters proposal_review (iteration 4, `design-notices.ts`) |
  *
  * Nobody is notified of their own action. Decision items resolve when the matching action is done (status leaves
  * in_review / blocked; every proposal on the parent decided; the approval request decided or cancelled; the PR merged
- * or closed; the knowledge proposal decided; a delivery accepted or sent back — iteration 3). `agent_blocked` also
+ * or closed; the knowledge proposal decided; a delivery accepted or sent back — iteration 3; the design approved or
+ * sent back, or the status leaving proposal_review — iteration 4). An agent's `/note` notifies nobody (the project
+ * manager's retrospective notes). `agent_blocked` also
  * resolves for a member who replies on the issue (not a `/note`) and for everyone when the executor changes. `run_failed` items are archived when the issue reaches in_review or a terminal status. Every recipient
  * gets `inbox.changed` (realtime `np:inbox`). `body` is an English fallback; `payload` carries what the browser
  * renders from (`type` + `payload`), including `identifier` and `issueTitle` on every item.
@@ -43,6 +46,11 @@ import {
   onPullRequestMerged,
   onPullRequestReview,
 } from './delivery-notices.js';
+import {
+  onDesignDecided,
+  onDesignProposed,
+  onDesignStatus,
+} from './design-notices.js';
 import {
   activeSubscribers,
   archiveRunFailed,
@@ -130,6 +138,8 @@ async function onStatusChanged(
       });
     }
   }
+  const designDecider = await onDesignStatus(round, issue, actor, status);
+  if (designDecider) deciders.push(designDecider);
   if (actor.type === 'system') return;
   const subscribers = (await activeSubscribers(tx.conn, issue.id)).filter(
     (userId) => !deciders.includes(userId),
@@ -210,6 +220,8 @@ async function onComment(
     .where('id', '=', event.commentId)
     .executeTakeFirst();
   const content = str(comment?.content) ?? '';
+  // Iteration 4: an agent's note (the project manager's retrospective) notifies nobody.
+  if (actor.type === 'agent' && isNote(content)) return;
   // A member's reply to a blocked agent is their decision (iteration 3 §E `reply`); a note does not reach the agent.
   if (actor.type === 'user' && !isNote(content))
     round.touch(
@@ -401,6 +413,10 @@ async function handle(round: Round, event: DomainEvent): Promise<void> {
       return onKnowledgeDecided(round, event);
     case 'delivery.decided':
       return onDeliveryDecided(round, event);
+    case 'design.proposed':
+      return onDesignProposed(round, event);
+    case 'design.decided':
+      return onDesignDecided(round, event);
     default:
       return;
   }

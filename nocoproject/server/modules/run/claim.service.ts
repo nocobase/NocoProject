@@ -1,7 +1,9 @@
 /**
  * Batch claim for a daemon (protocol.md §4 `runs/claim`). Iteration 2 adds `agent.env` (decrypted — this payload only
  * travels on the daemon route), `agent.skills`, `issue.executionMode` and `issue.pullRequests`; iteration 3 the
- * `knowledge` index (the run's project documents, then system-level ones; no content) from the knowledge service.
+ * `knowledge` index (the run's project documents, then system-level ones; no content) from the knowledge service;
+ * iteration 4 `agent.kind`, `agent.reasoningEffort`, `issue.process`, `issue.designApprovedAt`,
+ * `issue.designProposal` (the latest proposal, for the brief) and `issue.originType`.
  *
  * Each claimed run is its own short transaction: runtime advisory lock → claim SQL → run token insert. The payload
  * for the daemon is assembled after commit; if that fails the run stays `dispatched` and the lease rule re-queues it.
@@ -27,6 +29,7 @@ import {
   type ClaimedRunPhase1Extras,
   type ClaimedRunPhase2Extras,
   type ClaimedRunPhase3Extras,
+  type ClaimedRunPhase4Extras,
   type ClaimedTriggerComment,
   type DaemonClaimRequest,
   type DaemonClaimResponse,
@@ -36,7 +39,9 @@ import type { UserDirectory } from '../shared/users.js';
 import { claimEnv } from '../agent/env.service.js';
 import type { KnowledgeService } from '../knowledge/knowledge.service.js';
 import { claimedPullRequests } from '../git/git.records.js';
+import { agentKindOf, reasoningEffortOf } from '../agent/agent.fields.js';
 import { findIssue, issueRef } from '../issue/issue.records.js';
+import { latestProposal } from '../issue/process.js';
 import { claimSkills } from '../skill/skill.service.js';
 import { claimedProject } from '../project/project.records.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
@@ -80,6 +85,8 @@ export type ClaimedRunV1 = ClaimedRun & ClaimedRunPhase1Extras;
 export type ClaimedRunV2 = ClaimedRunV1 & ClaimedRunPhase2Extras;
 /** ...and the iteration-3 `knowledge` index (iteration-3 contract §B). */
 export type ClaimedRunV3 = ClaimedRunV2 & ClaimedRunPhase3Extras;
+/** ...and the iteration-4 agent kind, reasoning effort and design state (iteration-4 contract §B, §C). */
+export type ClaimedRunV4 = ClaimedRunV3 & ClaimedRunPhase4Extras;
 
 async function delegationTargets(
   conn: Conn,
@@ -216,7 +223,7 @@ async function buildClaimedRun(
   runId: string,
   token: string,
   serverUrl: string,
-): Promise<ClaimedRunV3 | null> {
+): Promise<ClaimedRunV4 | null> {
   const conn = deps.tx.read();
   const run = await findRun(conn, runId);
   if (!run || !run.runtimeId) return null;
@@ -269,6 +276,8 @@ async function buildClaimedRun(
       delegationTargets: await delegationTargets(conn, run.agentId),
       env: await claimEnv(conn, deps.secrets, run.agentId),
       skills: await claimSkills(conn, run.agentId),
+      kind: agentKindOf(agent.kind),
+      reasoningEffort: reasoningEffortOf(agent.reasoningEffort),
     },
     issue: {
       id: issue.id,
@@ -282,6 +291,10 @@ async function buildClaimedRun(
       projectId: issue.projectId,
       executionMode: issue.executionMode,
       pullRequests: await claimedPullRequests(conn, issue.id),
+      process: issue.process,
+      designApprovedAt: issue.designApprovedAt,
+      designProposal: await latestProposal(conn, issue.id),
+      originType: issue.originType,
     },
     project: await claimedProject(conn, issue.projectId),
     statusCatalog: view.catalog,
@@ -342,7 +355,7 @@ export function createClaimService(deps: ClaimDeps): ClaimService {
           claimed.push(result);
         }
       }
-      const runs: ClaimedRunV3[] = [];
+      const runs: ClaimedRunV4[] = [];
       for (const { runId, token } of claimed) {
         const payload = await buildClaimedRun(deps, runId, token, serverUrl);
         if (payload) runs.push(payload);

@@ -18,11 +18,17 @@ import type {
   DaemonRunStatusResponse,
   DaemonStartRequest,
   DependencyType,
+  InboxItemV3,
   IssueForAgent,
   IssuePullRequestView,
   KnowledgeDoc,
   KnowledgeDocSummary,
   KnowledgeProposal,
+  MetricsReport,
+  PmIssueDetail,
+  PmIssueListPage,
+  PmIssueListQuery,
+  PmProjectList,
   StatusChangePendingResponse,
   SubtaskSummary,
 } from '../protocol.js';
@@ -251,6 +257,36 @@ export class AgentApi {
   /** POST /np/agent/knowledge/proposals → 201 KnowledgeProposal; 409 KNOWLEDGE_PROPOSAL_PENDING. */
   proposeKnowledge(body: KnowledgeProposalBody): Promise<KnowledgeProposal> {
     return this.http.data('POST', '/np/agent/knowledge/proposals', { body });
+  }
+  /** POST /np/agent/issues/:id/design-proposal { content } → the `kind='proposal'` comment (iteration 4 §B). */
+  async designProposal(id: string, content: string): Promise<unknown> {
+    const data = await this.http.data<{ comment?: unknown } | unknown>('POST', `/np/agent/issues/${enc(id)}/design-proposal`, { body: { content } });
+    return data && typeof data === 'object' && 'comment' in data && (data as { comment?: unknown }).comment ? (data as { comment: unknown }).comment : data;
+  }
+  /** GET /np/agent/pm/projects (iteration 4 §C, manager agents only). */
+  pmProjects(): Promise<PmProjectList> {
+    return this.http.data('GET', '/np/agent/pm/projects');
+  }
+  /** GET /np/agent/pm/issues → the whole `{ data, nextCursor }` body. */
+  async pmIssues(q: PmIssueListQuery = {}): Promise<PmIssueListPage> {
+    const body = await this.http.raw<Partial<PmIssueListPage> | undefined>('GET', '/np/agent/pm/issues', { query: { ...q } });
+    return { data: body?.data ?? [], nextCursor: body?.nextCursor ?? null };
+  }
+  /** GET /np/agent/pm/issues/:idOrIdentifier → `{ issue, comments, activities, runs, pullRequests, subtasks }`. */
+  pmIssue(idOrIdentifier: string): Promise<PmIssueDetail> {
+    return this.http.data('GET', `/np/agent/pm/issues/${enc(idOrIdentifier)}`);
+  }
+  /** GET /np/agent/pm/inbox?kind= → the asker's pending items. */
+  pmInbox(kind = 'decision'): Promise<InboxItemV3[]> {
+    return this.http.data('GET', '/np/agent/pm/inbox', { query: { kind } });
+  }
+  /** GET /np/agent/pm/metrics?from&to&projectId → MetricsReport. */
+  pmMetrics(q: { from?: string; to?: string; projectId?: string } = {}): Promise<MetricsReport> {
+    return this.http.data('GET', '/np/agent/pm/metrics', { query: { ...q } });
+  }
+  /** GET /np/agent/pm/knowledge?projectId&q → KnowledgeDocSummary[] (every visible project + system). */
+  pmKnowledge(q: { projectId?: string; q?: string } = {}): Promise<KnowledgeDocSummary[]> {
+    return this.http.data('GET', '/np/agent/pm/knowledge', { query: { ...q } });
   }
   /** POST /np/agent/issues (contract §D). The response is passed through as-is. */
   createIssue(body: AgentCreateIssueRequest): Promise<unknown> {

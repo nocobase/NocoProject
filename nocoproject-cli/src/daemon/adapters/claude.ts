@@ -2,15 +2,17 @@
  * Claude Code adapter.
  *
  * Launch: `claude -p --output-format stream-json --input-format stream-json --verbose
- *          --permission-mode bypassPermissions [--model m] [--resume id]`
+ *          --permission-mode bypassPermissions [--model m] [--effort level] [--resume id]`
+ * `--effort` carries the agent's `reasoningEffort` (Claude Code levels: low, medium, high, xhigh, max; `minimal`
+ * maps to `low`) and is only passed when `claude --help` lists it.
  * With `--input-format stream-json` the prompt is delivered on stdin as one stream-json
  * user message (a positional prompt is not read in that mode); stdin stays open so we can
  * answer `control_request` frames, and is closed once the `result` event arrives.
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { RunUsageInput } from '../../protocol.js';
-import { probeVersion, which } from '../../util/process.js';
+import type { ReasoningEffort, RunUsageInput } from '../../protocol.js';
+import { probeOutput, probeVersion, which } from '../../util/process.js';
 import { launchLineProcess } from './spawn.js';
 import { nowIso, type AdapterCapabilities, type AgentAdapter, type AgentEvent, type RunHandle, type RunSpec } from './types.js';
 
@@ -157,9 +159,13 @@ export function parseClaudeLine(line: string, state: ClaudeParseState, at: strin
   return { events };
 }
 
-export function buildClaudeArgs(spec: Pick<RunSpec, 'model' | 'resumeSessionId'>): string[] {
+/** Claude Code's `--effort` levels for each `reasoningEffort` (it has no `minimal`). */
+export const CLAUDE_EFFORT: Readonly<Record<ReasoningEffort, string>> = { minimal: 'low', low: 'low', medium: 'medium', high: 'high', max: 'max' };
+
+export function buildClaudeArgs(spec: Pick<RunSpec, 'model' | 'resumeSessionId' | 'reasoningEffort'>, opts: { readonly effortFlag?: boolean } = {}): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose', '--permission-mode', 'bypassPermissions'];
   if (spec.model) args.push('--model', spec.model);
+  if (spec.reasoningEffort && opts.effortFlag !== false) args.push('--effort', CLAUDE_EFFORT[spec.reasoningEffort]);
   if (spec.resumeSessionId) args.push('--resume', spec.resumeSessionId);
   return args;
 }
@@ -180,8 +186,15 @@ const RESUME_REJECTED = /no conversation found|bound to (another|a different) ac
 export class ClaudeAdapter implements AgentAdapter {
   readonly provider = 'claude' as const;
   private path: string | null = null;
+  /** Whether this `claude` accepts `--effort` (from `claude --help`); null until probed. */
+  private effortFlag: boolean | null = null;
 
   constructor(private readonly command = process.env.NOCOPROJECT_CLAUDE_PATH || 'claude') {}
+
+  private async supportsEffort(): Promise<boolean> {
+    if (this.effortFlag === null) this.effortFlag = /--effort\b/.test((await probeOutput(this.path ?? this.command, ['--help'])) ?? '');
+    return this.effortFlag;
+  }
 
   async detect(): Promise<{ version: string; path: string } | null> {
     const path = which(this.command, [join(homedir(), '.claude', 'local'), join(homedir(), '.local', 'bin')]);
@@ -198,9 +211,10 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async start(spec: RunSpec): Promise<RunHandle> {
     const state = newClaudeState();
+    const effortFlag = spec.reasoningEffort ? await this.supportsEffort() : false;
     return launchLineProcess({
       command: this.path ?? this.command,
-      args: buildClaudeArgs(spec),
+      args: buildClaudeArgs(spec, { effortFlag }),
       cwd: spec.workDir,
       env: spec.env,
       logsDir: spec.logsDir,

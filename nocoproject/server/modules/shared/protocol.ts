@@ -1128,3 +1128,9 @@ export * from './protocol.phase1-iter2-server.js';
 export * from './protocol.phase1-iter3.js';
 // 服务端专用的组合类型（CLI 的 sync-protocol 去掉这一行）
 export * from './protocol.phase1-iter3-server.js';
+
+// ---------- Phase 1 迭代 4（docs/phase1/iteration-4-contract.md） ----------
+
+export * from './protocol.phase1-iter4.js';
+// 服务端专用的组合类型（CLI 的 sync-protocol 去掉这一行）
+export * from './protocol.phase1-iter4-server.js';

@@ -167,6 +167,7 @@ const npIter2ZhCN: NpIter2Resource = {
       parent: '父任务',
       executor: '执行者',
       owner: '负责人',
+      process: '流程',
       actions: '操作',
     },
     problems: {
@@ -402,6 +403,7 @@ const npIter2ZhCN: NpIter2Resource = {
     knowledge_proposal_new: '{{actor}} 建议新建文档「{{doc}}」。',
     knowledge_accepted: '你对「{{doc}}」的知识库建议已被接受。',
     knowledge_rejected: '你对「{{doc}}」的知识库建议被驳回。',
+    design_review: '{{actor}} 提交了设计方案，等你审核。',
   },
   projectMore: {
     label: '更多项目操作',

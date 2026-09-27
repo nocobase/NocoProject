@@ -7,6 +7,7 @@ import { registerDaemonCommands } from './daemon.js';
 import { registerIssueCommands } from './issue.js';
 import { registerKbCommands } from './kb.js';
 import { registerLoginCommand } from './login.js';
+import { registerPmCommands } from './pm.js';
 import { registerPrCommands } from './pr.js';
 import { registerProjectCommands } from './project.js';
 import { registerRepoCommands } from './repo.js';
@@ -39,6 +40,7 @@ export function buildProgram(): Command {
   registerRepoCommands(program);
   registerPrCommands(program);
   registerKbCommands(program);
+  registerPmCommands(program);
   return program;
 }
 

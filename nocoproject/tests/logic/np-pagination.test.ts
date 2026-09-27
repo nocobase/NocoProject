@@ -233,15 +233,16 @@ describe.skipIf(!db)(
         'GET',
         `/np/issues/${issue.id}/activities?cursor=${encodeURIComponent(older.body.nextCursor!)}`,
       );
-      // The last page: the issue_created activity, then act-0000 … act-0008.
-      expect(rest.body.data).toHaveLength(10);
+      // The last page: issue_created and (iteration 4) process_selected, then act-0000 … act-0008.
+      expect(rest.body.data).toHaveLength(11);
       expect(rest.body.data[0]?.action).toBe('issue_created');
+      expect(rest.body.data[1]?.action).toBe('process_selected');
       const allIds = [
         ...rest.body.data,
         ...older.body.data,
         ...data.activities,
       ].map((item) => item.id);
-      expect(new Set(allIds).size).toBe(80);
+      expect(new Set(allIds).size).toBe(81);
       expect(rest.body.nextCursor).toBeNull();
 
       const olderComments = await alice<CommentPage>(

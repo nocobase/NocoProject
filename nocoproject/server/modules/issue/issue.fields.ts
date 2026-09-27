@@ -18,8 +18,8 @@ import type {
   ExecutorInput,
   ExecutorType,
   IssueV1,
-  IssueV2,
-  UpdateIssueRequestV2,
+  IssueV4,
+  UpdateIssueRequestV4,
 } from '../shared/protocol.js';
 import { EXECUTION_MODES } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
@@ -33,6 +33,7 @@ import { parseUserMentions } from '../collaboration/mentions.js';
 import { requireLabels } from '../label/label.service.js';
 import type { WorkflowView } from './status.js';
 import { findIssue, isIssuePriority } from './issue.records.js';
+import { designSkip, processChange } from './process.js';
 
 const MAX_TITLE_LENGTH = 500;
 const MAX_PARENT_DEPTH = 50;
@@ -47,10 +48,15 @@ export interface ActivityEntry {
   readonly details: Record<string, unknown>;
 }
 
+/**
+ * The executor of an issue. Iteration 4: a project manager agent (`kind = 'manager'`) only executes project manager
+ * conversations and retrospectives (400 `MANAGER_NOT_EXECUTOR` unless `allowManager`).
+ */
 export async function resolveExecutor(
   conn: Conn,
   users: UserDirectory,
   input: ExecutorInput,
+  options: { readonly allowManager?: boolean } = {},
 ): Promise<ResolvedExecutor> {
   if (!input || typeof input !== 'object')
     throw invalid('INVALID_EXECUTOR', 'executor must be { type, id }.');
@@ -60,11 +66,16 @@ export async function resolveExecutor(
   if (input.type === 'agent') {
     const agent = await conn.query
       .selectFrom('agents')
-      .select(['id', 'archivedAt'])
+      .select(['id', 'archivedAt', 'kind'])
       .where('id', '=', id)
       .executeTakeFirst();
     if (!agent || agent.archivedAt)
       throw invalid('INVALID_EXECUTOR', 'executor agent does not exist.');
+    if (agent.kind === 'manager' && !options.allowManager)
+      throw invalid(
+        'MANAGER_NOT_EXECUTOR',
+        'A project manager agent cannot execute issues.',
+      );
     return { executorType: 'agent', executorId: id };
   }
   if (input.type === 'user') {
@@ -175,7 +186,7 @@ export interface ChangeContext {
   readonly conn: Conn;
   readonly users: UserDirectory;
   readonly viewer: Viewer;
-  readonly before: IssueV2;
+  readonly before: IssueV4;
   /** The workflow of the project the issue ends up in. */
   readonly view: WorkflowView;
 }
@@ -187,10 +198,10 @@ export interface ComputedChanges {
 }
 
 function scalarChange(
-  before: IssueV2,
+  before: IssueV4,
   values: Record<string, unknown>,
   activities: ActivityEntry[],
-): (field: keyof IssueV2, action: string, value: unknown) => void {
+): (field: keyof IssueV4, action: string, value: unknown) => void {
   return (field, action, value) => {
     if (before[field] === value) return;
     values[field] = value;
@@ -229,7 +240,7 @@ async function authorizeChanges(
 /** Phase 0 fields: title, description, status, priority, owner, executor. */
 async function coreChanges(
   ctx: ChangeContext,
-  patch: UpdateIssueRequestV2,
+  patch: UpdateIssueRequestV4,
   values: Record<string, unknown>,
   activities: ActivityEntry[],
 ): Promise<void> {
@@ -263,7 +274,9 @@ async function coreChanges(
       await resolveOwner(conn, users, patch.ownerUserId),
     );
   if (patch.executor !== undefined) {
-    const next = await resolveExecutor(conn, users, patch.executor);
+    const next = await resolveExecutor(conn, users, patch.executor, {
+      allowManager: before.originType === 'pm',
+    });
     if (
       next.executorType !== before.executorType ||
       next.executorId !== before.executorId
@@ -284,7 +297,7 @@ async function coreChanges(
 /** Iteration 1 fields: stage, dates, auto-execute, parent, project, labels; iteration 2: executionMode. */
 async function phase1Changes(
   ctx: ChangeContext,
-  patch: UpdateIssueRequestV2,
+  patch: UpdateIssueRequestV4,
   values: Record<string, unknown>,
   activities: ActivityEntry[],
 ): Promise<string[] | undefined> {
@@ -340,12 +353,14 @@ async function phase1Changes(
 /** Validated column changes for a patch, plus one activity per changed field; enforces the field-level rules. */
 export async function computeChanges(
   ctx: ChangeContext,
-  patch: UpdateIssueRequestV2,
+  patch: UpdateIssueRequestV4,
 ): Promise<ComputedChanges> {
   const values: Record<string, unknown> = {};
   const activities: ActivityEntry[] = [];
   await coreChanges(ctx, patch, values, activities);
   const labelIds = await phase1Changes(ctx, patch, values, activities);
+  processChange(ctx.before, patch.process, values, activities);
+  designSkip(ctx.before, values, activities);
   await authorizeChanges(ctx, values);
   return { values, activities, labelIds };
 }

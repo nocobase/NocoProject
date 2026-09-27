@@ -4,7 +4,7 @@
  *
  * | Action                                              | Allowed                                                  |
  * | --------------------------------------------------- | -------------------------------------------------------- |
- * | See an issue                                        | no project, project visibility everyone, project member, owner/admin |
+ * | See an issue                                        | no project, project visibility everyone, project member, owner/admin; a project manager conversation only its owner |
  * | Create, comment, edit fields, non-terminal status   | members who can see the issue                            |
  * | Change the owner                                    | current owner, project lead, owner/admin                 |
  * | Write a terminal status (done / cancelled)          | issue owner, project lead, owner/admin                   |
@@ -24,7 +24,7 @@ import type { Actor } from './activity.js';
 import type { Conn } from './db.js';
 import { isoOrNull, str, unique } from './db.js';
 import { forbidden, notFound } from './errors.js';
-import type { ApproverRole, Issue, IssueV2, MemberRole } from './protocol.js';
+import type { ApproverRole, Issue, IssueV4, MemberRole } from './protocol.js';
 import { findIssue } from '../issue/issue.records.js';
 
 export interface Viewer {
@@ -130,11 +130,20 @@ export async function canSeeProject(
   return (await projectAccess(conn, viewer, projectId)).visible;
 }
 
+/**
+ * Iteration 4: a project manager conversation (`originType = 'pm'`) is private to its owner — the manager answers
+ * with what that member may see, so nobody else may read the answers.
+ */
 export async function canSeeIssue(
   conn: Conn,
   viewer: Viewer,
-  issue: Pick<Issue, 'projectId'>,
+  issue: Pick<Issue, 'projectId'> & {
+    readonly originType?: string;
+    readonly ownerUserId?: string | null;
+  },
 ): Promise<boolean> {
+  if (issue.originType === 'pm' && issue.ownerUserId !== viewer.userId)
+    return false;
   return canSeeProject(conn, viewer, issue.projectId);
 }
 
@@ -143,7 +152,7 @@ export async function requireVisibleIssue(
   conn: Conn,
   viewer: Viewer,
   idOrKey: string,
-): Promise<IssueV2> {
+): Promise<IssueV4> {
   const issue = await findIssue(conn, idOrKey);
   if (!issue || !(await canSeeIssue(conn, viewer, issue)))
     throw notFound('Issue');

@@ -11,15 +11,16 @@
  * | batch_done         | open                                                                       |
  * | pr_review          | openPr (external), open                                                    |
  * | knowledge_proposal | accept, reject (optional comment), openDoc (when the document exists), open |
+ * | design_review      | approve (optional comment), requestChanges (comment), open (iteration 4)   |
  * | anything else      | open (when the item names an issue)                                        |
  *
  * A resolved item keeps only its navigation actions (GET). POST paths are relative to `/api`; GET paths are in-app
  * routes, or external URLs when `external` is set.
  */
-import type { InboxAction, InboxItemTypeV3 } from '../shared/protocol.js';
+import type { InboxAction, InboxItemTypeV4 } from '../shared/protocol.js';
 
 export interface ActionSource {
-  readonly type: InboxItemTypeV3;
+  readonly type: InboxItemTypeV4;
   readonly issueId: string | null;
   readonly issueIdentifier: string | null;
   readonly payload: Readonly<Record<string, unknown>> | null;
@@ -99,6 +100,18 @@ function typeActions(source: ActionSource, issueId: string): InboxAction[] {
         }),
       ];
     }
+    case 'design_review':
+      return [
+        post('approve', 'primary', `${issuePath}/design/approve`, {
+          commentField: 'comment',
+        }),
+        post(
+          'requestChanges',
+          'secondary',
+          `${issuePath}/design/request-changes`,
+          { needsComment: true, commentField: 'comment' },
+        ),
+      ];
     default:
       return [];
   }

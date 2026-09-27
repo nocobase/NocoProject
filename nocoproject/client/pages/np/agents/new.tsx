@@ -30,13 +30,15 @@ import { useRouteOverlay } from '@/components/use-route-overlay';
 
 import { createAgent, fetchRuntimes } from '../api.js';
 import { npKeys } from '../constants.js';
+import type { AgentKind, ReasoningEffort } from '../types-iter4.js';
+import { AgentKindFields } from './agent-kind-fields.js';
 
 const FORM_ID = 'np-agent-new-form';
 const DEFAULT_MAX_CONCURRENT_RUNS = 6;
 
 type FieldName = 'name' | 'instructions' | 'runtimeId' | 'maxConcurrentRuns';
 
-/** Route `/agents/new`: create an agent bound to one runtime. */
+/** Route `/agents/new`: create an agent bound to one runtime, of a kind (iteration 4 §C: 编码 / 项目经理). */
 export default function NewAgentPage(): ReactElement {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
@@ -82,6 +84,9 @@ function NewAgentBody({
   const [maxConcurrentRuns, setMaxConcurrentRuns] = useState(
     String(DEFAULT_MAX_CONCURRENT_RUNS),
   );
+  const [kind, setKind] = useState<AgentKind>('coder');
+  const [reasoningEffort, setReasoningEffort] =
+    useState<ReasoningEffort | null>(null);
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [formError, setFormError] = useState<string>();
 
@@ -121,6 +126,8 @@ function NewAgentBody({
         provider: runtime.provider,
         model: model.trim() || undefined,
         maxConcurrentRuns: Number(maxConcurrentRuns),
+        kind,
+        reasoningEffort,
       });
       onSubmittingChange(false);
       toast.add({
@@ -275,6 +282,13 @@ function NewAgentBody({
             ) : null}
           </Field>
         </div>
+        <AgentKindFields
+          idPrefix='np-agent'
+          kind={kind}
+          reasoningEffort={reasoningEffort}
+          onKindChange={setKind}
+          onReasoningEffortChange={setReasoningEffort}
+        />
       </FieldGroup>
     </form>
   );

@@ -8,7 +8,7 @@
  */
 import type { Conn } from '../shared/db.js';
 import { num, str, unique } from '../shared/db.js';
-import type { Blocker, IssueV1, IssueV2 } from '../shared/protocol.js';
+import type { Blocker, IssueV1, IssueV4 } from '../shared/protocol.js';
 import { issuesByIds, mapIssue } from '../issue/issue.records.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 
@@ -34,7 +34,7 @@ function blocker(issue: IssueV1, reason: Blocker['reason']): Blocker {
 export async function childrenOf(
   conn: Conn,
   parentIssueId: string,
-): Promise<IssueV2[]> {
+): Promise<IssueV4[]> {
   const rows = await conn.query
     .selectFrom('issues')
     .selectAll()

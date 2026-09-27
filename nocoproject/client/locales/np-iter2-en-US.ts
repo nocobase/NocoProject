@@ -184,6 +184,7 @@ const npIter2EnUS = {
       parent: 'Parent',
       executor: 'Executor',
       owner: 'Owner',
+      process: 'Process',
       actions: 'Actions',
     },
     problems: {
@@ -430,6 +431,7 @@ const npIter2EnUS = {
     knowledge_proposal_new: '{{actor}} proposes a new document “{{doc}}”.',
     knowledge_accepted: 'Your knowledge proposal “{{doc}}” was accepted.',
     knowledge_rejected: 'Your knowledge proposal “{{doc}}” was rejected.',
+    design_review: '{{actor}} submitted a design proposal for your review.',
   },
   projectMore: {
     label: 'More project actions',

@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import IntakeDrawer from '../../client/pages/np/intake/drawer.js';
+import NewIssuePage from '../../client/pages/np/issues/new.js';
 import { answer, type RequestOptions, renderNp } from './np-harness.js';
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
@@ -35,6 +35,7 @@ const COMMON = {
 };
 
 beforeEach(() => {
+  window.localStorage.clear();
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -47,39 +48,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('batch entry', () => {
-  it('opens as a drawer over the project page with the project preselected', async () => {
-    const user = userEvent.setup();
-    const posted: unknown[] = [];
-    api.request.mockImplementation(
-      answer({
-        ...COMMON,
-        'POST np/intake/batches': (options: RequestOptions) => {
-          posted.push(options.json);
-          return { data: { batch: BATCH, drafts: [] } };
-        },
-      }),
-    );
-    await renderNp(<IntakeDrawer />, {
-      url: '/projects/p1/intake',
-      path: '/projects/:projectId/intake',
-    });
-    expect(
-      await screen.findByRole('dialog', { name: 'Batch entry' }),
-    ).toBeVisible();
-    await user.type(
-      screen.getByRole('textbox', { name: 'Text to split into issues' }),
-      'One',
-    );
-    await user.click(screen.getByRole('button', { name: 'Split into drafts' }));
-    await waitFor(() =>
-      expect(posted).toEqual([
-        { source: 'paste', rawContent: 'One', projectId: 'p1' },
-      ]),
-    );
-  });
-
-  it('parses pasted text for the preselected project and opens the drafts', async () => {
+describe('new issue dialog: AI draft tab (iteration 4 §D)', () => {
+  it('opens on the AI tab with the project preselected, drafts the text and opens the drafts', async () => {
     const user = userEvent.setup();
     const posted: unknown[] = [];
     api.request.mockImplementation(
@@ -103,16 +73,22 @@ describe('batch entry', () => {
         },
       }),
     );
-    await renderNp(<IntakeDrawer />, {
-      url: '/issues/intake?project=p1',
-      path: '/issues/intake',
+    await renderNp(<NewIssuePage />, {
+      url: '/issues/new?project=p1',
+      path: '/issues/new',
     });
-
+    expect(
+      await screen.findByRole('dialog', { name: 'New issue' }),
+    ).toBeVisible();
+    expect(screen.getByRole('tab', { name: 'AI draft' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await user.type(
-      screen.getByRole('textbox', { name: 'Text to split into issues' }),
+      screen.getByRole('textbox', { name: 'Requirements' }),
       '- Design the form',
     );
-    await user.click(screen.getByRole('button', { name: 'Split into drafts' }));
+    await user.click(screen.getByRole('button', { name: 'Draft issues' }));
     await waitFor(() =>
       expect(posted).toEqual([
         { source: 'paste', rawContent: '- Design the form', projectId: 'p1' },
@@ -121,6 +97,58 @@ describe('batch entry', () => {
     expect(await screen.findByText('Drafts (1)')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Row 1 Title' })).toHaveValue(
       'Design the form',
+    );
+    expect(
+      screen.getByRole('columnheader', { name: 'Process' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('combobox', { name: 'Row 1 Process' }),
+    ).toHaveTextContent('Automatic');
+    // A draft without a process shows the workspace default (here unset, so automatic).
+  });
+
+  it('saves the process chosen for a draft', async () => {
+    const user = userEvent.setup();
+    const saved: unknown[] = [];
+    api.request.mockImplementation(
+      answer({
+        ...COMMON,
+        'GET np/intake/batches/b1': {
+          data: {
+            batch: BATCH,
+            drafts: [
+              { position: 1, parentPosition: null, fields: { title: 'Login' } },
+            ],
+          },
+        },
+        'PUT np/intake/batches/b1/drafts': (options: RequestOptions) => {
+          const body = options.json as { drafts: unknown[] };
+          saved.push(body.drafts);
+          return { data: { drafts: body.drafts } };
+        },
+      }),
+    );
+    await renderNp(<NewIssuePage />, {
+      url: '/issues/new?batch=b1',
+      path: '/issues/new',
+    });
+    await user.click(
+      await screen.findByRole('combobox', { name: 'Row 1 Process' }),
+    );
+    await user.click(
+      await screen.findByRole('option', { name: 'Design first' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save drafts' }));
+    await waitFor(() =>
+      expect(saved).toEqual([
+        [
+          {
+            position: 1,
+            parentPosition: null,
+            fields: { title: 'Login', process: 'design_first' },
+          },
+        ],
+      ]),
     );
   });
 
@@ -151,9 +179,9 @@ describe('batch entry', () => {
         },
       }),
     );
-    await renderNp(<IntakeDrawer />, {
-      url: '/issues/intake?batch=b1',
-      path: '/issues/intake',
+    await renderNp(<NewIssuePage />, {
+      url: '/issues/new?batch=b1',
+      path: '/issues/new',
     });
 
     const problems = await screen.findByRole('list', {
@@ -223,9 +251,9 @@ describe('batch entry', () => {
         },
       }),
     );
-    await renderNp(<IntakeDrawer />, {
-      url: '/issues/intake?batch=b1',
-      path: '/issues/intake',
+    await renderNp(<NewIssuePage />, {
+      url: '/issues/new?batch=b1',
+      path: '/issues/new',
     });
     await user.click(
       await screen.findByRole('button', { name: 'Create 1 issues' }),

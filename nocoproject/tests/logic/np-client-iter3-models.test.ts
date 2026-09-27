@@ -25,9 +25,9 @@ import {
 } from '../../client/pages/np/inbox/decision-actions.js';
 import { inboxItemLink } from '../../client/pages/np/inbox/inbox-model.js';
 import {
-  intakeCloseSearch,
-  intakeRedirectTarget,
-} from '../../client/pages/np/intake/intake-location.js';
+  newIssueCloseSearch,
+  newIssueRedirectTarget,
+} from '../../client/pages/np/issues/new-issue-model.js';
 import {
   canEditKnowledge,
   filterKnowledge,
@@ -348,15 +348,21 @@ describe('navigation helpers (§G)', () => {
     expect(visibleConfigTabs(false)).not.toContain('github');
   });
 
-  it('sends old /intake links to the drawer and cleans the query when it closes', () => {
-    expect(intakeRedirectTarget('?batch=b1')).toBe('/issues/intake?batch=b1');
-    expect(intakeRedirectTarget('?project=p%201&batch=b1')).toBe(
-      '/projects/p%201/intake?batch=b1',
+  it('sends old batch-entry links to the new issue dialog and cleans the query when it closes', () => {
+    // Iteration 4 §D replaced the drawer with the AI tab of "新建任务".
+    expect(newIssueRedirectTarget('?batch=b1')).toBe(
+      '/issues/new?tab=ai&batch=b1',
     );
-    expect(intakeCloseSearch('?view=board&batch=b1&project=p1')).toBe(
-      '?view=board',
+    expect(newIssueRedirectTarget('?project=p%201&batch=b1')).toBe(
+      '/issues/new?tab=ai&project=p+1&batch=b1',
     );
-    expect(intakeCloseSearch('?batch=b1')).toBe('');
+    expect(newIssueRedirectTarget('', 'p2')).toBe(
+      '/issues/new?tab=ai&project=p2',
+    );
+    expect(newIssueCloseSearch('?view=board&tab=ai&batch=b1&project=p1')).toBe(
+      '?view=board&project=p1',
+    );
+    expect(newIssueCloseSearch('?batch=b1&tab=manual')).toBe('');
   });
 
   it('round-trips the metric thresholds form and rejects out-of-range values', () => {

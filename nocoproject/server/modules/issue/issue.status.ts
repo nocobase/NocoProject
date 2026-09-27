@@ -4,7 +4,8 @@
  *
  * Every status change goes through `writeStatus`: one revision, a `status_changed` activity, the trigger rules for
  * terminal entry, and the `issue.updated` event. Human and agent writes call the approval gate (`shared/approval.ts`)
- * first; system writes and approved transitions do not.
+ * first; system writes and approved transitions do not. Iteration 4: agent writes also pass the design gate
+ * (`process.ts`).
  */
 import type { Actor } from '../shared/activity.js';
 import { SYSTEM_ACTOR } from '../shared/activity.js';
@@ -13,7 +14,7 @@ import { now } from '../shared/db.js';
 import { conflict, forbidden, notFound } from '../shared/errors.js';
 import type {
   ApprovalRequest,
-  IssueV2,
+  IssueV4,
   TransitionActor,
 } from '../shared/protocol.js';
 import { ACTIVE_STATUSES } from '../run/run.records.js';
@@ -21,12 +22,13 @@ import { validateStatus } from './issue.fields.js';
 import { emitUpdate } from './issue.events.js';
 import { findIssue, mapIssue } from './issue.records.js';
 import type { IssueDeps } from './issue.service.js';
+import { agentProcessGate } from './process.js';
 import type { WorkflowView } from './status.js';
 
 /** The outcome of a status write that may be held for approval. */
 export interface IssueStatusResult {
   /** The issue after the write, or unchanged when the transition waits for approval. */
-  readonly issue: IssueV2;
+  readonly issue: IssueV4;
   readonly pendingApproval: ApprovalRequest | null;
 }
 
@@ -40,11 +42,11 @@ function transitionActor(actor: Actor): TransitionActor {
 export async function writeStatus(
   deps: IssueDeps,
   tx: Tx,
-  before: IssueV2,
+  before: IssueV4,
   target: string,
   actor: Actor,
   details: Readonly<Record<string, unknown>> = {},
-): Promise<IssueV2> {
+): Promise<IssueV4> {
   const timestamp = now();
   await tx.conn.query
     .updateTable('issues')
@@ -62,7 +64,7 @@ export async function writeStatus(
     action: 'status_changed',
     details: { from: before.statusKey, to: target, ...details },
   });
-  const after = (await findIssue(tx.conn, before.id)) as IssueV2;
+  const after = (await findIssue(tx.conn, before.id)) as IssueV4;
   await deps.triggers().onStatusChanged(tx, { before, after, actor });
   emitUpdate(tx, before, after, actor);
   return after;
@@ -75,7 +77,7 @@ export async function writeStatus(
 export async function gateTransition(
   deps: IssueDeps,
   tx: Tx,
-  issue: IssueV2,
+  issue: IssueV4,
   target: string,
   actor: Actor,
   view: WorkflowView,
@@ -117,6 +119,7 @@ export async function agentSetStatus(
         `Agents may not move an issue from ${before.statusKey} to ${target}.`,
       );
     }
+    await agentProcessGate(tx.conn, before, target);
     const pending = await gateTransition(deps, tx, before, target, actor, view);
     if (pending) return { issue: before, pendingApproval: pending };
     return {
@@ -136,7 +139,7 @@ export async function systemSetStatus(
   issueId: string,
   target: string,
   details: Readonly<Record<string, unknown>>,
-): Promise<IssueV2 | null> {
+): Promise<IssueV4 | null> {
   const before = await findIssue(tx.conn, issueId);
   if (!before || before.statusKey === target) return null;
   const view = await deps.workflows.forIssue(tx.conn, before);
@@ -213,7 +216,7 @@ export async function resetAbandonedIssue(
     action: 'status_changed',
     details: { from: 'in_progress', to: 'todo', reason: 'runFailed' },
   });
-  const after = (await findIssue(tx.conn, issueId)) as IssueV2;
+  const after = (await findIssue(tx.conn, issueId)) as IssueV4;
   emitUpdate(tx, issue, after, SYSTEM_ACTOR);
   return true;
 }

@@ -1,7 +1,9 @@
 /**
  * `GET/PATCH /np/settings` (docs/phase1/iteration-2-contract.md §I): every member reads the workspace settings;
  * owner/admin change them. `prMergedStatus` must be `'none'` or a status of the default workflow. Iteration 3 §C adds
- * `metricThresholds` (partial updates merge over the stored thresholds).
+ * `metricThresholds` (partial updates merge over the stored thresholds). Iteration 4 adds `defaultProcess`
+ * (auto | direct | design_first), `pmAgentId` (null or an active agent of kind manager, 400 `INVALID_PM_AGENT`) and
+ * `retrospectiveOnDone`.
  */
 import type { Actor } from '../shared/activity.js';
 import { forbid, isAdmin, viewerOf } from '../shared/authz.js';
@@ -10,10 +12,11 @@ import { invalid } from '../shared/errors.js';
 import type {
   MetricThresholds,
   ModelPrice,
-  UpdateWorkspaceSettingsRequestV3,
-  WorkspaceSettingsViewV3,
+  UpdateWorkspaceSettingsRequestV4,
+  WorkspaceSettingsViewV4,
 } from '../shared/protocol.js';
 import {
+  DEFAULT_PROCESSES,
   METRIC_THRESHOLD_DIRECTIONS,
   METRIC_THRESHOLD_KEYS,
 } from '../shared/protocol.js';
@@ -24,11 +27,11 @@ import type { SettingsService, WorkspaceSettings } from './settings.service.js';
 const MAX_PRICES = 100;
 
 export interface WorkspaceSettingsService {
-  view(actor: Actor): Promise<WorkspaceSettingsViewV3>;
+  view(actor: Actor): Promise<WorkspaceSettingsViewV4>;
   update(
     actor: Actor,
-    patch: UpdateWorkspaceSettingsRequestV3,
-  ): Promise<WorkspaceSettingsViewV3>;
+    patch: UpdateWorkspaceSettingsRequestV4,
+  ): Promise<WorkspaceSettingsViewV4>;
 }
 
 function priceNumber(value: unknown, field: string): number {
@@ -106,11 +109,56 @@ export function validateThresholds(
   return result;
 }
 
+/** Iteration 4: null, or an active agent of kind manager. */
+async function validatePmAgent(
+  conn: Conn,
+  value: unknown,
+): Promise<string | null> {
+  if (value === null || value === '') return null;
+  const agent =
+    typeof value === 'string'
+      ? await conn.query
+          .selectFrom('agents')
+          .select(['kind', 'archivedAt'])
+          .where('id', '=', value)
+          .executeTakeFirst()
+      : undefined;
+  if (!agent || agent.archivedAt || agent.kind !== 'manager')
+    throw invalid(
+      'INVALID_PM_AGENT',
+      'pmAgentId must be null or an active agent of kind manager.',
+    );
+  return value as string;
+}
+
+/** Iteration 4 keys. */
+async function phase4Values(
+  conn: Conn,
+  patch: UpdateWorkspaceSettingsRequestV4,
+  values: { -readonly [K in keyof WorkspaceSettings]?: WorkspaceSettings[K] },
+): Promise<void> {
+  if (patch.defaultProcess !== undefined) {
+    if (!DEFAULT_PROCESSES.includes(patch.defaultProcess))
+      throw invalid(
+        'INVALID_FIELD',
+        'defaultProcess must be auto, direct or design_first.',
+      );
+    values.defaultProcess = patch.defaultProcess;
+  }
+  if (patch.pmAgentId !== undefined)
+    values.pmAgentId = await validatePmAgent(conn, patch.pmAgentId);
+  if (patch.retrospectiveOnDone !== undefined)
+    values.retrospectiveOnDone = validateBoolean(
+      patch.retrospectiveOnDone,
+      'retrospectiveOnDone',
+    );
+}
+
 async function patchValues(
   conn: Conn,
   settings: SettingsService,
   workflows: WorkflowService,
-  patch: UpdateWorkspaceSettingsRequestV3,
+  patch: UpdateWorkspaceSettingsRequestV4,
 ): Promise<Partial<WorkspaceSettings>> {
   const values: {
     -readonly [K in keyof WorkspaceSettings]?: WorkspaceSettings[K];
@@ -145,6 +193,7 @@ async function patchValues(
       patch.metricThresholds,
       (await settings.read(conn)).metricThresholds,
     );
+  await phase4Values(conn, patch, values);
   return values;
 }
 
@@ -156,7 +205,7 @@ export function createWorkspaceSettingsService(deps: {
   async function view(
     conn: Conn,
     actor: Actor,
-  ): Promise<WorkspaceSettingsViewV3> {
+  ): Promise<WorkspaceSettingsViewV4> {
     const viewer = await viewerOf(conn, actor);
     return {
       ...(await deps.settings.read(conn)),

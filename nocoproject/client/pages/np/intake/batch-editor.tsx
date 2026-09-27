@@ -32,6 +32,8 @@ import {
   confirmIntakeBatch,
   saveIntakeDrafts,
 } from '../api-intake.js';
+import { fetchWorkspaceSettings } from '../api-iter2.js';
+import { readDefaultProcess } from '../api-iter4.js';
 import { fetchAgents, fetchMe, fetchProjects } from '../api.js';
 import { npKeys } from '../constants.js';
 import { PropertySelect } from '../issues/detail/property-fields.js';
@@ -60,6 +62,7 @@ const COLUMNS = [
   'parent',
   'executor',
   'owner',
+  'process',
 ] as const;
 
 /**
@@ -106,6 +109,12 @@ export function BatchEditor({
     queryKey: npKeys.projects,
     queryFn: () => fetchProjects(api),
   });
+  const settings = useQuery({
+    queryKey: npKeys.settings,
+    queryFn: () => fetchWorkspaceSettings(api),
+    retry: false,
+  });
+  const defaultProcess = readDefaultProcess(settings.data?.defaultProcess);
   const projectName =
     batch.projectName ??
     projects.data?.find((project) => project.id === batch.projectId)?.name;
@@ -261,6 +270,7 @@ export function BatchEditor({
               agents={agents.data ?? []}
               members={members.data ?? []}
               readOnly={readOnly || busy}
+              defaultProcess={defaultProcess}
               onFields={(changes) =>
                 setRows((current) => updateFields(current, index, changes))
               }

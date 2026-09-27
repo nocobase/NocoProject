@@ -14,6 +14,8 @@ import { TableCell, TableRow } from '@/components/ui/table';
 
 import { ISSUE_PRIORITIES } from '../constants.js';
 import { PropertySelect } from '../issues/detail/property-fields.js';
+import { ProcessSelect } from '../issues/process-fields.js';
+import type { ProcessChoice } from '../types-iter4.js';
 import type {
   AgentListItem,
   IntakeDraftFields,
@@ -37,6 +39,8 @@ export interface IntakeRowProps {
   readonly agents: readonly AgentListItem[];
   readonly members: readonly Member[];
   readonly readOnly: boolean;
+  /** What a draft without a process gets (`settings.defaultProcess`, iteration 4 §D). */
+  readonly defaultProcess: ProcessChoice;
   readonly onFields: (changes: Partial<IntakeDraftFields>) => void;
   readonly onParent: (parentPosition: number | null) => void;
   readonly onIndent: () => void;
@@ -44,7 +48,10 @@ export interface IntakeRowProps {
   readonly onRemove: () => void;
 }
 
-/** One draft in the batch table: every field editable in place, its problems in a line underneath. */
+/**
+ * One draft in the batch table: every field editable in place — the process too (iteration 4 §D; a draft without
+ * one shows the workspace default, which the server applies) — its problems in a line underneath.
+ */
 export function IntakeRow({
   rows,
   index,
@@ -54,6 +61,7 @@ export function IntakeRow({
   agents,
   members,
   readOnly,
+  defaultProcess,
   onFields,
   onParent,
   onIndent,
@@ -216,6 +224,16 @@ export function IntakeRow({
             onChange={(value) => onFields({ ownerUserId: value })}
           />
         </TableCell>
+        <TableCell className='min-w-36 align-top'>
+          <ProcessSelect
+            id={cellId('process')}
+            size='sm'
+            aria-label={`${label} ${t('np.intake.columns.process')}`}
+            value={row.fields.process ?? defaultProcess}
+            disabled={readOnly}
+            onChange={(process) => onFields({ process })}
+          />
+        </TableCell>
         <TableCell className='w-10 align-top'>
           {readOnly ? null : (
             <Button
@@ -231,7 +249,7 @@ export function IntakeRow({
       </TableRow>
       {invalid ? (
         <TableRow className='border-0 hover:bg-transparent'>
-          <TableCell colSpan={8} className='pt-0 pb-2'>
+          <TableCell colSpan={9} className='pt-0 pb-2'>
             <ul
               className='space-y-0.5 text-xs text-destructive'
               aria-label={t('np.intake.rowProblems', {

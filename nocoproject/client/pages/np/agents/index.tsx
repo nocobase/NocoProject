@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 
+import { isManagerAgent } from '../api-iter4.js';
 import { fetchAgents } from '../api.js';
 import { isRuntimeOnline, npKeys } from '../constants.js';
 import type { AgentListItem, AgentsTopicPayload } from '../types.js';
@@ -62,13 +63,18 @@ export default function AgentsPage(): ReactElement {
           <div className='flex min-w-0 items-center gap-2'>
             <NpActorAvatar type='agent' name={row.original.name} />
             <div className='min-w-0 leading-tight'>
-              <Link
-                to={encodeURIComponent(row.original.id)}
-                onClick={(event) => event.stopPropagation()}
-                className='block truncate font-medium hover:underline'
-              >
-                {row.original.name}
-              </Link>
+              <div className='flex min-w-0 items-center gap-2'>
+                <Link
+                  to={encodeURIComponent(row.original.id)}
+                  onClick={(event) => event.stopPropagation()}
+                  className='block truncate font-medium hover:underline'
+                >
+                  {row.original.name}
+                </Link>
+                {isManagerAgent(row.original) ? (
+                  <NpTag tone='violet'>{t('np.agentForm.kinds.manager')}</NpTag>
+                ) : null}
+              </div>
               {row.original.description ? (
                 <div className='line-clamp-1 text-xs text-muted-foreground'>
                   {row.original.description}

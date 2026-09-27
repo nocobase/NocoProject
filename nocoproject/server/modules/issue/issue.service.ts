@@ -9,76 +9,63 @@
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import type { ApprovalGateway } from '../shared/approval.js';
-import {
-  requireInvokeAgent,
-  requireVisibleIssue,
-  viewerOf,
-  type Viewer,
-} from '../shared/authz.js';
+import { requireVisibleIssue, viewerOf } from '../shared/authz.js';
 import type { Tx, TxRunner } from '../shared/db.js';
 import { now } from '../shared/db.js';
 import { conflict, invalid } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
   ApprovalRequest,
-  CreateIssueRequestV2,
+  CreateIssueRequestV4,
   ExecutionMode,
   IssueOriginType,
   IssuePriority,
+  IssueProcess,
   IssueV1,
-  IssueV2,
+  IssueV4,
   Phase1RunTriggerType,
   TriggeredRun,
-  UpdateIssueRequestV2,
+  UpdateIssueRequestV4,
 } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
-import { EXECUTION_MODES } from '../shared/protocol.js';
-import {
-  stringList,
-  validateBoolean,
-  validateDate,
-  validateStage,
-} from '../shared/validate.js';
 import type { SettingsService } from '../system/settings.service.js';
 import type { TriggerService } from '../trigger/trigger.service.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 import { parseUserMentions } from '../collaboration/mentions.js';
-import { requireLabels, setIssueLabels } from '../label/label.service.js';
+import type { ProcessClassifier } from '../intake/process-classifier.js';
+import { setIssueLabels } from '../label/label.service.js';
 import { insertDependency } from '../subtask/dependency.service.js';
+import { resolveNewIssue, validateCreate } from './issue.create.js';
 import {
   computeChanges,
   newMentions,
   resolveExecutor,
-  resolveOwner,
-  resolveParent,
-  resolveProject,
-  validateStatus,
-  validateTitle,
   type ResolvedExecutor,
 } from './issue.fields.js';
 import { eventActor, emitUpdate } from './issue.events.js';
-import { findIssue, isIssuePriority } from './issue.records.js';
+import { findIssue } from './issue.records.js';
 import {
   agentSetStatus,
   applyApprovedTransition,
   gateTransition,
   resetAbandonedIssue,
   systemSetStatus,
+  writeStatus,
   type IssueStatusResult,
 } from './issue.status.js';
-import { DEFAULT_STATUS } from './status.js';
+import { processActivity, selectProcess } from './process.js';
 
 export { eventActor } from './issue.events.js';
 export type { IssueStatusResult } from './issue.status.js';
 
 export interface IssueService {
-  create(actor: Actor, input: CreateIssueRequestV2): Promise<IssueV2>;
+  create(actor: Actor, input: CreateIssueRequestV4): Promise<IssueV4>;
   /** `patch` without the approval outcome (the issue is unchanged when the status change waits for approval). */
   update(
     actor: Actor,
     idOrKey: string,
-    patch: UpdateIssueRequestV2,
-  ): Promise<IssueV2>;
+    patch: UpdateIssueRequestV4,
+  ): Promise<IssueV4>;
   /**
    * The browser PATCH: a status change that needs approval leaves the whole patch unapplied (202). `outer` joins a
    * caller's transaction (the delivery endpoints, iteration 3).
@@ -86,7 +73,7 @@ export interface IssueService {
   patch(
     actor: Actor,
     idOrKey: string,
-    patch: UpdateIssueRequestV2,
+    patch: UpdateIssueRequestV4,
     outer?: Tx,
   ): Promise<IssueStatusResult>;
   /** An agent (run token) moving the issue along its workflow's agent transitions. Never enqueues for itself. */
@@ -94,7 +81,7 @@ export interface IssueService {
     actor: Actor,
     idOrKey: string,
     statusKey: string,
-  ): Promise<IssueV2>;
+  ): Promise<IssueV4>;
   /** `agentSetStatus` with the approval outcome (the agent route answers 202 when it is pending). */
   agentSetStatusGated(
     actor: Actor,
@@ -109,7 +96,18 @@ export interface IssueService {
     issueId: string,
     target: string,
     details: Readonly<Record<string, unknown>>,
-  ): Promise<IssueV2 | null>;
+  ): Promise<IssueV4 | null>;
+  /**
+   * Iteration 4: writes `target` inside `tx` as `actor` without the transition, approval or design checks (the design
+   * decisions check their own rules). Null when the issue is gone or already there.
+   */
+  writeStatusInTx(
+    tx: Tx,
+    issueId: string,
+    target: string,
+    actor: Actor,
+    details: Readonly<Record<string, unknown>>,
+  ): Promise<IssueV4 | null>;
   /** Applies an approved request inside `tx` on the approver's behalf. */
   applyApprovedTransition(
     tx: Tx,
@@ -117,7 +115,7 @@ export interface IssueService {
     approver: Actor,
   ): Promise<void>;
   /** Inserts a validated issue (numbering, activity, labels) inside `tx`. */
-  insertIssue(tx: Tx, actor: Actor, values: NewIssue): Promise<IssueV2>;
+  insertIssue(tx: Tx, actor: Actor, values: NewIssue): Promise<IssueV4>;
   /** Sets an agent executor inside `tx` and runs the assign rule with the given trigger type. */
   assignAgentInTx(
     tx: Tx,
@@ -125,7 +123,7 @@ export interface IssueService {
     agentId: string,
     actor: Actor,
     triggerType: 'assign' | 'proposalAccepted',
-  ): Promise<{ issue: IssueV2; triggered: TriggeredRun[] }>;
+  ): Promise<{ issue: IssueV4; triggered: TriggeredRun[] }>;
 }
 
 export interface NewIssue {
@@ -149,6 +147,8 @@ export interface NewIssue {
   readonly executionMode?: ExecutionMode;
   readonly originType?: IssueOriginType;
   readonly originId?: string | null;
+  /** Iteration 4 (default direct); the caller records `process_selected` when it chose it. */
+  readonly process?: IssueProcess;
   /** Extra details on the `issue_created` activity (e.g. `intakeBatchId`). */
   readonly activityDetails?: Readonly<Record<string, unknown>>;
 }
@@ -162,6 +162,8 @@ export interface IssueDeps {
   readonly workflows: WorkflowService;
   readonly triggers: () => TriggerService;
   readonly approvals: () => ApprovalGateway;
+  /** Iteration 4: `process: auto` on creation. */
+  readonly classifier: ProcessClassifier;
 }
 
 async function insertIssue(
@@ -169,7 +171,7 @@ async function insertIssue(
   tx: Tx,
   actor: Actor,
   input: NewIssue,
-): Promise<IssueV2> {
+): Promise<IssueV4> {
   const { number, identifier } = await deps.settings.allocateIssueNumber(
     tx.conn,
   );
@@ -197,6 +199,7 @@ async function insertIssue(
       executionMode: input.executionMode ?? 'task',
       originType: input.originType ?? 'manual',
       originId: input.originId ?? null,
+      process: input.process ?? 'direct',
       revision: 1,
       lastActivityAt: timestamp,
       createdById: input.createdById,
@@ -228,95 +231,39 @@ async function insertIssue(
     actor: eventActor(actor),
     mentionedUserIds: parseUserMentions(input.description),
   });
-  return (await findIssue(tx.conn, id)) as IssueV2;
-}
-
-/** Validation that needs no database (fails before a transaction starts). */
-function validateCreate(input: CreateIssueRequestV2): void {
-  validateTitle(input?.title);
-  if (input.priority !== undefined && !isIssuePriority(input.priority))
-    throw invalid('INVALID_PRIORITY', 'priority is not valid.');
-  if (input.description !== undefined && typeof input.description !== 'string')
-    throw invalid('INVALID_DESCRIPTION', 'description must be a string.');
-  if (input.stage !== undefined) validateStage(input.stage);
-  if (input.startDate !== undefined) validateDate(input.startDate, 'startDate');
-  if (input.dueDate !== undefined) validateDate(input.dueDate, 'dueDate');
-  if (input.autoExecuteSubtasks !== undefined)
-    validateBoolean(input.autoExecuteSubtasks, 'autoExecuteSubtasks');
-  if (input.blockedBy !== undefined) stringList(input.blockedBy, 'blockedBy');
-  if (input.labelIds !== undefined) stringList(input.labelIds, 'labelIds');
-  if (
-    input.executionMode !== undefined &&
-    !EXECUTION_MODES.includes(input.executionMode)
-  )
-    throw invalid(
-      'INVALID_EXECUTION_MODE',
-      'executionMode must be task or session.',
-    );
-}
-
-async function resolveNewIssue(
-  deps: IssueDeps,
-  tx: Tx,
-  viewer: Viewer,
-  input: CreateIssueRequestV2,
-): Promise<NewIssue> {
-  const conn = tx.conn;
-  const parent =
-    input.parentIssueId === undefined || input.parentIssueId === null
-      ? null
-      : await resolveParent(conn, viewer, input.parentIssueId, null);
-  const projectId =
-    input.projectId === undefined
-      ? (parent?.projectId ?? null)
-      : await resolveProject(conn, viewer, input.projectId);
-  const view = await deps.workflows.forProject(conn, projectId);
-  const executor = input.executor
-    ? await resolveExecutor(conn, deps.users, input.executor)
-    : { executorType: 'none' as const, executorId: null };
-  if (executor.executorType === 'agent' && executor.executorId)
-    await requireInvokeAgent(conn, viewer.userId, executor.executorId);
-  const statusKey =
-    input.statusKey === undefined
-      ? DEFAULT_STATUS
-      : validateStatus(view, input.statusKey);
-  return {
-    title: validateTitle(input.title),
-    description: input.description ?? '',
-    statusKey,
-    priority: input.priority ?? 'none',
-    ownerUserId:
-      input.ownerUserId === undefined
-        ? viewer.userId
-        : await resolveOwner(conn, deps.users, input.ownerUserId),
-    executor,
-    parentIssueId: parent?.id ?? null,
-    projectId,
-    stage: input.stage === undefined ? null : validateStage(input.stage),
-    startDate: validateDate(input.startDate ?? null, 'startDate'),
-    dueDate: validateDate(input.dueDate ?? null, 'dueDate'),
-    autoExecuteSubtasks:
-      input.autoExecuteSubtasks ??
-      (await deps.settings.read(conn)).autoExecuteSubtasksDefault,
-    labelIds: await requireLabels(
-      conn,
-      input.labelIds ? stringList(input.labelIds, 'labelIds') : [],
-    ),
-    createdById: viewer.userId,
-    executionMode: input.executionMode ?? 'task',
-  };
+  return (await findIssue(tx.conn, id)) as IssueV4;
 }
 
 async function create(
   deps: IssueDeps,
   actor: Actor,
-  input: CreateIssueRequestV2,
-): Promise<IssueV2> {
+  input: CreateIssueRequestV4,
+): Promise<IssueV4> {
   validateCreate(input);
+  // Before the transaction: the classifier may make a model call.
+  const selection = await selectProcess(
+    deps,
+    deps.tx.read(),
+    {
+      process: input.process,
+      title: input.title,
+      description: input.description ?? '',
+    },
+    { userId: actor.id ?? '', useAi: true },
+  );
   return deps.tx.run(async (tx) => {
     const viewer = await viewerOf(tx.conn, actor);
     const values = await resolveNewIssue(deps, tx, viewer, input);
-    const issue = await insertIssue(deps, tx, actor, values);
+    const issue = await insertIssue(deps, tx, actor, {
+      ...values,
+      process: selection.process,
+    });
+    await deps.activity.record(tx.conn, {
+      issueId: issue.id,
+      actor,
+      action: 'process_selected',
+      details: processActivity(selection),
+    });
     for (const target of input.blockedBy ?? []) {
       let dependsOn: IssueV1;
       try {
@@ -348,7 +295,7 @@ async function update(
   deps: IssueDeps,
   actor: Actor,
   idOrKey: string,
-  patch: UpdateIssueRequestV2,
+  patch: UpdateIssueRequestV4,
   outer?: Tx,
 ): Promise<IssueStatusResult> {
   if (!Number.isInteger(patch?.revision))
@@ -408,7 +355,7 @@ async function update(
         ...activity,
       });
     }
-    const after = (await findIssue(tx.conn, before.id)) as IssueV2;
+    const after = (await findIssue(tx.conn, before.id)) as IssueV4;
     const triggers = deps.triggers();
     await triggers.onIssueChanged(tx, {
       before,
@@ -437,7 +384,7 @@ async function assignAgentInTx(
   agentId: string,
   actor: Actor,
   triggerType: Phase1RunTriggerType & ('assign' | 'proposalAccepted'),
-): Promise<{ issue: IssueV2; triggered: TriggeredRun[] }> {
+): Promise<{ issue: IssueV4; triggered: TriggeredRun[] }> {
   const executor = await resolveExecutor(tx.conn, deps.users, {
     type: 'agent',
     id: agentId,
@@ -463,7 +410,7 @@ async function assignAgentInTx(
       trigger: triggerType,
     },
   });
-  const after = (await findIssue(tx.conn, issue.id)) as IssueV2;
+  const after = (await findIssue(tx.conn, issue.id)) as IssueV4;
   const triggered = await deps.triggers().onIssueChanged(tx, {
     before: issue,
     after,
@@ -490,6 +437,11 @@ export function createIssueService(deps: IssueDeps): IssueService {
       resetAbandonedIssue(deps, tx, issueId),
     systemSetStatus: (tx, issueId, target, details) =>
       systemSetStatus(deps, tx, issueId, target, details),
+    async writeStatusInTx(tx, issueId, target, actor, details) {
+      const before = await findIssue(tx.conn, issueId);
+      if (!before || before.statusKey === target) return null;
+      return writeStatus(deps, tx, before, target, actor, details);
+    },
     applyApprovedTransition: (tx, request, approver) =>
       applyApprovedTransition(deps, tx, request, approver),
     insertIssue: (tx, actor, values) => insertIssue(deps, tx, actor, values),

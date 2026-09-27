@@ -1,25 +1,14 @@
 import { useTranslation } from '@nocobase/i18n/client';
-import { ChevronDownIcon, ListPlusIcon, PlusIcon } from 'lucide-react';
+import { PlusIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
 import { Button } from '@/components/ui/button';
-import {
-  ButtonGroup,
-  ButtonGroupSeparator,
-} from '@/components/ui/button-group';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Kbd } from '@/components/ui/kbd';
 
 /**
- * The issues page's split button (§G): "New issue" opens the `new` dialog, the menu offers "Batch entry", the
- * `intake` drawer. Both are child routes of `/issues` and keep the list's query string.
+ * The issues page's one "新建任务" button (iteration 4 §D): the `new` dialog creates one issue or many (AI 整理 /
+ * 手动). It is a child route of `/issues` and keeps the list's query string, so a filtered project is preselected.
  */
 export function NewIssueButton({
   variant = 'default',
@@ -28,56 +17,19 @@ export function NewIssueButton({
 }): ReactElement {
   const { t } = useTranslation();
   const location = useLocation();
-  const navigate = useNavigate();
   return (
-    <ButtonGroup>
-      <Button
-        variant={variant}
-        nativeButton={false}
-        render={<Link to={{ pathname: 'new', search: location.search }} />}
-      >
-        <PlusIcon data-icon='inline-start' />
-        {t('np.issues.new')}
-        {variant === 'default' ? (
-          <Kbd data-icon='inline-end' aria-hidden='true'>
-            C
-          </Kbd>
-        ) : null}
-      </Button>
-      <ButtonGroupSeparator />
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant={variant}
-              size='icon'
-              aria-label={t('np.issues.moreCreate')}
-            />
-          }
-        >
-          <ChevronDownIcon />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align='end'>
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              onClick={() =>
-                void navigate({ pathname: 'new', search: location.search })
-              }
-            >
-              <PlusIcon />
-              {t('np.issues.new')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                void navigate({ pathname: 'intake', search: location.search })
-              }
-            >
-              <ListPlusIcon />
-              {t('np.intake.openDrawer')}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </ButtonGroup>
+    <Button
+      variant={variant}
+      nativeButton={false}
+      render={<Link to={{ pathname: 'new', search: location.search }} />}
+    >
+      <PlusIcon data-icon='inline-start' />
+      {t('np.issues.new')}
+      {variant === 'default' ? (
+        <Kbd data-icon='inline-end' aria-hidden='true'>
+          C
+        </Kbd>
+      ) : null}
+    </Button>
   );
 }

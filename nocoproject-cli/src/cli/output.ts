@@ -20,7 +20,7 @@ export function exitCodeFor(error: unknown): number {
   if (error instanceof NetworkError) return EXIT.network;
   if (error instanceof ZodError) return EXIT.validation;
   if (error instanceof HttpError) {
-    if (error.code === 'TRANSITION_NOT_ALLOWED') return EXIT.validation;
+    if (error.code === 'TRANSITION_NOT_ALLOWED' || error.code === 'DESIGN_NOT_APPROVED') return EXIT.validation;
     if (error.status === 401 || error.status === 403) return EXIT.auth;
     if (error.status === 404) return EXIT.notFound;
     if (error.status === 400 || error.status === 409 || error.status === 422) return EXIT.validation;

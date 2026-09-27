@@ -17,8 +17,10 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 import { setThreadResolved } from '../../api-iter2.js';
+import type { CommentTag } from '../../api-iter4.js';
 import { useNpFormatters } from '../../format.js';
 import type { CommentThread, IssueComment } from '../../types.js';
+import { NpCommentTag } from '../process-fields.js';
 import { CommentReactions } from './comment-reactions.js';
 import { commentSnippet } from './timeline.js';
 import { useDetailMutation } from './use-detail-mutation.js';
@@ -30,6 +32,8 @@ export interface ThreadContext {
   readonly userName: (userId: string) => string;
   readonly replyingToId: string | null;
   readonly onReply: (comment: IssueComment) => void;
+  /** Iteration 4: the "方案" / "总结" tag of a proposal or retrospective comment. */
+  readonly commentTag?: (comment: IssueComment) => CommentTag;
 }
 
 function authorLabel(
@@ -105,8 +109,16 @@ export function ThreadCard({
     );
   }
 
+  // A design proposal (iteration 4 §B) reads as a document: the same card, its border in the accent tint.
+  const proposal = thread.root.kind === 'proposal';
   return (
-    <article className='rounded-lg border bg-card text-card-foreground'>
+    <article
+      className={cn(
+        'rounded-lg border bg-card text-card-foreground',
+        proposal && 'border-primary/40',
+      )}
+      data-proposal={proposal ? 'true' : undefined}
+    >
       {resolved ? (
         <div className='flex items-center gap-2 border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground'>
           <Button
@@ -180,8 +192,10 @@ function CommentBlock({
   const { t } = useTranslation();
   const format = useNpFormatters();
   const name = authorLabel(comment, context.agentName, t('np.common.unknown'));
+  const tag = context.commentTag?.(comment) ?? null;
   return (
     <div
+      data-comment-kind={tag ?? undefined}
       className={cn(
         'group space-y-1.5 p-3',
         nested && 'pl-9',
@@ -194,6 +208,7 @@ function CommentBlock({
         {comment.authorType === 'agent' ? (
           <NpTag tone='violet'>{t('np.executor.agentMarker')}</NpTag>
         ) : null}
+        <NpCommentTag tag={tag} />
         <time
           dateTime={comment.createdAt}
           title={format.dateTime(comment.createdAt)}

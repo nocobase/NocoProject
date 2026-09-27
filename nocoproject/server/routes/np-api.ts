@@ -2,7 +2,8 @@
  * NocoProject browser API (protocol.md §3, iteration-1 contract §B–§H, iteration-2 contract §C–§K):
  * `/api/np/{me,members,workflows,projects,labels,issues,inbox,agents,runtimes,runs}` and, from iteration 2,
  * `/api/np/{integrations,approvals,intake,comments,skills,usage,settings}` and, from iteration 3,
- * `/api/np/{knowledge,metrics}` (plus the delivery, activity and comment pages under `/api/np/issues/:id`).
+ * `/api/np/{knowledge,metrics}` (plus the delivery, activity and comment pages under `/api/np/issues/:id`) and, from
+ * iteration 4, `/api/np/pm` (plus the design decisions under `/api/np/issues/:id/design`).
  *
  * Every prefix is mounted behind its own guard: a run token is refused with 403 before the session lookup,
  * `auth.required()` answers 401 for anonymous callers, and `ensureMember` bootstraps the caller's members row. The
@@ -37,7 +38,9 @@ import { createMetricsRoutes } from '../modules/metrics/metrics.routes.js';
 import { createSkillRoutes } from '../modules/skill/skill.routes.js';
 import { createSettingsRoutes } from '../modules/system/settings.routes.js';
 import { createUsageRoutes } from '../modules/usage/usage.routes.js';
+import { createDesignRoutes } from '../modules/issue/design.routes.js';
 import { createIssueRoutes } from '../modules/issue/issue.routes.js';
+import { createPmRoutes } from '../modules/pm/pm.routes.js';
 import { createLabelRoutes } from '../modules/label/label.routes.js';
 import {
   createMemberRoutes,
@@ -66,7 +69,9 @@ import {
   npUsageServiceToken,
   npWorkspaceSettingsServiceToken,
   npDeliveryServiceToken,
+  npDesignServiceToken,
   npKnowledgeServiceToken,
+  npPmServiceToken,
   npMetricsServiceToken,
   npCommentServiceToken,
   npDependencyServiceToken,
@@ -148,6 +153,7 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
         createIssuePullRequestRoutes(
           container.resolve(npPullRequestServiceToken),
         ),
+        createDesignRoutes(container.resolve(npDesignServiceToken)),
       ),
     );
     router.route('/np/inbox', guarded(guard, createInboxRoutes(inbox)));
@@ -247,5 +253,10 @@ function mountIteration2(
       guard,
       createMetricsRoutes(container.resolve(npMetricsServiceToken)),
     ),
+  );
+  // Iteration 4.
+  router.route(
+    '/np/pm',
+    guarded(guard, createPmRoutes(container.resolve(npPmServiceToken))),
   );
 }

@@ -153,6 +153,20 @@ export function defaultInboxActions(
         ...(issue ? [open()] : []),
       ];
     }
+    // Iteration 4 §B: the owner approves the design (development starts) or sends it back with a comment.
+    case 'design_review':
+      return issue
+        ? [
+            post('approve', `/np/issues/${issue}/design/approve`, 'primary'),
+            post(
+              'requestChanges',
+              `/np/issues/${issue}/design/request-changes`,
+              'secondary',
+              { needsComment: true },
+            ),
+            open(),
+          ]
+        : [];
     case 'knowledge_proposal': {
       const proposalId = text(payload.proposalId);
       if (!proposalId) return issue ? [open()] : [];

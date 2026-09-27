@@ -32,6 +32,8 @@ import { PropertySelect } from '../issues/detail/property-fields.js';
 import type { IntakeParserSetting, WorkspaceSettings } from '../types.js';
 import { ConfigSectionHeading } from './config-section.js';
 import { ModelPricesTable } from './model-prices-table.js';
+import { PmSettingsFields } from './pm-settings-fields.js';
+import { pmSettingsDraft, pmSettingsInput } from './pm-settings-model.js';
 import {
   type PriceDraft,
   priceDraft,
@@ -44,8 +46,8 @@ import { useWorkspaceViewer } from '../use-workspace-viewer.js';
 /**
  * Tab `/config/general` (iteration 2 §I settings, moved to the front end in iteration 3 §G): the status a merged PR
  * moves its issue to, whether new issues let agents run the sub-issues they create, how batch entry parses text, the
- * model prices usage costs are estimated from, and the metric thresholds (§C). Owner/admin edit; everyone else sees
- * the values read-only.
+ * model prices usage costs are estimated from, the metric thresholds (§C), and since iteration 4 the default process,
+ * the project manager agent and the retrospective switch. Owner/admin edit; everyone else sees the values read-only.
  */
 export default function GeneralConfigTab(): ReactElement {
   const { t } = useTranslation();
@@ -119,6 +121,7 @@ function SettingsForm({
   const [thresholds, setThresholds] = useState(() =>
     thresholdDraft(settings.metricThresholds),
   );
+  const [pm, setPm] = useState(() => pmSettingsDraft(settings));
   const modelPrices = pricesFromDrafts(prices);
   const metricThresholds = thresholdsFromDraft(thresholds);
 
@@ -137,6 +140,7 @@ function SettingsForm({
         intakeParser,
         modelPrices: modelPrices ?? [],
         ...(metricThresholds ? { metricThresholds } : {}),
+        ...pmSettingsInput(pm),
       }),
     onSuccess: () => {
       toast.add({ type: 'success', title: t('np.settingsPage.saved') });
@@ -222,6 +226,7 @@ function SettingsForm({
           {t('np.settingsPage.intakeParserHint')}
         </FieldDescription>
       </Field>
+      <PmSettingsFields draft={pm} canEdit={canEdit} onChange={setPm} />
       <ThresholdFields
         draft={thresholds}
         onChange={setThresholds}

@@ -9,7 +9,7 @@ import { notFound } from '../shared/errors.js';
 import type {
   ApprovalRequest,
   IssuePullRequestView,
-  IssueV2,
+  IssueV4,
   QueuedRunRef,
   UsageRow,
 } from '../shared/protocol.js';
@@ -56,7 +56,7 @@ export async function detailExtras(
     readonly approvals: () => ApprovalGateway;
   },
   conn: Conn,
-  issue: IssueV2,
+  issue: IssueV4,
 ): Promise<DetailExtras> {
   const { modelPrices } = await deps.settings.read(conn);
   const usage = await usageForIssue(conn, issue.id, modelPrices);
@@ -70,16 +70,19 @@ export async function detailExtras(
 
 /**
  * The issue an agent may read (iteration-2 §K): one in its run issue's project, or one without a project (those are
- * visible to every member). Anything else is 404, like a missing issue.
+ * visible to every member). Anything else is 404, like a missing issue. Iteration 4: a project manager conversation is
+ * readable only by the runs on it.
  */
 export async function agentReadableIssue(
   conn: Conn,
   auth: RunAuth,
   idOrKey: string,
-): Promise<IssueV2> {
+): Promise<IssueV4> {
   const target = await findIssue(conn, idOrKey);
   if (!target) throw notFound('Issue');
-  if (target.id === auth.issueId || target.projectId === null) return target;
+  if (target.id === auth.issueId) return target;
+  if (target.originType === 'pm') throw notFound('Issue');
+  if (target.projectId === null) return target;
   const own = await findIssue(conn, auth.issueId);
   if ((own?.projectId ?? null) !== target.projectId) throw notFound('Issue');
   return target;

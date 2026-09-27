@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select';
 import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { cn } from '@/lib/utils';
+import { executorCandidates } from '@/pages/np/api-iter4';
 import { isRuntimeOnline } from '@/pages/np/constants';
 import type { AgentListItem, ExecutorRef, Member } from '@/pages/np/types';
 
@@ -46,7 +47,8 @@ function decode(value: string): ExecutorRef {
 
 /**
  * Executor picker: nobody, one of the agents (with its runtime's online state), or a member. An agent the viewer may
- * not invoke (`canInvoke === false`, §H) is listed but disabled; the server refuses the assignment anyway.
+ * not invoke (`canInvoke === false`, §H) is listed but disabled; the server refuses the assignment anyway. Project
+ * manager agents are left out (iteration 4 §C `MANAGER_NOT_EXECUTOR`) unless one is already the executor.
  */
 export function NpExecutorSelect({
   id,
@@ -61,9 +63,13 @@ export function NpExecutorSelect({
 }: NpExecutorSelectProps): ReactElement {
   const { t } = useTranslation();
   const selected = encode(value);
+  const offered = executorCandidates(
+    agents,
+    value.type === 'agent' ? value.id : null,
+  );
   const items = [
     { value: 'none', label: t('np.executor.none') },
-    ...agents.map((agent) => ({
+    ...offered.map((agent) => ({
       value: `agent:${agent.id}`,
       label: agent.name,
     })),
@@ -126,7 +132,9 @@ export function NpExecutorSelect({
       <SelectContent>
         {items.map((item) => {
           const agent = item.value.startsWith('agent:')
-            ? agents.find((candidate) => `agent:${candidate.id}` === item.value)
+            ? offered.find(
+                (candidate) => `agent:${candidate.id}` === item.value,
+              )
             : undefined;
           const person = item.value.startsWith('user:');
           const blocked = agent?.canInvoke === false && item.value !== selected;

@@ -28,10 +28,12 @@ import {
   fetchMembers,
   updateLabelColor,
 } from '../../api-collab.js';
+import { issueProcess } from '../../api-iter4.js';
 import { fetchProjects } from '../../api.js';
 import {
   ISSUE_PRIORITIES,
   isTerminalStatus,
+  statusCategory,
   npKeys,
   statusLabelKey,
 } from '../../constants.js';
@@ -45,6 +47,8 @@ import type {
   LabelColor,
   Me,
 } from '../../types.js';
+import type { ProcessChoice } from '../../types-iter4.js';
+import { ProcessSelect } from '../process-fields.js';
 import { ExecutionLog } from './execution-log.js';
 import { IssueUsage } from './issue-usage.js';
 import {
@@ -57,6 +61,12 @@ import { SessionPanel } from './session-panel.js';
 import { Subscribers } from './subscribers.js';
 import { useConfirmedUpdate } from './use-confirmed-update.js';
 import { useIssueUpdate } from './use-issue-update.js';
+
+/** The issue page offers the two processes; 自动 is a create-time choice only. */
+const ISSUE_PROCESS_CHOICES: readonly ProcessChoice[] = [
+  'direct',
+  'design_first',
+];
 
 const PANEL_CARD =
   'space-y-3 rounded-lg border bg-card p-4 text-card-foreground';
@@ -361,6 +371,22 @@ export function PropertiesPanel({
                 : t('np.session.modeTask')}
             </span>
           </div>
+        </PropertyRow>
+        <PropertyRow label={t('np.process.label')} htmlFor='np-prop-process'>
+          <ProcessSelect
+            id='np-prop-process'
+            size='sm'
+            choices={ISSUE_PROCESS_CHOICES}
+            value={issueProcess(issue)}
+            // Iteration 4 §B: the process changes only before work starts (409 `PROCESS_LOCKED` otherwise).
+            disabled={
+              busy ||
+              statusCategory(issue.statusKey, statusCatalog) !== 'unstarted'
+            }
+            onChange={(process) => {
+              if (process !== 'auto') update.mutate({ process });
+            }}
+          />
         </PropertyRow>
       </section>
 

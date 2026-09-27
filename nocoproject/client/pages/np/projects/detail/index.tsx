@@ -5,7 +5,6 @@ import {
   AlertCircleIcon,
   CalendarIcon,
   ListIcon,
-  ListPlusIcon,
   LockIcon,
   PlusIcon,
   WorkflowIcon,
@@ -52,8 +51,9 @@ import { ProjectActions } from './project-actions.js';
  * The header carries the progress ring, name, status, lead, dates and workflow; three tabs (`?tab=`, because the
  * page's child routes are its dialogs) hold 概览 (numbers, status distribution, description, properties,
  * repositories, members), 任务 (the board, columns in workflow order, drag to change status) and 知识库 (documents
- * and pending agent proposals). The `resources/new` dialog and the batch entry drawer (`intake`, the project
- * preselected) render in the outlet beside the layer.
+ * and pending agent proposals). "新建任务" opens the issues page's dialog with the project preselected (one issue or
+ * many, iteration 4 §D; the old `intake` child redirects there). The `resources/new` dialog renders in the outlet
+ * beside the layer.
  */
 export default function ProjectDetailPage(): ReactElement {
   const { projectId = '' } = useParams();
@@ -260,14 +260,6 @@ function ProjectLayout({
             </div>
           </div>
           <div className='flex shrink-0 items-center gap-2'>
-            <Button
-              variant='outline'
-              nativeButton={false}
-              render={<Link to='intake' />}
-            >
-              <ListPlusIcon data-icon='inline-start' />
-              {t('np.projectMore.batchAdd')}
-            </Button>
             <Button
               nativeButton={false}
               render={

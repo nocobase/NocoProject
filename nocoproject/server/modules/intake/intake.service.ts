@@ -4,7 +4,8 @@
  *
  * A batch belongs to the member who entered it; only they (or an owner/admin) may edit, confirm, cancel or revert
  * it. Confirming creates parents before children (`intake.confirm.ts`); reverting soft-deletes the issues it created
- * that never had a run and keeps the others.
+ * that never had a run and keeps the others. Iteration 4: `process` on the request is written into every draft that
+ * has none; confirming selects each issue's process (heuristic only, `issue/process.ts`).
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import {
@@ -21,7 +22,7 @@ import type { IdSource } from '../shared/ids.js';
 import type {
   ConfirmIntakeRequest,
   ConfirmIntakeResponse,
-  CreateIntakeBatchRequest,
+  CreateIntakeBatchRequestV4,
   CreateIntakeBatchResponse,
   IntakeBatch,
   IntakeBatchDetail,
@@ -33,7 +34,9 @@ import type { SettingsService } from '../system/settings.service.js';
 import type { TriggerService } from '../trigger/trigger.service.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 import type { IssueService } from '../issue/issue.service.js';
+import { validateProcess } from '../issue/process.js';
 import type { AiIntakeParser } from './ai-parser.js';
+import type { ProcessClassifier } from './process-classifier.js';
 import { confirmBatch } from './intake.confirm.js';
 import {
   draftsOf,
@@ -55,7 +58,7 @@ const LIST_LIMIT = 50;
 export interface IntakeService {
   create(
     actor: Actor,
-    input: CreateIntakeBatchRequest,
+    input: CreateIntakeBatchRequestV4,
   ): Promise<CreateIntakeBatchResponse>;
   list(actor: Actor, mine: boolean): Promise<IntakeBatch[]>;
   get(actor: Actor, id: string): Promise<IntakeBatchDetail>;
@@ -83,6 +86,8 @@ export interface IntakeDeps {
   readonly ai: AiIntakeParser | null;
   /** True when `ai.llmServices` is not empty. */
   readonly aiConfigured: () => boolean;
+  /** Iteration 4: the process of each confirmed draft (heuristic only). */
+  readonly classifier: ProcessClassifier;
 }
 
 function errorMessage(error: unknown): string {
@@ -162,7 +167,7 @@ async function parseInput(
 async function source(
   conn: Conn,
   viewer: Viewer,
-  input: CreateIntakeBatchRequest,
+  input: CreateIntakeBatchRequestV4,
 ): Promise<{
   rawContent: string;
   projectId: string | null;
@@ -200,7 +205,7 @@ async function source(
 async function create(
   deps: IntakeDeps,
   actor: Actor,
-  input: CreateIntakeBatchRequest,
+  input: CreateIntakeBatchRequestV4,
 ): Promise<CreateIntakeBatchResponse> {
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
@@ -211,10 +216,19 @@ async function create(
     await parseInput(conn, deps.workflows, origin.projectId, origin.rawContent),
     viewer.userId,
   );
-  // A batch split from an issue hangs every draft directly under that issue.
-  const parsed = origin.sourceIssueId
-    ? outcome.drafts.map((draft) => ({ ...draft, parentPosition: null }))
-    : outcome.drafts;
+  const process =
+    input?.process === undefined || input.process === null
+      ? undefined
+      : validateProcess(input.process, true);
+  // A batch split from an issue hangs every draft directly under that issue; `process` fills the drafts' gaps.
+  const parsed = outcome.drafts.map((draft) => ({
+    ...draft,
+    parentPosition: origin.sourceIssueId ? null : draft.parentPosition,
+    fields:
+      process && !('process' in draft.fields)
+        ? { ...draft.fields, process }
+        : draft.fields,
+  }));
   const id = deps.ids.next();
   await deps.tx.run(async (tx) => {
     const drafts = await validateDrafts(

@@ -3,7 +3,7 @@
  *
  * Failures and retries live in `failure.ts`, events in `run-events.ts`, claiming in `claim.service.ts`.
  */
-import type { Actor } from '../shared/activity.js';
+import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import type { Tx, TxRunner } from '../shared/db.js';
 import { addSeconds, isUniqueViolation, now, toJson } from '../shared/db.js';
 import { conflict, notFound } from '../shared/errors.js';
@@ -14,8 +14,8 @@ import {
   type DaemonReportPhase1Extras,
   type DaemonRunStatusResponse,
   type DaemonStartRequest,
-  type Phase1RunTriggerType,
   type Run,
+  type RunTriggerTypeV4,
   type RunStatus,
 } from '../shared/protocol.js';
 import {
@@ -27,10 +27,12 @@ import {
   runtimeOwnerOf,
   transitionRun,
 } from './run.records.js';
+import { markRetrospectiveDone } from './retrospective.js';
 import { upsertSession } from './sessions.js';
 
 export interface TriggerRecordInput {
-  readonly type: Phase1RunTriggerType;
+  /** Iteration 4 adds `designApproved` and `retrospective`. */
+  readonly type: RunTriggerTypeV4;
   readonly commentId?: string | null;
   readonly payload?: Readonly<Record<string, unknown>> | null;
   readonly createdById?: string | null;
@@ -82,6 +84,8 @@ export interface RunService {
 export interface RunServiceDeps {
   readonly tx: TxRunner;
   readonly ids: IdSource;
+  /** Iteration 4: records `retrospective_done` when a retrospective run completes. */
+  readonly activity?: ActivityRecorder;
 }
 
 /** Emits the invalidation events every run status change produces. */
@@ -344,6 +348,7 @@ async function complete(
         })
         .execute();
     }
+    if (deps.activity) await markRetrospectiveDone(tx, deps.activity, run);
     emitRunStatus(tx, run, 'completed');
     return (await findRun(tx.conn, runId)) ?? run;
   });

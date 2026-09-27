@@ -23,6 +23,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 
+import { agentKind, readReasoningEffort } from '../../api-iter4.js';
 import { updateAgent } from '../../api.js';
 import { npKeys } from '../../constants.js';
 import { PropertySelect } from '../../issues/detail/property-fields.js';
@@ -33,6 +34,8 @@ import type {
   Runtime,
   UpdateAgentInput,
 } from '../../types.js';
+import type { AgentKind, ReasoningEffort } from '../../types-iter4.js';
+import { AgentKindFields } from '../agent-kind-fields.js';
 
 const ACCESS_LEVELS: readonly AgentAccessLevel[] = [
   'ownerOnly',
@@ -50,6 +53,8 @@ interface Draft {
   readonly access: AgentAccessLevel;
   readonly accessUserIds: readonly string[];
   readonly delegationTargetIds: readonly string[];
+  readonly kind: AgentKind;
+  readonly reasoningEffort: ReasoningEffort | null;
 }
 
 function draftOf(agent: AgentListItem): Draft {
@@ -65,6 +70,8 @@ function draftOf(agent: AgentListItem): Draft {
     delegationTargetIds: (agent.delegationTargets ?? []).map(
       (target) => target.id,
     ),
+    kind: agentKind(agent),
+    reasoningEffort: readReasoningEffort(agent.reasoningEffort),
   };
 }
 
@@ -74,8 +81,8 @@ type FieldName =
 /**
  * The agent's settings (§J 5, §H): identity, instructions, model, concurrency, runtime (only runtimes of the same
  * provider, which the server requires), who may invoke it, and which agents it may hand sub-issues to directly —
- * a delegation target's proposals are accepted automatically (§D). Read-only for anyone but the agent's owner and
- * owner/admin.
+ * a delegation target's proposals are accepted automatically (§D), and its kind and reasoning effort (iteration 4
+ * §C). Read-only for anyone but the agent's owner and owner/admin.
  */
 export function AgentForm({
   agent,
@@ -147,6 +154,8 @@ export function AgentForm({
       accessUserIds:
         draft.access === 'specificUsers' ? draft.accessUserIds : [],
       delegationTargetIds: draft.delegationTargetIds,
+      kind: draft.kind,
+      reasoningEffort: draft.reasoningEffort,
     });
   }
 
@@ -262,6 +271,14 @@ export function AgentForm({
             ) : null}
           </Field>
         </div>
+        <AgentKindFields
+          idPrefix='np-agent-edit'
+          kind={draft.kind}
+          reasoningEffort={draft.reasoningEffort}
+          disabled={disabled}
+          onKindChange={(value) => set('kind', value)}
+          onReasoningEffortChange={(value) => set('reasoningEffort', value)}
+        />
         <FieldSet>
           <FieldLegend>{t('np.agentDetail.access')}</FieldLegend>
           <FieldDescription>{t('np.agentDetail.accessHint')}</FieldDescription>
@@ -313,7 +330,11 @@ export function AgentForm({
           <NpMultiSelect
             id='np-agent-delegation'
             options={agents
-              .filter((candidate) => candidate.id !== agent.id)
+              .filter(
+                (candidate) =>
+                  candidate.id !== agent.id &&
+                  agentKind(candidate) !== 'manager',
+              )
               .map((candidate) => ({
                 value: candidate.id,
                 label: candidate.name,

@@ -40,8 +40,11 @@ import type { PullRequestService } from '../modules/git/pull-request.service.js'
 import type { WebhookService } from '../modules/git/webhook.service.js';
 import {
   createAiIntakeParser,
-  type AiIntakeParser,
+  type AiAgentFactory,
 } from '../modules/intake/ai-parser.js';
+import { createAiProcessClassifier } from '../modules/intake/process-classifier.js';
+import type { DesignService } from '../modules/issue/design.service.js';
+import type { PmService } from '../modules/pm/pm.service.js';
 import type { IntakeService } from '../modules/intake/intake.service.js';
 import type { DeliveryService } from '../modules/issue/delivery.service.js';
 import type { KnowledgeService } from '../modules/knowledge/knowledge.service.js';
@@ -160,6 +163,10 @@ export const npMetricsServiceToken: ServiceToken<MetricsService> =
   createServiceToken<MetricsService>('nocoproject/metrics-service');
 export const npDeliveryServiceToken: ServiceToken<DeliveryService> =
   createServiceToken<DeliveryService>('nocoproject/delivery-service');
+export const npDesignServiceToken: ServiceToken<DesignService> =
+  createServiceToken<DesignService>('nocoproject/design-service');
+export const npPmServiceToken: ServiceToken<PmService> =
+  createServiceToken<PmService>('nocoproject/pm-service');
 
 /** Binds a module token to the member of `NpServices` it exposes. */
 function bindModule<K extends keyof NpServices>(
@@ -182,20 +189,22 @@ export default class NpProvider extends ServiceProvider<Application> {
 
   public override register(): void {
     const { container } = this.app;
-    container.singleton(npServicesToken, (resolver) =>
-      createNpServices({
+    container.singleton(npServicesToken, (resolver) => {
+      const ai = this.aiFactory();
+      return createNpServices({
         database: resolver.resolve(databaseManagerToken),
         idGenerator: resolver.resolve(idGeneratorToken),
         bus: createDomainEventBus((error) =>
           this.logError(error, 'NocoProject domain event listener failed.'),
         ),
         secrets: this.secretBox(),
-        aiIntake: this.aiIntakeParser(),
+        aiIntake: ai ? createAiIntakeParser(ai) : null,
+        aiProcess: ai ? createAiProcessClassifier(ai) : null,
         aiConfigured: () =>
           (this.app.config.get<AIApplicationConfig>('ai')?.llmServices
             ?.length ?? 0) > 0,
-      }),
-    );
+      });
+    });
     bindModule(container, npProjectServiceToken, 'projects');
     bindModule(container, npIssueServiceToken, 'issues');
     bindModule(container, npIssueQueriesToken, 'issueQueries');
@@ -230,6 +239,8 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npKnowledgeServiceToken, 'knowledge');
     bindModule(container, npMetricsServiceToken, 'metrics');
     bindModule(container, npDeliveryServiceToken, 'deliveries');
+    bindModule(container, npDesignServiceToken, 'design');
+    bindModule(container, npPmServiceToken, 'pm');
   }
 
   /** The key for stored secrets (see `shared/crypto.ts`); warns once when it is derived from `auth.secret`. */
@@ -247,15 +258,15 @@ export default class NpProvider extends ServiceProvider<Application> {
   }
 
   /**
-   * The AI intake parser as one direct model call on the first enabled LLM service (runtime-extensions.md §"A direct
-   * model call"): no conversation, no tool loop. The plugin's agent path with a tool-bound `responseFormat` made
-   * DeepSeek answer with guesses, while the plain "reply with JSON" instruction is answered faithfully. Null when the
-   * plugin is not registered.
+   * The AI intake parser and (iteration 4) the process classifier as one direct model call on the first enabled LLM
+   * service (runtime-extensions.md §"A direct model call"): no conversation, no tool loop. The plugin's agent path
+   * with a tool-bound `responseFormat` made DeepSeek answer with guesses, while the plain "reply with JSON"
+   * instruction is answered faithfully. Null when the plugin is not registered.
    */
-  private aiIntakeParser(): AiIntakeParser | null {
+  private aiFactory(): AiAgentFactory | null {
     const { container } = this.app;
     if (!container.has(aiManagerToken)) return null;
-    return createAiIntakeParser({
+    return {
       // A direct call has no conversation, so there is no session to record.
       createSession: async () => '',
       createAgent: async ({ systemPrompt }) => ({
@@ -272,7 +283,7 @@ export default class NpProvider extends ServiceProvider<Application> {
           return { message: { content: reply?.content } };
         },
       }),
-    });
+    };
   }
 
   public override async boot(): Promise<void> {

@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookOpenText,
   Bot,
+  BotMessageSquare,
   Briefcase,
   CircleUserRound,
   FolderKanban,
@@ -18,13 +19,15 @@ import {
 import { NpInboxNavIcon } from './components/np-inbox-nav-icon.js';
 
 /**
- * The sidebar follows the product plan §3.1 (iteration 3 §G): 收件箱 and 我的任务 on top, the groups 工作 (issues,
- * projects) and Agent 团队 (agents, runtimes, skills, knowledge), then 报表 and 设置. Settings live in the front end
- * (`/config`) rather than the system settings shell, and batch entry is a drawer over the issues page.
+ * The sidebar follows the product plan §3.1 (iteration 3 §G): 收件箱, 我的任务 and 项目经理 (iteration 4 §C) on top,
+ * the groups 工作 (issues, projects) and Agent 团队 (agents, runtimes, skills, knowledge), then 报表 and 设置. Settings
+ * live in the front end (`/config`) rather than the system settings shell. Creating issues — one or many — is the
+ * "新建任务" dialog over the issues page (iteration 4 §D).
  *
  * Page tabs are child routes without `navigation` or `breadcrumb`; overlays (dialogs and drawers) are child routes
- * too. Children omit `authz` and inherit the page grant above them. `/intake`, `/usage` and `/inbox/approvals` are
- * kept as redirects so old links and bookmarks still land somewhere.
+ * too. Children omit `authz` and inherit the page grant above them. `/intake`, `/issues/intake`,
+ * `/projects/:projectId/intake`, `/usage` and `/inbox/approvals` are kept as redirects so old links and bookmarks
+ * still land somewhere.
  */
 const appRoutes: AppClientRouteContribution = defineAppRoutes([
   {
@@ -85,12 +88,23 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     ],
   },
   {
+    // 项目经理 (iteration 4 §C): the viewer's conversation with the project manager agent, full width.
+    auth: 'required',
+    authz: { resource: { type: 'page', id: 'np-pm' }, action: 'access' },
+    breadcrumb: { title: 'navigation.pm' },
+    componentLoader: () => import('./pages/np/pm/index.js'),
+    name: 'np-pm',
+    navigation: { title: 'navigation.pm', icon: BotMessageSquare, order: 3 },
+    path: '/pm',
+  },
+  {
     name: 'np-work',
-    navigation: { title: 'navigation.work', icon: Briefcase, order: 3 },
+    navigation: { title: 'navigation.work', icon: Briefcase, order: 4 },
     children: [
       {
-        // The detail is a covering child page (the list keeps its filters underneath); create is a route dialog,
-        // batch entry a wide route drawer, the run transcript a dialog over the detail.
+        // The detail is a covering child page (the list keeps its filters underneath); "新建任务" is a route dialog
+        // (one issue or many, iteration 4 §D) and `intake` redirects into it; the run transcript is a dialog over the
+        // detail.
         auth: 'required',
         authz: {
           resource: { type: 'page', id: 'np-issues' },
@@ -108,7 +122,8 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
             path: 'new',
           },
           {
-            componentLoader: () => import('./pages/np/intake/drawer.js'),
+            // Iteration 3's batch entry drawer: the AI 整理 tab of "新建任务" since iteration 4 §D.
+            componentLoader: () => import('./pages/np/intake/redirect.js'),
             name: 'np-issue-intake',
             path: 'intake',
           },
@@ -165,8 +180,8 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
                 path: 'resources/new',
               },
               {
-                // "批量添加": the batch entry drawer with the project preselected.
-                componentLoader: () => import('./pages/np/intake/drawer.js'),
+                // Iteration 3's "批量添加": the AI 整理 tab of "新建任务" with the project preselected.
+                componentLoader: () => import('./pages/np/intake/redirect.js'),
                 name: 'np-project-intake',
                 path: 'intake',
               },
@@ -178,7 +193,7 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
   },
   {
     name: 'np-agent-team',
-    navigation: { title: 'navigation.agentTeam', icon: Bot, order: 4 },
+    navigation: { title: 'navigation.agentTeam', icon: Bot, order: 5 },
     children: [
       {
         auth: 'required',
@@ -283,7 +298,7 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     authz: { resource: { type: 'page', id: 'np-reports' }, action: 'access' },
     componentLoader: () => import('./pages/np/reports/index.js'),
     name: 'np-reports',
-    navigation: { title: 'navigation.reports', icon: BarChart3, order: 5 },
+    navigation: { title: 'navigation.reports', icon: BarChart3, order: 6 },
     path: '/reports',
     children: [
       {
@@ -306,7 +321,7 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     breadcrumb: { title: 'navigation.config' },
     componentLoader: () => import('./pages/np/config/index.js'),
     name: 'np-config',
-    navigation: { title: 'navigation.config', icon: Settings2, order: 6 },
+    navigation: { title: 'navigation.config', icon: Settings2, order: 7 },
     path: '/config',
     children: [
       {
@@ -346,7 +361,7 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     ],
   },
   {
-    // Iteration 2's batch entry page is now the drawer at /issues/intake (§G); old links keep `?project` / `?batch`.
+    // Iteration 2's batch entry page is now the AI 整理 tab of "新建任务" (iteration 4 §D); `?project` / `?batch` kept.
     auth: 'required',
     authz: 'skip',
     componentLoader: () => import('./pages/np/intake/redirect.js'),

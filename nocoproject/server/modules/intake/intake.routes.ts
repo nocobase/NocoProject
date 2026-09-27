@@ -5,7 +5,7 @@ import { invalid } from '../shared/errors.js';
 import { npRouter, queryText, readJson, sessionActor } from '../shared/http.js';
 import type {
   ConfirmIntakeRequest,
-  CreateIntakeBatchRequest,
+  CreateIntakeBatchRequestV4,
   PutIntakeDraftsRequest,
 } from '../shared/protocol.js';
 import type { IntakeService } from './intake.service.js';
@@ -27,7 +27,7 @@ export function createIntakeRoutes(intake: IntakeService): Hono<AuthEnv> {
       {
         data: await intake.create(
           sessionActor(context),
-          await readJson<CreateIntakeBatchRequest>(context),
+          await readJson<CreateIntakeBatchRequestV4>(context),
         ),
       },
       201,

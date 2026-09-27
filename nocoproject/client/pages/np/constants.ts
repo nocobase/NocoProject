@@ -24,6 +24,19 @@ export const DEFAULT_STATUS_CATALOG: readonly StatusCatalogEntry[] = [
     color: 'gray',
   },
   { key: 'todo', category: 'unstarted', agentWritable: false, color: 'blue' },
+  // Iteration 4 §A: the design-first statuses, shown on the board only while an issue uses them.
+  {
+    key: 'analysis',
+    category: 'started',
+    agentWritable: true,
+    color: 'blue',
+  },
+  {
+    key: 'proposal_review',
+    category: 'started',
+    agentWritable: true,
+    color: 'purple',
+  },
   {
     key: 'in_progress',
     category: 'started',
@@ -83,7 +96,9 @@ export function statusTone(
   if (category === 'done') return 'green';
   if (category === 'closed') return 'slate';
   if (category === 'unstarted') return 'grey';
-  if (statusKey === 'in_review') return 'violet';
+  if (statusKey === 'in_review' || statusKey === 'proposal_review') {
+    return 'violet';
+  }
   if (statusKey === 'blocked') return 'amber';
   const color = catalog.find((entry) => entry.key === statusKey)?.color ?? null;
   if (color === 'purple') return 'violet';

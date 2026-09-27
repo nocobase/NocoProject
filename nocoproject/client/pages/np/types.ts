@@ -30,6 +30,15 @@ import type {
   LabelColor,
   SubtaskSummary,
 } from './types-collab.js';
+import type {
+  AgentKind,
+  CommentKindPhase1Iter4,
+  DesignProposal,
+  IssueProcess,
+  ProcessChoice,
+  ReasoningEffort,
+  RunTriggerTypePhase1Iter4,
+} from './types-iter4.js';
 
 export type * from './types-collab.js';
 export type * from './types-iter2.js';
@@ -70,7 +79,8 @@ export type RunTriggerType =
   | 'retry'
   | 'dependencyReleased'
   | 'childBatchDone'
-  | 'proposalAccepted';
+  | 'proposalAccepted'
+  | RunTriggerTypePhase1Iter4;
 
 export type RunEventType =
   'text' | 'thinking' | 'toolUse' | 'toolResult' | 'status' | 'error';
@@ -137,8 +147,12 @@ export interface IssueListItem {
   readonly blockedCount?: number;
   // Phase 1 iteration 2 (§A, §J)
   readonly executionMode?: ExecutionMode;
-  readonly originType?: 'manual' | 'intake' | 'agent';
+  readonly originType?: 'manual' | 'intake' | 'agent' | 'pm';
   readonly originId?: string | null;
+  // Phase 1 iteration 4 (§A, §B)
+  readonly process?: IssueProcess;
+  readonly designApprovedAt?: string | null;
+  readonly designApprovedById?: string | null;
 }
 
 /** The issue record inside `GET /np/issues/:id`. */
@@ -147,6 +161,8 @@ export interface Issue extends IssueListItem {
   readonly revision: number;
   readonly createdById?: string | null;
   readonly createdAt: string;
+  /** Iteration 4 §B: the latest design proposal, when the detail carries it. */
+  readonly designProposal?: DesignProposal | null;
 }
 
 export interface IssueComment {
@@ -156,7 +172,7 @@ export interface IssueComment {
   readonly authorId: string | null;
   readonly authorName?: string | null;
   readonly content: string;
-  readonly kind?: 'comment' | 'system';
+  readonly kind?: 'comment' | 'system' | CommentKindPhase1Iter4;
   readonly parentId: string | null;
   readonly sourceRunId?: string | null;
   readonly createdAt: string;
@@ -276,6 +292,9 @@ export interface AgentListItem {
   readonly archivedAt?: string | null;
   readonly createdAt?: string;
   readonly updatedAt?: string;
+  // Phase 1 iteration 4 (§C)
+  readonly kind?: AgentKind;
+  readonly reasoningEffort?: ReasoningEffort | null;
 }
 
 export interface Runtime {
@@ -331,6 +350,8 @@ export interface CreateIssueInput {
   readonly autoExecuteSubtasks?: boolean;
   readonly start?: boolean;
   readonly executionMode?: ExecutionMode;
+  /** Iteration 4 §B; `auto` lets the server classify, omitted it applies `settings.defaultProcess`. */
+  readonly process?: ProcessChoice;
 }
 
 export interface UpdateIssueInput {
@@ -351,6 +372,8 @@ export interface UpdateIssueInput {
   /** `false` changes the fields without queueing a run ("don't start now"); the server defaults to `true`. */
   readonly start?: boolean;
   readonly executionMode?: ExecutionMode;
+  /** Iteration 4 §B: only while the issue is in backlog / todo (409 `PROCESS_LOCKED` otherwise). */
+  readonly process?: IssueProcess;
 }
 
 export interface CreateCommentResult {
@@ -370,6 +393,9 @@ export interface CreateAgentInput {
   readonly model?: string;
   readonly maxConcurrentRuns?: number;
   readonly access?: AgentAccessLevel;
+  // Phase 1 iteration 4 (§C)
+  readonly kind?: AgentKind;
+  readonly reasoningEffort?: ReasoningEffort | null;
 }
 
 /** `PATCH /np/agents/:id` (§H). */
@@ -386,4 +412,7 @@ export interface UpdateAgentInput {
   readonly delegationTargetIds?: readonly string[];
   readonly skillIds?: readonly string[];
   readonly archived?: boolean;
+  // Phase 1 iteration 4 (§C)
+  readonly kind?: AgentKind;
+  readonly reasoningEffort?: ReasoningEffort | null;
 }

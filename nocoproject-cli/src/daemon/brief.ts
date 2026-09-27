@@ -4,7 +4,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type ClaimedRunV1, executionModeOf } from '../run-context.js';
+import { type ClaimedRunV1, designPendingOf, executionModeOf } from '../run-context.js';
 import {
   conversationModeSection,
   parentCoordinationSection,
@@ -16,6 +16,20 @@ import {
   workflowSection,
 } from './brief-sections.js';
 import { captureLearningsSection, knowledgeCommands, knowledgeSection } from './brief-knowledge.js';
+import {
+  approvedProposalLines,
+  DESIGN_APPROVED_OPENING,
+  designCommands,
+  designFirstSection,
+  designWorkflowSection,
+  hasTrigger,
+  isManager,
+  managerSection,
+  managerStatusRules,
+  managerWorkflowSection,
+  pmCommands,
+  retrospectivePrompt,
+} from './brief-iter4.js';
 
 export const BRIEF_BEGIN = '<!-- BEGIN NOCOPROJECT-RUNTIME (auto-managed; do not edit) -->';
 export const BRIEF_END = '<!-- END NOCOPROJECT-RUNTIME -->';
@@ -23,6 +37,7 @@ export const BRIEF_END = '<!-- END NOCOPROJECT-RUNTIME -->';
 export type BriefInput = Pick<ClaimedRunV1, 'agent' | 'issue' | 'agentTransitions' | 'statusCatalog' | 'project' | 'session' | 'knowledge'>;
 
 function statusRules(input: BriefInput): string[] {
+  if (isManager(input)) return managerStatusRules();
   if (input.agentTransitions.length === 0) return ['You may not change the issue status in this workspace.'];
   const lines = ['You may only make these status transitions (the server rejects anything else):', ''];
   for (const t of input.agentTransitions) lines.push(`- \`${t.from}\` → \`${t.to}\``);
@@ -30,14 +45,44 @@ function statusRules(input: BriefInput): string[] {
   return lines;
 }
 
+/** Commands, sections and workflow that only a coding agent (kind `coder`) gets. */
+function coderParts(input: BriefInput): { commands: string[]; sections: string[]; workflow: string[] } {
+  const key = input.issue.identifier;
+  return {
+    commands: [`- \`nocoproject issue status ${key} <statusKey>\` — change the issue status`, ...designCommands(input), ...phase1Commands(key)],
+    sections: [...repositoriesSection(input), '', ...skillsSection(input), ...knowledgeSection(input)],
+    workflow: [
+      ...(designPendingOf(input) ? designWorkflowSection(input) : workflowSection(input)),
+      '',
+      ...subIssuesSection(input),
+      '',
+      ...parentCoordinationSection(key),
+      '',
+      ...captureLearningsSection(),
+    ],
+  };
+}
+
+/** A manager agent (§C) reads and answers: no status, repository, sub-issue or delivery rules. */
+function managerParts(input: BriefInput): { commands: string[]; sections: string[]; workflow: string[] } {
+  return {
+    commands: pmCommands(),
+    sections: [...skillsSection(input), ...knowledgeSection(input)],
+    workflow: managerWorkflowSection(),
+  };
+}
+
 export function buildBrief(input: BriefInput): string {
   const key = input.issue.identifier;
   const instructions = input.agent.instructions.trim() || '(no additional instructions)';
+  const parts = isManager(input) ? managerParts(input) : coderParts(input);
   return [
     BRIEF_BEGIN,
     '# NocoProject Agent Runtime',
     '',
+    ...managerSection(input),
     ...conversationModeSection(input),
+    ...designFirstSection(input),
     '## Background Task Safety',
     '',
     'This run ends the moment your turn ends: anything still running in the background is killed and its result is lost.',
@@ -60,23 +105,13 @@ export function buildBrief(input: BriefInput): string {
     `- \`nocoproject issue get ${key} --json\` — read the issue (title, description, status, owner)`,
     `- \`nocoproject issue comment list ${key} --json\` — read the comments (\`--thread <rootId>\`, \`--tail <n>\`, \`--since <iso>\`)`,
     `- \`nocoproject issue comment add ${key} --content-file ./reply.md [--parent <rootId>]\` — post a comment`,
-    `- \`nocoproject issue status ${key} <statusKey>\` — change the issue status`,
-    ...phase1Commands(key),
+    ...parts.commands,
     ...knowledgeCommands(),
     '',
     ...projectSection(input),
     '',
-    ...repositoriesSection(input),
-    '',
-    ...skillsSection(input),
-    ...knowledgeSection(input),
-    ...workflowSection(input),
-    '',
-    ...subIssuesSection(input),
-    '',
-    ...parentCoordinationSection(key),
-    '',
-    ...captureLearningsSection(),
+    ...parts.sections,
+    ...parts.workflow,
     '',
     '## Status Rules',
     '',
@@ -107,7 +142,7 @@ export function writeBrief(workDir: string, fileName: string, block: string): st
   return path;
 }
 
-export type PromptInput = Pick<ClaimedRunV1, 'run' | 'issue' | 'triggers'>;
+export type PromptInput = Pick<ClaimedRunV1, 'run' | 'issue' | 'triggers' | 'agent'>;
 
 function quote(text: string): string {
   return text
@@ -154,7 +189,8 @@ function openingLines(input: PromptInput): string[] {
 /** The per-turn user message (§7); session mode (iteration 2 §J) opens conversationally. */
 export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: boolean }): string {
   const key = input.issue.identifier;
-  const lines = openingLines(input);
+  if (hasTrigger(input, 'retrospective')) return `${retrospectivePrompt(input)}\nSession: ${opts.resumed ? 'resumed' : 'fresh'}.`;
+  const lines = [...(hasTrigger(input, 'designApproved') ? [DESIGN_APPROVED_OPENING] : []), ...openingLines(input)];
   let rootId: string | undefined;
   for (const trigger of input.triggers) {
     if (trigger.comment) {
@@ -166,9 +202,14 @@ export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: bo
       if (note) lines.push(note(key));
     }
   }
+  lines.push(...approvedProposalLines(input, quote));
   lines.push(`Session: ${opts.resumed ? 'resumed' : 'fresh'}.`);
   const parent = rootId ? ` --parent ${rootId}` : '';
-  if (executionModeOf(input) === 'session') {
+  if (isManager(input)) {
+    lines.push(`Reply via \`nocoproject issue comment add ${key} --content-file ./reply.md${parent}\`, conclusion first; you do not need to set \`in_review\` and never change the status.`);
+  } else if (designPendingOf(input)) {
+    lines.push(`Submit or revise the proposal with \`nocoproject issue design-proposal ${key} --content-file ./proposal.md\`, then set \`proposal_review\`; answer questions via \`nocoproject issue comment add ${key} --content-file ./reply.md${parent}\`. No code changes or pull requests before approval.`);
+  } else if (executionModeOf(input) === 'session') {
     lines.push(`Reply briefly via \`nocoproject issue comment add ${key} --content-file ./reply.md${parent}\`; you do not need to set \`in_review\`.`);
   } else {
     lines.push(`When done, deliver via \`nocoproject issue comment add ${key} --content-file ./reply.md${parent}\`.`);

@@ -34,9 +34,17 @@ import { useRunEvents } from './use-run-events.js';
 export function SessionPanel({
   detail,
   agents,
+  fill = false,
+  placeholder,
 }: {
   readonly detail: IssueDetail;
   readonly agents: readonly AgentListItem[];
+  /**
+   * Fill the parent's height as the page's own conversation (the project manager, iteration 4 §C): no heading, the
+   * message list takes the free height and scrolls, the composer stays under it. The parent bounds the height.
+   */
+  readonly fill?: boolean;
+  readonly placeholder?: string;
 }): ReactElement {
   const { t } = useTranslation();
   const { issue } = detail;
@@ -57,20 +65,28 @@ export function SessionPanel({
 
   return (
     <section
-      className='space-y-3'
+      className={cn(fill ? 'flex h-full min-h-0 flex-col gap-3' : 'space-y-3')}
       aria-labelledby='np-session-heading'
       data-testid='np-session-panel'
     >
       <h2
         id='np-session-heading'
-        className='flex items-center gap-2 text-sm font-semibold'
+        className={cn(
+          'flex items-center gap-2 text-sm font-semibold',
+          fill && 'sr-only',
+        )}
       >
         <MessagesSquareIcon className='size-4' aria-hidden='true' />
         {t('np.session.title')}
       </h2>
       <div
         ref={listRef}
-        className='max-h-[50svh] min-h-32 space-y-3 overflow-y-auto rounded-lg border bg-background p-3'
+        className={cn(
+          'space-y-3 overflow-y-auto rounded-lg border',
+          fill
+            ? 'min-h-0 flex-1 bg-card p-4'
+            : 'max-h-[50svh] min-h-32 bg-background p-3',
+        )}
       >
         {messages.length === 0 && !run ? (
           <p className='text-sm text-muted-foreground'>
@@ -120,7 +136,7 @@ export function SessionPanel({
         replyToName={null}
         onCancelReply={() => {}}
         editorRef={editorRef}
-        placeholder={t('np.session.placeholder')}
+        placeholder={placeholder ?? t('np.session.placeholder')}
         notice={
           hint ? (
             <p

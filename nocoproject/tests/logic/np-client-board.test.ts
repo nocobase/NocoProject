@@ -179,8 +179,11 @@ describe('board move', () => {
       groups,
       new Map([['2', 'in_progress']]),
     );
+    // The design-first columns stay hidden while no visible issue uses them (iteration 4 §B).
     expect(columns.map((column) => column.statusKey)).toEqual([
-      ...catalog.map((entry) => entry.key),
+      ...catalog
+        .map((entry) => entry.key)
+        .filter((key) => key !== 'analysis' && key !== 'proposal_review'),
       'triage',
     ]);
     const byKey = new Map(columns.map((column) => [column.statusKey, column]));

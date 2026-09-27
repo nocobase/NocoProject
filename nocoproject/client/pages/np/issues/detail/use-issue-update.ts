@@ -53,6 +53,22 @@ export function useIssueUpdate(
       void queryClient.invalidateQueries({ queryKey: npKeys.issues });
     },
     onError: (error: unknown) => {
+      // Iteration 4: the process is fixed once work starts; a project manager never executes an issue.
+      if (error instanceof ApiClientError && error.code === 'PROCESS_LOCKED') {
+        toast.add({ type: 'error', title: t('np.process.locked') });
+        void queryClient.invalidateQueries({ queryKey: detailKey });
+        return;
+      }
+      if (
+        error instanceof ApiClientError &&
+        error.code === 'MANAGER_NOT_EXECUTOR'
+      ) {
+        toast.add({
+          type: 'error',
+          title: t('np.agentForm.managerNotExecutor'),
+        });
+        return;
+      }
       if (error instanceof ApiClientError && error.status === 409) {
         toast.add({ type: 'info', title: t('np.issue.conflict') });
         void queryClient.invalidateQueries({ queryKey: detailKey });

@@ -406,10 +406,10 @@ describe.skipIf(!db)('authorization rules (PostgreSQL)', () => {
       (await services.issues.agentSetStatus(agent, issue.id, 'doing'))
         .statusKey,
     ).toBe('doing');
-    // Issues without a project keep the default template.
+    // Issues without a project keep the default template (4 transitions + 5 design-first ones since iteration 4).
     const plain = await services.issues.create(ALICE, { title: 'Plain' });
     expect(
       (await services.issueQueries.detail(ALICE, plain.id)).agentTransitions,
-    ).toHaveLength(4);
+    ).toHaveLength(9);
   });
 });

@@ -21,6 +21,7 @@ const npDesignZhCN: NpDesignResource = {
       proposal_pending: '执行者建议待确认',
       knowledge_proposal: '知识库修改建议',
       pr_review: 'PR 待合并',
+      design_review: '设计方案待审核',
     },
     actions: {
       review_requested: {
@@ -45,6 +46,10 @@ const npDesignZhCN: NpDesignResource = {
       },
       pr_review: {
         openPr: '打开 PR',
+      },
+      design_review: {
+        approve: '批准进入开发',
+        requestChanges: '打回修改',
       },
     },
     section: {

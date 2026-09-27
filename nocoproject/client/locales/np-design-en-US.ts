@@ -26,6 +26,7 @@ const npDesignEnUS = {
       proposal_pending: 'Executor proposals to confirm',
       knowledge_proposal: 'Knowledge change proposed',
       pr_review: 'Pull request ready to merge',
+      design_review: 'Design proposal to review',
     },
     actions: {
       review_requested: {
@@ -50,6 +51,10 @@ const npDesignEnUS = {
       },
       pr_review: {
         openPr: 'Open PR',
+      },
+      design_review: {
+        approve: 'Approve for development',
+        requestChanges: 'Send back',
       },
     },
     section: {

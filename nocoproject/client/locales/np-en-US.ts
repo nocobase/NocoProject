@@ -175,6 +175,7 @@ const npCollabEnUS = {
       pr_merged: 'PR merged',
       knowledge_proposal: 'Knowledge proposal',
       knowledge_decided: 'Knowledge decided',
+      design_review: 'Proposal to review',
     },
   },
   projects: {

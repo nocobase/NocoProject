@@ -100,6 +100,9 @@ export function inboxBodyText(
         ? key('knowledge_proposal_new', { doc })
         : key('knowledge_proposal', { doc });
     }
+    // Iteration 4 §B: the executor submitted a design proposal and the owner reviews it.
+    case 'design_review':
+      return key('design_review');
     case 'knowledge_decided': {
       const doc = text(payload.docTitle) ?? text(payload.title);
       const decision = text(payload.decision) ?? text(payload.status);

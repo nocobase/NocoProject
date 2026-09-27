@@ -1,7 +1,7 @@
 /**
  * The single `systemSettings` row: the issue prefix, the issue counter and (iteration 1) the `settings` json.
- * Iteration 2 adds `modelPrices` and `intakeParser` to the json, iteration 3 `metricThresholds`; missing keys read as
- * their defaults.
+ * Iteration 2 adds `modelPrices` and `intakeParser` to the json, iteration 3 `metricThresholds`, iteration 4
+ * `defaultProcess`, `pmAgentId` and `retrospectiveOnDone`; missing keys read as their defaults.
  */
 import type { Conn } from '../shared/db.js';
 import {
@@ -14,6 +14,7 @@ import {
   toJson,
 } from '../shared/db.js';
 import type {
+  DefaultProcess,
   IntakeParserSetting,
   MetricThresholds,
   ModelPrice,
@@ -40,6 +41,12 @@ export interface WorkspaceSettings {
   readonly intakeParser: IntakeParserSetting;
   /** Iteration 3: acceptance metric thresholds (missing keys take the defaults). */
   readonly metricThresholds: MetricThresholds;
+  /** Iteration 4: the process of a new issue that names none (`auto` = the classifier). */
+  readonly defaultProcess: DefaultProcess;
+  /** Iteration 4: the project manager agent (conversations and retrospectives), or null. */
+  readonly pmAgentId: string | null;
+  /** Iteration 4: a done issue an agent worked on gets a retrospective run of the project manager. */
+  readonly retrospectiveOnDone: boolean;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -48,6 +55,9 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   modelPrices: [],
   intakeParser: 'auto',
   metricThresholds: DEFAULT_METRIC_THRESHOLDS,
+  defaultProcess: 'auto',
+  pmAgentId: null,
+  retrospectiveOnDone: true,
 };
 
 function normalizeThresholds(value: unknown): MetricThresholds {
@@ -132,6 +142,19 @@ function normalize(stored: Partial<WorkspaceSettings>): WorkspaceSettings {
         ? 'heuristic'
         : DEFAULT_WORKSPACE_SETTINGS.intakeParser,
     metricThresholds: normalizeThresholds(stored.metricThresholds),
+    defaultProcess:
+      stored.defaultProcess === 'direct' ||
+      stored.defaultProcess === 'design_first'
+        ? stored.defaultProcess
+        : DEFAULT_WORKSPACE_SETTINGS.defaultProcess,
+    pmAgentId:
+      typeof stored.pmAgentId === 'string' && stored.pmAgentId
+        ? stored.pmAgentId
+        : null,
+    retrospectiveOnDone:
+      typeof stored.retrospectiveOnDone === 'boolean'
+        ? stored.retrospectiveOnDone
+        : DEFAULT_WORKSPACE_SETTINGS.retrospectiveOnDone,
   };
 }
 

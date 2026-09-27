@@ -19,7 +19,7 @@ import type {
   AcceptDeliveryRequest,
   CommentV2,
   DeliveryResultV3,
-  IssueV2,
+  IssueV4,
   RequestChangesRequest,
 } from '../shared/protocol.js';
 import type { CommentService } from '../collaboration/comment.service.js';
@@ -80,7 +80,7 @@ async function moveTo(
   deps: DeliveryDeps,
   tx: Tx,
   actor: Actor,
-  issue: IssueV2,
+  issue: IssueV4,
   target: string | null,
 ): Promise<IssueStatusResult> {
   if (!target || issue.statusKey === target)

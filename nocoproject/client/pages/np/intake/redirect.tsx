@@ -1,10 +1,17 @@
 import type { ReactElement } from 'react';
-import { Navigate, useLocation } from 'react-router';
+import { Navigate, useLocation, useParams } from 'react-router';
 
-import { intakeRedirectTarget } from './intake-location.js';
+import { newIssueRedirectTarget } from '../issues/new-issue-model.js';
 
-/** Route `/intake`: iteration 2's batch entry page, now the drawer over the issues or the project page (§G). */
+/**
+ * Routes `/intake`, `/issues/intake` and `/projects/:projectId/intake`: batch entry is the AI 整理 tab of "新建任务"
+ * since iteration 4 §D, so old links and "批量添加" bookmarks open that tab with the project preselected and any
+ * `?batch=` kept.
+ */
 export default function IntakeRedirect(): ReactElement {
   const location = useLocation();
-  return <Navigate replace to={intakeRedirectTarget(location.search)} />;
+  const { projectId } = useParams();
+  return (
+    <Navigate replace to={newIssueRedirectTarget(location.search, projectId)} />
+  );
 }

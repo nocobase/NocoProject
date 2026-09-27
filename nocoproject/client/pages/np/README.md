@@ -20,10 +20,13 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 - Page tabs are child routes (`NpRouteTabs` + default-tab redirect). Sections inside a covering detail page use `NpTabBar` with `?tab=`, because the detail's child routes are its dialogs. Both look the same.
 - `/issues` and `/my-issues` fill the content area: header, toolbar, then the board or the table in a bounded area (`PageContainer className='flex h-full min-h-0 flex-col gap-6 space-y-0'`, `IssueBoard fill`, `DataTable fillHeight`). The page itself does not scroll.
 - Every top-level page renders `NpShortcuts` once (§8).
+- A page that is one conversation (`/pm`) fills the content area like `/issues`: header, then `SessionPanel fill` — only its message list scrolls, the composer stays under it, no properties column.
 
 ## 2. Lists and tables
 
 - Toolbar on the left (search, filters, view switch — `IssueToolbar`), the primary button in the page header.
+- Creating issues is one "新建任务" button and one dialog (`/issues/new`, `NewIssueButton`), never a split button: tabs AI 整理 (default; describe or paste, choose the project, "整理" → batch entry's drafts table → create one or many) and 手动 (the single-issue form). The last tab is remembered in `localStorage` (`nocoproject:new-issue-tab`, try/catch), `?tab=` overrides, `?batch=` holds the open draft batch and `?project=` preselects the project. Old batch-entry routes redirect into the AI tab.
+- The board shows the design-first columns (分析中, 方案待审) only while one holds an issue or a visible issue is design-first (`withoutIdleDesignColumns`).
 - Lists are `DataTable`. Server-paged lists pass `pagination={false}` and put "Load more" under the table; client-paged lists keep `pageSize={20}`.
 - Column widths go in `meta.className`: fixed widths for identifier, status, priority, people and dates; the title column `w-full max-w-0` with a single-line truncated cell capped at `max-w-[30rem]` and a `title` tooltip. One long title never stretches a table.
 - Sortable headers use `DataTableColumnHeader`: a click cycles ascending → descending → unsorted, the icon shows the state, there is no menu on the header. Column hiding lives in `DataTableViewOptions`.
@@ -40,7 +43,7 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 
 ## 4. Decisions
 
-- A decision is always shown with the thing being decided in full (`DecisionContent`: the agent's delivery comment and PR, the approval's from → to and requester, the proposals, the knowledge text with its diff) and the actions right under it (`DecisionActionsBar`). Never a bare "accept".
+- A decision is always shown with the thing being decided in full (`DecisionContent`: the agent's delivery comment and PR, the approval's from → to and requester, the proposals, the knowledge text with its diff, the design proposal in Markdown for `design_review`) and the actions right under it (`DecisionActionsBar`). Never a bare "accept".
 - The inbox (`/inbox`) is master–detail: grouped list on the left (decisions first), the selected item's context under a sticky action bar on the right, `j` / `k` / `e` / Enter, `?tab=` / `?archived=1` / `?item=` in the URL, list → detail on narrow screens.
 - The issue page shows the viewer's open decisions on that issue ("等你决定", `GET /np/inbox?kind=decision&resolved=false&issueId=`); a decided card folds into one line for the rest of the visit.
 - Both run decisions through `useDecisionRunner` (optimistic resolve in every cached inbox list, toast, refetch on failure). Button hierarchy: the primary action is the one filled button and comes first; other requests outlined; rejection red; navigation (open, reassign) plain text. Type-specific wording goes in `np.decision.actions.<type>.<key>`.
@@ -48,6 +51,8 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 ## 5. Identifiers, tags, people, empty values
 
 - Identifiers, slugs, versions, branches: `font-mono text-xs`.
+- The process is marked only when it changes what happens next: `NpProcessBadge` ("先出方案", blue, compass icon) beside the status in the issue header and on board cards, nothing for direct issues. Timeline comments that are a design proposal or a retrospective note carry `NpCommentTag` ("方案" / "总结").
+- Executor pickers (`NpExecutorSelect`) never offer a project manager agent (`kind: 'manager'`), except one already set.
 - Every tag is `NpTag` (tinted pill: pale background, darker text of the same hue, 13px, dot for statuses) with its tone from one map. Status: `NpStatusBadge` (tone by meaning via `statusTone`: unstarted grey, started blue, in review violet, blocked amber, done green, cancelled slate). Priority: `NpPriorityLabel` (urgent red, high orange, medium blue, low grey). Runs: `NpRunStatusBadge`. Labels: `NpLabelChip`. Never a solid fill, never a dot on a neutral pill, never the shadcn `Badge` on these pages.
 - People, agents and the system: only `NpActorAvatar` (initials round / bot rounded-square in the agent hue / dashed cog; `live` for a working agent). `NpExecutor` builds on it.
 - Empty values (no priority, executor, owner, date, project) render a muted "—" with the word kept for screen readers. Editable controls keep their "none" option names in the list only.
@@ -79,4 +84,4 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 
 ## 10. Languages
 
-- Every string is a key in `client/locales/` with `en-US` and `zh-CN`; `tests/logic/locale-coverage.test.ts` fails on a missing key. New groups go in the latest `np-*-en-US.ts` (today `np-design-en-US.ts`); avoid i18next plural suffixes.
+- Every string is a key in `client/locales/` with `en-US` and `zh-CN`; `tests/logic/locale-coverage.test.ts` fails on a missing key. New groups go in the latest `np-*-en-US.ts` (today `np-iter4-en-US.ts`); a key inside an existing group goes into the file that defines that group, since the spread into `np` is shallow; avoid i18next plural suffixes.

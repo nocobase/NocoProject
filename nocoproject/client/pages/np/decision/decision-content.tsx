@@ -11,6 +11,7 @@ import { ProposalsCard } from '../issues/detail/proposals-card.js';
 import { PullRequestCard } from '../issues/detail/pull-requests-section.js';
 import type { AgentListItem, IssueDetail, InboxItem } from '../types.js';
 import { latestAgentComment, latestFinishedRun } from './decision-model.js';
+import { DesignProposalContent } from './proposal-content.js';
 import { KnowledgeProposalContent } from './knowledge-content.js';
 
 function text(value: unknown): string | null {
@@ -63,6 +64,14 @@ export function DecisionContent({
       return <KnowledgeProposalContent item={item} />;
     case 'pr_review':
       return <PrContent item={item} detail={detail} loading={detailLoading} />;
+    case 'design_review':
+      return (
+        <DesignProposalContent
+          item={item}
+          detail={detail}
+          loading={detailLoading}
+        />
+      );
     default:
       return <NoticeContent item={item} />;
   }

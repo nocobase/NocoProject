@@ -200,6 +200,21 @@ export type DomainEvent =
       readonly issueId: string;
       readonly decision: 'accepted' | 'changesRequested';
       readonly actor: EventActor;
+    }
+  // Iteration 4 (docs/phase1/iteration-4-contract.md §B).
+  | {
+      /** An agent submitted a design proposal: refreshes an open `design_review` card. */
+      readonly type: 'design.proposed';
+      readonly issueId: string;
+      readonly commentId: string;
+      readonly actor: EventActor;
+    }
+  | {
+      /** A member approved the design or sent it back: the issue's `design_review` cards resolve. */
+      readonly type: 'design.decided';
+      readonly issueId: string;
+      readonly decision: 'approved' | 'changesRequested';
+      readonly actor: EventActor;
     };
 
 export type DomainEventListener = (event: DomainEvent) => void;

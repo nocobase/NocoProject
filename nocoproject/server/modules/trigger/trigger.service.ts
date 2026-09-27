@@ -16,6 +16,7 @@
  * | An issue reaches a terminal status                                  | release dependents / next-stage siblings (`trigger/release.ts`) |
  * | Run failed with a retryable reason, attempts left                   | new run, `retryOfRunId`, `retry` (never gated) |
  * | A new `blockedBy` dependency leaves the issue blocked               | its queued / deferred runs are withdrawn (cancelled, `blocked`); activity `run_deferred_blocked` |
+ * | Design approved; issue enters done (iteration 4)                    | `designApproved` / `retrospective` (`trigger/retrospective.ts`) |
  *
  * Coalescing into an existing pending run, and "a running run makes the new one wait", are enforced by
  * `run.enqueue` and the claim SQL.
@@ -42,7 +43,9 @@ import type {
 } from '../run/run.service.js';
 import { blockersOf } from '../subtask/blocking.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
+import type { SettingsService } from '../system/settings.service.js';
 import { onTerminalEntered, releaseIfUnblocked } from './release.js';
+import { designApprovedRun, retrospectiveRun } from './retrospective.js';
 
 export interface IssueChange {
   readonly before: IssueV1 | null;
@@ -93,12 +96,21 @@ export interface TriggerService {
   manualRetry(tx: Tx, run: Run, actor: Actor): Promise<EnqueueResult>;
   /** A blocking dependency was added: withdraw the issue's queued runs if it is now blocked. Returns their ids. */
   onBlockingAdded(tx: Tx, issue: IssueV1): Promise<string[]>;
+  /** Iteration 4: a member approved the design; `commentId` is the approval comment, if any. */
+  onDesignApproved(
+    tx: Tx,
+    issue: IssueV1,
+    actor: Actor,
+    commentId: string | null,
+  ): Promise<TriggeredRun[]>;
 }
 
 export interface TriggerDeps {
   readonly runs: () => RunService;
   readonly workflows: WorkflowService;
   readonly activity: ActivityRecorder;
+  /** Iteration 4: `retrospectiveOnDone`, `pmAgentId`. */
+  readonly settings: SettingsService;
 }
 
 export interface EnqueueTarget {
@@ -372,7 +384,8 @@ export function createTriggerService(deps: TriggerDeps): TriggerService {
   return {
     onIssueChanged: (tx, change) => onIssueChanged(deps, tx, change),
     onCommentCreated: (tx, change) => onCommentCreated(deps, tx, change),
-    async onStatusChanged(tx, { before, after }) {
+    async onStatusChanged(tx, change) {
+      const { before, after } = change;
       if (before.statusKey === after.statusKey) return [];
       const view = await deps.workflows.forIssue(tx.conn, after);
       if (
@@ -380,7 +393,10 @@ export function createTriggerService(deps: TriggerDeps): TriggerService {
         view.isTerminal(before.statusKey)
       )
         return [];
-      return onTerminalEntered({ ...deps, enqueue }, tx, after);
+      return [
+        ...(await onTerminalEntered({ ...deps, enqueue }, tx, after)),
+        ...(await retrospectiveRun({ ...deps, enqueue }, tx, change)),
+      ];
     },
     onUnblockCandidate: (tx, issue, releasedBy) =>
       releaseIfUnblocked({ ...deps, enqueue }, tx, issue, releasedBy),
@@ -388,5 +404,7 @@ export function createTriggerService(deps: TriggerDeps): TriggerService {
       retryFailedRun(deps, tx, failed, maxAttempts, reason),
     manualRetry: (tx, run, actor) => manualRetry(deps, tx, run, actor),
     onBlockingAdded: (tx, issue) => onBlockingAdded(deps, tx, issue),
+    onDesignApproved: (tx, issue, actor, commentId) =>
+      designApprovedRun({ ...deps, enqueue }, tx, issue, actor, commentId),
   };
 }

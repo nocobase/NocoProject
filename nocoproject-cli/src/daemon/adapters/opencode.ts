@@ -2,7 +2,8 @@
  * OpenCode adapter (verified against OpenCode 1.18.32).
  *
  * Launch: `opencode run --format json --auto --thinking --print-logs --log-level WARN
- *          --dir <workDir> [--session <id>] [--model provider/model] <prompt>`
+ *          --dir <workDir> [--session <id>] [--model provider/model] [--variant <effort>] <prompt>`
+ * (`--variant` is OpenCode's provider-specific reasoning effort; passed as the agent's `reasoningEffort`)
  * (cwd is also the workDir and PWD is reset: OpenCode otherwise takes its project dir from PWD)
  *
  * `--format json` prints one JSON object per line: `step_start`, `text`, `reasoning`
@@ -120,10 +121,11 @@ export function openCodeUsage(state: OpenCodeParseState, model: string | undefin
   };
 }
 
-export function buildOpenCodeArgs(spec: Pick<RunSpec, 'model' | 'resumeSessionId' | 'prompt' | 'workDir'>): string[] {
+export function buildOpenCodeArgs(spec: Pick<RunSpec, 'model' | 'resumeSessionId' | 'prompt' | 'workDir' | 'reasoningEffort'>): string[] {
   const args = ['run', '--format', 'json', '--auto', '--thinking', '--print-logs', '--log-level', 'WARN', '--dir', spec.workDir];
   if (spec.resumeSessionId) args.push('--session', spec.resumeSessionId);
   if (spec.model) args.push('--model', spec.model);
+  if (spec.reasoningEffort) args.push('--variant', spec.reasoningEffort);
   args.push(spec.prompt);
   return args;
 }

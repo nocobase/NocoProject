@@ -15,7 +15,7 @@ import type {
 import { AGENT_ENV_REDACT_MIN_LENGTH, SESSION_POISONING_FAILURE_REASONS } from '../protocol.js';
 import { withRetry } from '../util/backoff.js';
 import type { Logger } from '../util/log.js';
-import { type ClaimedRunV1, readCheckoutRecord, writeRunContext } from '../run-context.js';
+import { type ClaimedRunV1, readCheckoutRecord, reasoningEffortOf, writeRunContext } from '../run-context.js';
 import { forgetSecret, redactKnownSecrets, redactText, registerSecret } from '../util/redact.js';
 import type { AgentAdapter, RunResult, RunSpec } from './adapters/types.js';
 import { nowIso } from './adapters/types.js';
@@ -166,6 +166,7 @@ async function prepare(deps: RunnerDeps, claimed: ClaimedRunV1): Promise<Prepare
     env: agentEnv,
     model: claimed.agent.model ?? undefined,
     resumeSessionId: env.resumeSessionId,
+    reasoningEffort: reasoningEffortOf(claimed),
   };
   const skipped = filterAgentEnv(claimed.agent.env).skipped;
   const notes = [...(skipped.length ? [`Skipped reserved or invalid environment variables: ${skipped.join(', ')}`] : []), ...skills.warnings];

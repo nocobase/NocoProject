@@ -25,7 +25,8 @@ import type {
 export type ExecutionMode = 'task' | 'session';
 export const EXECUTION_MODES: readonly ExecutionMode[] = ['task', 'session'];
 
-export type IssueOriginType = 'manual' | 'intake' | 'agent';
+/** 迭代 4 追加 `pm`：项目经理对话任务（docs/phase1/iteration-4-contract.md §C） */
+export type IssueOriginType = 'manual' | 'intake' | 'agent' | 'pm';
 
 /** 迭代 2 给任务追加的列 */
 export interface IssuePhase2Fields {

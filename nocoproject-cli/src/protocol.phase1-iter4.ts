@@ -1,0 +1,274 @@
+/**
+ * NocoProject 协议类型：Phase 1 迭代 4 追加（docs/phase1/iteration-4-contract.md，实现见
+ * docs/phase1/protocol-iteration-4.md）。
+ *
+ * 服务端正本；CLI 用 `pnpm sync-protocol` 复制本文件。本文件只从 protocol.ts、protocol.phase1-iter2.ts 与
+ * protocol.phase1-iter3.ts 引用类型；依赖服务端补充形状（IssueV2、IssueDetailV3 等）的组合类型在
+ * protocol.phase1-iter4-server.ts（CLI 不复制）。
+ * 只增不改：原联合类型保持不动，追加的枚举值写成单独的类型（InboxItemTypePhase1Iter4 等）再合并。唯一例外是
+ * protocol.phase1-iter2.ts 的 `IssueOriginType` 追加了 `'pm'`（契约 §C "originType 增加 pm"）。
+ */
+import type {
+  Activity,
+  CommentKind,
+  Phase1RunTriggerType,
+  ProjectListItem,
+  RunSummary,
+  SubtaskSummary,
+  TriggeredRun,
+} from './protocol.js';
+import type {
+  CommentV2,
+  CreateIntakeBatchRequest,
+  IntakeDraftFields,
+  IssuePullRequestView,
+  IssueStatusSnapshot,
+  UsageRow,
+} from './protocol.phase1-iter2.js';
+import type {
+  InboxItemTypeV3,
+  InboxItemV3,
+  IssueListRow,
+  UpdateWorkspaceSettingsRequestV3,
+  WorkspaceSettingsViewV3,
+} from './protocol.phase1-iter3.js';
+
+// ---------- 设计先行（§B） ----------
+
+/** `issues.process` */
+export type IssueProcess = 'direct' | 'design_first';
+export const ISSUE_PROCESSES: readonly IssueProcess[] = [
+  'direct',
+  'design_first',
+];
+/** 建任务 / 批量录入的 `process`，也是 `settings.defaultProcess`：`auto` = 服务端分类 */
+export type DefaultProcess = 'auto' | IssueProcess;
+export const DEFAULT_PROCESSES: readonly DefaultProcess[] = [
+  'auto',
+  'direct',
+  'design_first',
+];
+/** `process_selected` 活动的 `details.by` */
+export type ProcessSelectedBy = 'user' | 'heuristic' | 'ai';
+
+/** 设计先行的两个内置状态（category started，依次在 todo 之后） */
+export const STATUS_ANALYSIS = 'analysis';
+export const STATUS_PROPOSAL_REVIEW = 'proposal_review';
+/** `PATCH /np/issues/:id { process }` 只在这些状态下允许（否则 409 PROCESS_LOCKED） */
+export const PROCESS_EDITABLE_STATUSES: readonly string[] = ['backlog', 'todo'];
+
+/** 迭代 4 给任务追加的列 */
+export interface IssuePhase4Fields {
+  readonly process: IssueProcess;
+  readonly designApprovedAt: string | null;
+  readonly designApprovedById: string | null;
+}
+
+/** `POST /np/issues`、`PATCH /np/issues/:id` 追加（PATCH 不接受 `auto`） */
+export interface IssuePhase4Input {
+  readonly process?: DefaultProcess;
+}
+
+/** `comments.kind` 追加的值：设计方案 */
+export type CommentKindPhase1Iter4 = 'proposal';
+export type CommentKindV4 = CommentKind | CommentKindPhase1Iter4;
+
+/** `POST /np/agent/issues/:id/design-proposal`；响应 201 `{ data: CommentV2 }`（kind = 'proposal' 的顶层评论） */
+export interface AgentDesignProposalRequest {
+  readonly content: string;
+}
+export const DESIGN_PROPOSAL_MAX = 200_000;
+
+/** 最新的设计方案（kind = 'proposal' 的最新评论）：认领载荷 `issue.designProposal`、任务详情 `issue.designProposal` */
+export interface DesignProposal {
+  readonly commentId: string;
+  /** Markdown：需求理解 / 方案 / 影响范围 / 风险与待定 / 验证计划 */
+  readonly content: string;
+  readonly createdAt: string;
+}
+
+/** `POST /np/issues/:id/design/approve`（body 可省略） */
+export interface DesignApproveRequest {
+  readonly comment?: string;
+}
+
+/** `POST /np/issues/:id/design/request-changes` */
+export interface DesignRequestChangesRequest {
+  readonly comment: string;
+}
+
+/** 两个设计决定接口的 data；`issue` 是完整任务行（服务端 IssueV4），这里只列 CLI 读取的字段 */
+export interface DesignDecisionResult<TIssue = IssueStatusSnapshot> {
+  readonly issue: TIssue & IssuePhase4Fields;
+  readonly comment: CommentV2 | null;
+  readonly triggered: readonly TriggeredRun[];
+}
+
+/** `design_review` 决定项的 payload（另有 identifier、issueTitle、actions） */
+export interface DesignReviewPayload {
+  readonly proposalCommentId: string | null;
+  /** 方案正文前 300 字 */
+  readonly summary: string;
+  readonly from: string | null;
+}
+export const DESIGN_REVIEW_SUMMARY_LENGTH = 300;
+
+// ---------- Agent 类型与推理强度（§C） ----------
+
+export type AgentKind = 'coder' | 'manager';
+export const AGENT_KINDS: readonly AgentKind[] = ['coder', 'manager'];
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'max';
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'max',
+];
+
+/** 迭代 4 给 Agent 追加的列（`GET /np/agents` 的行） */
+export interface AgentPhase4Fields {
+  readonly kind: AgentKind;
+  readonly reasoningEffort: ReasoningEffort | null;
+}
+
+/** `POST /np/agents`、`PATCH /np/agents/:id` 追加 */
+export interface AgentPhase4Input {
+  readonly kind?: AgentKind;
+  readonly reasoningEffort?: ReasoningEffort | null;
+}
+
+// ---------- 运行触发与认领载荷（§B、§C） ----------
+
+/** 迭代 4 新增的触发类型：方案批准后的实现运行、任务完成后的总结运行 */
+export type RunTriggerTypePhase1Iter4 = 'designApproved' | 'retrospective';
+export type RunTriggerTypeV4 = Phase1RunTriggerType | RunTriggerTypePhase1Iter4;
+/** 总结运行的 threadScope */
+export const RETROSPECTIVE_THREAD_SCOPE = 'retro';
+
+/** ClaimedRun 在迭代 4 追加的字段（守护进程按可选读取） */
+export interface ClaimedRunPhase4Extras {
+  readonly agent: {
+    readonly kind: AgentKind;
+    readonly reasoningEffort: ReasoningEffort | null;
+  };
+  readonly issue: {
+    readonly process: IssueProcess;
+    readonly designApprovedAt: string | null;
+    /** 最新方案；没有方案时为 null */
+    readonly designProposal: DesignProposal | null;
+    /** `'pm'` = 项目经理对话任务 */
+    readonly originType: string;
+  };
+}
+
+/** Agent 任务视图（`GET /np/agent/issues/:id`、`/context`）追加 */
+export interface IssueForAgentPhase4Fields {
+  readonly process: IssueProcess;
+  readonly designApprovedAt: string | null;
+}
+
+// ---------- 项目经理（§C） ----------
+
+/** `GET/POST /np/pm/conversation` 的 data */
+export interface PmConversationResponse {
+  readonly issueId: string;
+  readonly identifier: string;
+  /** 当前执行者（= settings.pmAgentId） */
+  readonly agentId: string | null;
+}
+
+/** `GET /np/agent/pm/issues` 的查询参数 */
+export interface PmIssueListQuery {
+  readonly projectId?: string;
+  readonly statusKey?: string;
+  /** 用户 id；`me` = 运行的 actorUserId（提问者） */
+  readonly ownerUserId?: string;
+  readonly executorId?: string;
+  readonly q?: string;
+  /** ISO 时间，或相对时长 `7d` / `24h` / `30m` */
+  readonly updatedSince?: string;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export type PmIssueRow = IssueListRow & IssuePhase4Fields;
+
+/** `GET /np/agent/pm/issues` 的完整响应体（`nextCursor` 与 `data` 同级） */
+export interface PmIssueListPage<T = PmIssueRow> {
+  readonly data: readonly T[];
+  readonly nextCursor: string | null;
+}
+
+/** `GET /np/agent/pm/issues/:idOrIdentifier` 的 data */
+export interface PmIssueDetail<T = PmIssueRow> {
+  readonly issue: T & { readonly designProposal: DesignProposal | null };
+  /** 最近 50 条（升序） */
+  readonly comments: readonly CommentV2[];
+  /** 最近 50 条（升序） */
+  readonly activities: readonly Activity[];
+  readonly runs: readonly RunSummary[];
+  readonly pullRequests: readonly IssuePullRequestView[];
+  readonly subtasks: readonly SubtaskSummary[];
+  /** 该任务所有运行的用量合计 */
+  readonly usage: UsageRow;
+}
+
+/** `GET /np/agent/pm/projects` 的 data */
+export type PmProjectList = readonly ProjectListItem[];
+
+/** PM 详情里评论 / 活动的条数 */
+export const PM_DETAIL_TAIL = 50;
+
+// ---------- 设置（§A） ----------
+
+export interface WorkspaceSettingsPhase4Fields {
+  readonly defaultProcess: DefaultProcess;
+  readonly pmAgentId: string | null;
+  readonly retrospectiveOnDone: boolean;
+}
+
+export type WorkspaceSettingsViewV4 = WorkspaceSettingsViewV3 &
+  WorkspaceSettingsPhase4Fields;
+
+export type UpdateWorkspaceSettingsRequestV4 =
+  UpdateWorkspaceSettingsRequestV3 & Partial<WorkspaceSettingsPhase4Fields>;
+
+// ---------- 批量录入（§D） ----------
+
+/** 草稿字段追加 `process`（缺省 = settings.defaultProcess；auto 在确认时用启发式分类） */
+export type IntakeDraftFieldsV4 = IntakeDraftFields & {
+  readonly process?: DefaultProcess;
+};
+
+/** `POST /np/intake/batches` 追加 `process`：写进每条没有 `process` 的草稿 */
+export type CreateIntakeBatchRequestV4 = CreateIntakeBatchRequest & {
+  readonly process?: DefaultProcess;
+};
+
+// ---------- 追加的枚举值 ----------
+
+export type InboxItemTypePhase1Iter4 = 'design_review';
+/** 迭代 1–4 的全部收件箱类型 */
+export type InboxItemTypeV4 = InboxItemTypeV3 | InboxItemTypePhase1Iter4;
+export type InboxItemV4 = Omit<InboxItemV3, 'type'> & {
+  readonly type: InboxItemTypeV4;
+};
+export type ActivityActionPhase1Iter4 =
+  | 'process_selected'
+  | 'design_skipped'
+  | 'design_proposed'
+  | 'design_approved'
+  | 'design_changes_requested'
+  | 'retrospective_done';
+
+// ---------- 错误码 ----------
+
+export const ERROR_PROCESS_LOCKED = 'PROCESS_LOCKED';
+export const ERROR_DESIGN_NOT_APPROVED = 'DESIGN_NOT_APPROVED';
+export const ERROR_PROPOSAL_REQUIRED = 'PROPOSAL_REQUIRED';
+export const ERROR_NOT_DESIGN_FIRST = 'NOT_DESIGN_FIRST';
+export const ERROR_DESIGN_ALREADY_APPROVED = 'DESIGN_ALREADY_APPROVED';
+export const ERROR_MANAGER_NOT_EXECUTOR = 'MANAGER_NOT_EXECUTOR';
+export const ERROR_MANAGER_ONLY = 'MANAGER_ONLY';
+export const ERROR_PM_NOT_CONFIGURED = 'PM_NOT_CONFIGURED';

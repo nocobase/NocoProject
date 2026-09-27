@@ -5,14 +5,15 @@
  * so they are 404 everywhere and drop out of lists, counts and blocking.
  */
 import type { Conn } from '../shared/db.js';
-import { bool, iso, num, str, unique } from '../shared/db.js';
+import { bool, iso, isoOrNull, num, str, unique } from '../shared/db.js';
 import type {
   ExecutionMode,
   ExecutorType,
   IssueOriginType,
   IssuePriority,
+  IssueProcess,
   IssueRef,
-  IssueV2,
+  IssueV4,
 } from '../shared/protocol.js';
 
 export const ISSUE_PRIORITIES: readonly IssuePriority[] = [
@@ -52,10 +53,17 @@ function executionModeOf(value: unknown): ExecutionMode {
 }
 
 function originTypeOf(value: unknown): IssueOriginType {
-  return value === 'intake' || value === 'agent' ? value : 'manual';
+  return value === 'intake' || value === 'agent' || value === 'pm'
+    ? value
+    : 'manual';
 }
 
-export function mapIssue(row: Record<string, unknown>): IssueV2 {
+function processOf(value: unknown): IssueProcess {
+  return value === 'design_first' ? 'design_first' : 'direct';
+}
+
+/** The full row (iteration 4: `process`, `designApprovedAt`, `designApprovedById`). */
+export function mapIssue(row: Record<string, unknown>): IssueV4 {
   return {
     id: str(row.id) ?? '',
     number: num(row.number),
@@ -83,6 +91,9 @@ export function mapIssue(row: Record<string, unknown>): IssueV2 {
     executionMode: executionModeOf(row.executionMode),
     originType: originTypeOf(row.originType),
     originId: str(row.originId),
+    process: processOf(row.process),
+    designApprovedAt: isoOrNull(row.designApprovedAt),
+    designApprovedById: str(row.designApprovedById),
   };
 }
 
@@ -94,7 +105,7 @@ export function issueRef(issue: IssueRef): IssueRef {
 export async function issuesByIds(
   conn: Conn,
   ids: readonly (string | null | undefined)[],
-): Promise<Map<string, IssueV2>> {
+): Promise<Map<string, IssueV4>> {
   const wanted = unique(ids);
   if (wanted.length === 0) return new Map();
   const rows = await conn.query
@@ -112,7 +123,7 @@ const IDENTIFIER_PATTERN = /^[A-Za-z][A-Za-z0-9]*-\d+$/u;
 export async function findIssue(
   conn: Conn,
   idOrKey: string,
-): Promise<IssueV2 | null> {
+): Promise<IssueV4 | null> {
   const byId = await conn.query
     .selectFrom('issues')
     .selectAll()

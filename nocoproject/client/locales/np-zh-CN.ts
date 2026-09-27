@@ -168,6 +168,7 @@ const npCollabZhCN: NpCollabResource = {
       pr_merged: 'PR 已合并',
       knowledge_proposal: '知识库建议',
       knowledge_decided: '知识库建议已处理',
+      design_review: '方案待审',
     },
   },
   projects: {

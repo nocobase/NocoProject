@@ -109,6 +109,13 @@ export type ActivityLabel =
   | 'knowledgeUpdated'
   | 'deliveryAccepted'
   | 'changesRequested'
+  // Phase 1 iteration 4 (§B, §C)
+  | 'processSelected'
+  | 'designProposed'
+  | 'designApproved'
+  | 'designChangesRequested'
+  | 'designSkipped'
+  | 'retrospectiveDone'
   | 'updated';
 
 /** Iteration 2 actions are matched exactly (snake case, as the contract spells them) before the keyword rules. */
@@ -132,6 +139,12 @@ const EXACT_LABELS: Readonly<Record<string, ActivityLabel>> = {
   knowledge_updated: 'knowledgeUpdated',
   delivery_accepted: 'deliveryAccepted',
   changes_requested: 'changesRequested',
+  process_selected: 'processSelected',
+  design_proposed: 'designProposed',
+  design_approved: 'designApproved',
+  design_changes_requested: 'designChangesRequested',
+  design_skipped: 'designSkipped',
+  retrospective_done: 'retrospectiveDone',
 };
 
 /** Labels whose details carry a status change to show as badges. */

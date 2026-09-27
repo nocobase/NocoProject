@@ -329,6 +329,9 @@ describe.skipIf(!db)('blocking and release (PostgreSQL)', () => {
     expect(board.groups.map((group) => group.statusKey)).toEqual([
       'backlog',
       'todo',
+      // Iteration 4: the design-first statuses of the default template.
+      'analysis',
+      'proposal_review',
       'in_progress',
       'in_review',
       'blocked',

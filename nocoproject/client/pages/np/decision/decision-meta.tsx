@@ -5,6 +5,7 @@ import {
   BellIcon,
   BookCheckIcon,
   BookOpenTextIcon,
+  DraftingCompassIcon,
   GitMergeIcon,
   GitPullRequestIcon,
   LayersIcon,
@@ -43,6 +44,7 @@ const TYPE_ICON: Readonly<Record<string, LucideIcon>> = {
   approval_decided: ShieldCheckIcon,
   pr_merged: GitMergeIcon,
   knowledge_decided: BookCheckIcon,
+  design_review: DraftingCompassIcon,
 };
 
 /**

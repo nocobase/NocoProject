@@ -21,8 +21,8 @@ import {
 import type { IdSource } from '../shared/ids.js';
 import type {
   ActorType,
-  InboxItemTypeV3,
-  InboxItemV3,
+  InboxItemTypeV4,
+  InboxItemV4,
   InboxKind,
   SubscriptionReason,
 } from '../shared/protocol.js';
@@ -32,7 +32,7 @@ import { inboxActions } from './inbox.actions.js';
 export interface NewInboxItem {
   readonly userId: string;
   readonly kind: InboxKind;
-  readonly type: InboxItemTypeV3;
+  readonly type: InboxItemTypeV4;
   readonly issueId: string | null;
   readonly title: string;
   readonly body: string;
@@ -45,7 +45,7 @@ export interface NewInboxItem {
 
 export function dedupeKey(
   userId: string,
-  type: InboxItemTypeV3,
+  type: InboxItemTypeV4,
   issueId: string | null,
 ): string {
   return `user:${userId}:${type}:${issueId ?? '-'}`;
@@ -121,7 +121,7 @@ export async function deliver(
 /** Resolves unresolved items of `type` on an issue (only `userId`'s when given); returns the affected users. */
 export async function resolveItems(
   tx: Tx,
-  filter: { type: InboxItemTypeV3; issueId: string; userId?: string | null },
+  filter: { type: InboxItemTypeV4; issueId: string; userId?: string | null },
 ): Promise<string[]> {
   let select = tx.conn.query
     .selectFrom('inboxItems')
@@ -151,7 +151,7 @@ async function resolveRows(
 /** Resolves unresolved items of `type` whose dedupe key ends with `suffix` (cards keyed by something other than the issue). */
 export async function resolveByDedupeSuffix(
   tx: Tx,
-  type: InboxItemTypeV3,
+  type: InboxItemTypeV4,
   suffix: string,
 ): Promise<string[]> {
   const rows = await tx.conn.query
@@ -281,14 +281,14 @@ export async function activeSubscribers(
 export async function mapInboxItems(
   conn: Conn,
   rows: readonly Record<string, unknown>[],
-): Promise<InboxItemV3[]> {
+): Promise<InboxItemV4[]> {
   const issues = await issuesByIds(
     conn,
     rows.map((row) => str(row.issueId)),
   );
   return rows.map((row) => {
     const issueId = str(row.issueId);
-    const type = (str(row.type) ?? 'commented') as InboxItemTypeV3;
+    const type = (str(row.type) ?? 'commented') as InboxItemTypeV4;
     const issueIdentifier = issueId
       ? (issues.get(issueId)?.identifier ?? null)
       : null;

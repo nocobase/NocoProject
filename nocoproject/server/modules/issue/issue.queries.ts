@@ -2,7 +2,9 @@
  * Read models over issues: browser list, board and detail (filtered by what the caller may see), and the views an
  * agent sees through its run token. Iteration 3: the list and board page by cursor (`issue.list.ts`); the detail
  * carries the latest 50 activities and at most the latest 200 comments, with cursors for older ones
- * (`issue.timeline.ts`, `CommentService.pageForIssue`).
+ * (`issue.timeline.ts`, `CommentService.pageForIssue`). Iteration 4: rows carry `process`, `designApprovedAt`,
+ * `designApprovedById`; the detail's `issue.designProposal` is the latest proposal; the agent view adds `process` and
+ * `designApprovedAt`.
  */
 import type { Actor } from '../shared/activity.js';
 import type { ApprovalGateway } from '../shared/approval.js';
@@ -16,13 +18,13 @@ import type {
   AgentContextResponseV1,
   BoardGroupV3Server,
   CommentPage,
-  IssueDetailV3,
-  IssueForAgentV2,
+  IssueDetailV4Paged,
+  IssueForAgentV4,
   IssueListItemV2,
   IssueListPageV3,
   IssueRunsResponse,
   IssueSubscriber,
-  IssueV2,
+  IssueV4,
   SubscriptionReason,
   SubtaskSummary,
 } from '../shared/protocol.js';
@@ -57,6 +59,7 @@ import {
   type IssuePageOptions,
 } from './issue.list.js';
 import { findIssue, issueRef } from './issue.records.js';
+import { latestProposal } from './process.js';
 import { activityPage } from './issue.timeline.js';
 
 export interface IssueQueries {
@@ -74,7 +77,7 @@ export interface IssueQueries {
     filter: IssueListFilter,
     options?: BoardOptions,
   ): Promise<{ groups: BoardGroupV3Server[] }>;
-  detail(actor: Actor, idOrKey: string): Promise<IssueDetailV3>;
+  detail(actor: Actor, idOrKey: string): Promise<IssueDetailV4Paged>;
   /** `GET /np/issues/:id/activities`. */
   activities(
     actor: Actor,
@@ -90,10 +93,10 @@ export interface IssueQueries {
   /** `GET /np/issues/:id/runs`: the issue's runs and the run queued behind the current turn. */
   runs(actor: Actor, idOrKey: string): Promise<IssueRunsResponse>;
   /** Any issue, unscoped (the caller already checked the run's scope). */
-  forAgent(idOrKey: string): Promise<IssueForAgentV2>;
+  forAgent(idOrKey: string): Promise<IssueForAgentV4>;
   /** An issue the run may read (iteration 2 §K: same project, or no project), else 404. */
-  forAgentScoped(auth: RunAuth, idOrKey: string): Promise<IssueForAgentV2>;
-  agentReadable(auth: RunAuth, idOrKey: string): Promise<IssueV2>;
+  forAgentScoped(auth: RunAuth, idOrKey: string): Promise<IssueForAgentV4>;
+  agentReadable(auth: RunAuth, idOrKey: string): Promise<IssueV4>;
   agentContext(auth: RunAuth): Promise<AgentContextResponseV1>;
   children(idOrKey: string): Promise<SubtaskSummary[]>;
 }
@@ -145,7 +148,7 @@ async function subscribers(
 async function summaries(
   deps: IssueQueryDeps,
   conn: Conn,
-  issues: readonly IssueV2[],
+  issues: readonly IssueV4[],
 ): Promise<SubtaskSummary[]> {
   const items = await withNames(deps, conn, issues);
   return items.map((item) => ({
@@ -164,7 +167,7 @@ async function forAgent(
   deps: IssueQueryDeps,
   idOrKey: string,
   auth?: RunAuth,
-): Promise<IssueForAgentV2> {
+): Promise<IssueForAgentV4> {
   const conn = deps.tx.read();
   const issue = auth
     ? await agentReadableIssue(conn, auth, idOrKey)
@@ -196,13 +199,15 @@ async function forAgent(
     blockers: await blockersOf(conn, deps.workflows, issue),
     executionMode: issue.executionMode,
     pullRequests: await claimedPullRequests(conn, issue.id),
+    process: issue.process,
+    designApprovedAt: issue.designApprovedAt,
   };
 }
 
 async function issueQueryDetail(
   deps: IssueQueryDeps,
   ...[actor, idOrKey]: Parameters<IssueQueries['detail']>
-) {
+): Promise<IssueDetailV4Paged> {
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
   const issue = await requireVisibleIssue(conn, viewer, idOrKey);
@@ -231,7 +236,10 @@ async function issueQueryDetail(
     .comments()
     .pageForIssue(conn, issue.id, null, DETAIL_COMMENTS_LIMIT);
   return {
-    issue: item,
+    issue: {
+      ...item,
+      designProposal: await latestProposal(conn, issue.id),
+    },
     comments: comments.data,
     commentsNextCursor: comments.nextCursor,
     activities: activities.data,

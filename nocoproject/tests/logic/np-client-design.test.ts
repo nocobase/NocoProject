@@ -98,6 +98,8 @@ describe('status tones', () => {
     expect(Object.fromEntries(tones)).toEqual({
       backlog: 'grey',
       todo: 'grey',
+      analysis: 'blue',
+      proposal_review: 'violet',
       in_progress: 'blue',
       in_review: 'violet',
       blocked: 'amber',

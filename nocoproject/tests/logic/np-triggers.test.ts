@@ -248,10 +248,11 @@ describe.skipIf(!db)('issue writes (PostgreSQL)', () => {
     const actions = detail.activities.map((activity) => activity.action);
     expect(actions).toEqual([
       'issue_created',
+      'process_selected',
       'status_changed',
       'priority_changed',
     ]);
-    expect(detail.activities[1]).toMatchObject({
+    expect(detail.activities[2]).toMatchObject({
       actorName: 'Alice',
       details: { from: 'todo', to: 'in_review' },
     });

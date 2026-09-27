@@ -1,7 +1,8 @@
 /**
  * NocoProject agent write-back API (protocol.md §5): `/api/np/agent/*`, authenticated only by a run token
  * (`Authorization: Bearer npr_…`). Sessions and API keys are not accepted here: the caller is the agent of one run.
- * Iteration 3 adds `/api/np/agent/knowledge*` (the run's project and system-level documents).
+ * Iteration 3 adds `/api/np/agent/knowledge*` (the run's project and system-level documents); iteration 4
+ * `/api/np/agent/issues/:id/design-proposal` and the project manager's reads `/api/np/agent/pm/*`.
  */
 import type { Application } from '@nocobase/app-server/application';
 import {
@@ -14,11 +15,15 @@ import {
   createAgentApiRoutes,
   runTokenAuth,
 } from '../modules/run/agent-api.routes.js';
+import { createAgentDesignRoutes } from '../modules/issue/design.routes.js';
 import { createAgentKnowledgeRoutes } from '../modules/knowledge/knowledge.routes.js';
+import { createAgentPmRoutes } from '../modules/pm/pm.routes.js';
 import { guarded } from '../modules/shared/http.js';
 import {
   npAgentIssueServiceToken,
   npCommentServiceToken,
+  npDesignServiceToken,
+  npPmServiceToken,
   npIssueQueriesToken,
   npIssueServiceToken,
   npKnowledgeServiceToken,
@@ -41,7 +46,9 @@ export const npAgentRoutes: AppApiRouteContribution<Application> =
           agentIssues: container.resolve(npAgentIssueServiceToken),
           pullRequests: container.resolve(npPullRequestServiceToken),
         }),
+        createAgentDesignRoutes(container.resolve(npDesignServiceToken)),
         createAgentKnowledgeRoutes(container.resolve(npKnowledgeServiceToken)),
+        createAgentPmRoutes(container.resolve(npPmServiceToken)),
       ),
     );
     return router;

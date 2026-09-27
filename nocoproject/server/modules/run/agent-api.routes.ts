@@ -62,7 +62,8 @@ function flag(context: Context, name: string): boolean {
  * `/np/agent/*` (protocol.md §5, iteration-1 contract §D/§I, iteration-2 contract §C/§D/§K). Reads may address issues
  * in the run issue's project and issues without a project — anything else is 404;
  * comments, status writes and pull request links are limited to the issue of the token's run; sub-issues and
- * dependencies to that issue and its descendants. A status write held for approval answers 202.
+ * dependencies to that issue and its descendants. A status write held for approval answers 202. The iteration 4
+ * design proposal is `createAgentDesignRoutes` (`issue/design.routes.ts`).
  */
 export function createAgentApiRoutes(deps: {
   issues: IssueService;

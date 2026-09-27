@@ -12,12 +12,13 @@ import { cn } from '@/lib/utils';
 
 import { useNpFormatters } from '../../format.js';
 import type { IssueListItem } from '../../types.js';
+import { NpProcessBadge } from '../process-fields.js';
 
 export type IssueLink = (issue: IssueListItem) => To;
 
 /**
- * The face of a board card; also rendered in the drag overlay (docs/design/ui-design.md §8.4): identifier and
- * priority icon, the title, dependency and sub-issue counts, labels, then owner and executor avatars with the due
+ * The face of a board card; also rendered in the drag overlay (docs/design/ui-design.md §8.4): identifier, the
+ * design-first marker (iteration 4 §B) and priority icon, the title, dependency and sub-issue counts, labels, then owner and executor avatars with the due
  * date or last update. A card whose agent is working carries a primary bar on its left edge and a "working" pulse.
  */
 export function BoardCardFace({
@@ -50,8 +51,11 @@ export function BoardCardFace({
         />
       ) : null}
       <div className='flex items-center justify-between gap-2 text-xs'>
-        <span className='font-mono text-muted-foreground'>
-          {issue.identifier}
+        <span className='flex min-w-0 items-center gap-2'>
+          <span className='font-mono text-muted-foreground'>
+            {issue.identifier}
+          </span>
+          <NpProcessBadge issue={issue} />
         </span>
         {issue.priority !== 'none' ? (
           <NpPriorityLabel priority={issue.priority} />

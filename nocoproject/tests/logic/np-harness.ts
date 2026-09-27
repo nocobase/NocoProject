@@ -209,7 +209,12 @@ export async function openNpTestDatabase(
 export type NpTestOptions = Partial<
   Pick<
     NpServiceDeps,
-    'github' | 'aiIntake' | 'aiConfigured' | 'approvalGateway' | 'secrets'
+    | 'github'
+    | 'aiIntake'
+    | 'aiConfigured'
+    | 'approvalGateway'
+    | 'secrets'
+    | 'aiProcess'
   >
 >;
 

@@ -11,9 +11,9 @@ import { NewIssueButton } from './new-issue-button.js';
 
 /**
  * Route `/issues`: every issue as a board or a list (the board by default, the person's last choice remembered,
- * `?view=` overriding; §J 1, docs/design/ui-design.md §8.4). The header's split button creates one
- * issue (`new` dialog) or opens batch entry (`intake` drawer, iteration 3 §G); `C` opens the create dialog and ⌘K the
- * search. The page stays mounted underneath its child routes (`new`, `intake`, the `:issueId` covering page).
+ * `?view=` overriding; §J 1, docs/design/ui-design.md §8.4). The header's "新建任务" opens the `new` dialog, which
+ * creates one issue or many (iteration 4 §D); `C` opens it too and ⌘K the search. The page stays mounted underneath
+ * its child routes (`new`, the `:issueId` covering page).
  */
 export default function IssuesPage(): ReactElement {
   const { t } = useTranslation();

@@ -40,7 +40,7 @@ function listFilter(context: Context): IssueListFilter {
   };
 }
 
-async function optionalJson<T>(context: Context): Promise<T> {
+export async function optionalJson<T>(context: Context): Promise<T> {
   const text = await context.req.text();
   if (!text.trim()) return {} as T;
   try {

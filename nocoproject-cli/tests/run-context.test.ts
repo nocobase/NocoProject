@@ -12,8 +12,8 @@ describe('run context', () => {
     expect(buildRunContext(claimedRun())).toEqual({
       version: 1,
       runId: '7301234567890123',
-      agent: { id: 'a1', name: 'Coder', delegationTargets: [] },
-      issue: { id: 'i12', identifier: 'NP-12', title: 'Fix login redirect', parent: null, stage: null, autoExecuteSubtasks: false, projectId: null, executionMode: 'task', pullRequests: [] },
+      agent: { id: 'a1', name: 'Coder', delegationTargets: [], kind: 'coder' },
+      issue: { id: 'i12', identifier: 'NP-12', title: 'Fix login redirect', parent: null, stage: null, autoExecuteSubtasks: false, projectId: null, executionMode: 'task', pullRequests: [], process: 'direct', designApprovedAt: null },
       project: null,
       knowledge: [],
       session: { branchName: null, repoUrl: null },
@@ -52,6 +52,15 @@ describe('run context', () => {
     expect(text).not.toContain('deploy-secret-value-123');
     expect(text).not.toContain('DEPLOY_TOKEN');
     expect(text).not.toContain('make deploy');
+  });
+
+  it('adds the iteration-4 process, design approval and agent kind, never the proposal or reasoning effort', () => {
+    const run = iter2Run({ process: 'design_first', designApprovedAt: '2026-10-01T00:00:00.000Z', designProposal: { commentId: 'c1', content: 'PROPOSAL BODY', createdAt: '2026-10-01T00:00:00.000Z' } }, { kind: 'manager', reasoningEffort: 'high' });
+    const ctx = buildRunContext(run);
+    expect(ctx.issue).toMatchObject({ process: 'design_first', designApprovedAt: '2026-10-01T00:00:00.000Z' });
+    expect(ctx.agent.kind).toBe('manager');
+    expect(JSON.stringify(ctx)).not.toContain('PROPOSAL BODY');
+    expect(buildRunContext(iter2Run({ process: 'bogus' as any }, { kind: 'bogus' as any }))).toMatchObject({ issue: { process: 'direct', designApprovedAt: null }, agent: { kind: 'coder' } });
   });
 
   it('finds the workDir from the env or by walking up from cwd', () => {

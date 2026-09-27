@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 
 import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpPulse, NpStatusBadge } from '@/components/np-badges';
+import { NpTag } from '@/components/np-tag';
 import { NpVirtualList } from '@/components/np-virtual-list';
 
 import { runTriggerType } from '../../detail-normalize.js';
@@ -14,6 +15,7 @@ import type {
   RunSummary,
   StatusCatalogEntry,
 } from '../../types.js';
+import { NpProcessBadge } from '../process-fields.js';
 import { ThreadCard, type ThreadContext } from './comment-thread.js';
 import {
   STATUS_CHANGE_LABELS,
@@ -99,6 +101,9 @@ export function ActivityRow({
           <NpStatusBadge statusKey={change.to} catalog={statusCatalog} />
         </>
       ) : null}
+      {label === 'processSelected' ? (
+        <SelectedProcess details={activity.details} />
+      ) : null}
       <time
         dateTime={activity.createdAt}
         title={format.dateTime(activity.createdAt)}
@@ -165,4 +170,21 @@ function RunRow({
       </time>
     </div>
   );
+}
+
+/** The process an issue got (iteration 4 §B `process_selected`): the design-first marker, or "直接开发". */
+function SelectedProcess({
+  details,
+}: {
+  readonly details: IssueActivity['details'];
+}): ReactElement | null {
+  const { t } = useTranslation();
+  const value = details?.process ?? details?.to;
+  if (value === 'design_first') {
+    return <NpProcessBadge issue={{ process: 'design_first' }} />;
+  }
+  if (value === 'direct') {
+    return <NpTag tone='grey'>{t('np.process.choices.direct')}</NpTag>;
+  }
+  return null;
 }

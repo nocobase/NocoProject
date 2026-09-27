@@ -26,7 +26,13 @@
  *   [echo:kb-propose=<title>] write kb.md and run `kb propose --title <title> --content-file kb.md --reason ...`
  *                       (iteration 3 §I)
  *
- * In session mode (`issue.executionMode` in context.json) the agent never moves the issue to in_review.
+ *   [echo:design]       design first (iteration 4 §B): unless context.json has `issue.designApprovedAt`, move
+ *                       todo → analysis, write proposal.md, run `issue design-proposal <issue> --content-file
+ *                       proposal.md`, set `proposal_review` and stop (no in_progress, no in_review, no reply)
+ *   [echo:pm=<question>] run `pm issues --json` and write `PM <question>: <n> issues` into the reply (§C)
+ *
+ * In session mode (`issue.executionMode` in context.json) the agent never moves the issue to in_review; a
+ * manager agent (`agent.kind = 'manager'`) never changes the status at all.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -119,14 +125,45 @@ function workDir(): string {
   return process.env.NOCOPROJECT_WORKDIR ?? process.cwd();
 }
 
-/** `issue.executionMode` from the daemon's context.json (`task` when missing). */
-function executionMode(): string {
+interface EchoContext {
+  readonly issue?: { readonly executionMode?: string; readonly designApprovedAt?: string | null };
+  readonly agent?: { readonly kind?: string };
+}
+
+/** The daemon's context.json (`{}` when missing or unreadable). */
+function runContext(): EchoContext {
   try {
-    const ctx = JSON.parse(readFileSync(join(workDir(), '.nocoproject', 'context.json'), 'utf8')) as { issue?: { executionMode?: string } };
-    return ctx.issue?.executionMode ?? 'task';
+    return JSON.parse(readFileSync(join(workDir(), '.nocoproject', 'context.json'), 'utf8')) as EchoContext;
   } catch {
-    return 'task';
+    return {};
   }
+}
+
+/** Design first: analysis → proposal → proposal_review. Returns the proposal comment id. */
+function proposeDesign(issueKey: string, title: string, status: string | undefined): string {
+  if (status === 'todo') {
+    const moved = cli(['issue', 'status', issueKey, 'analysis', '--json']);
+    if (!moved.ok) fail(`echo agent: status analysis failed: ${moved.output}`);
+  }
+  const file = join(process.cwd(), 'proposal.md');
+  writeFileSync(file, [`## 需求理解`, `${title}`, '', '## 方案', 'Echo the request.', '', '## 影响范围', 'None.', '', '## 风险与待定', 'None.', '', '## 验证计划', 'Run the tests.', ''].join('\n'));
+  const r = cli(['issue', 'design-proposal', issueKey, '--content-file', file, '--json']);
+  if (!r.ok) fail(`echo agent: issue design-proposal failed: ${r.output}`);
+  const review = cli(['issue', 'status', issueKey, 'proposal_review', '--json']);
+  if (!review.ok) fail(`echo agent: status proposal_review failed: ${review.output}`);
+  return (r.json as { id?: string } | undefined)?.id ?? '?';
+}
+
+/** `pm issues --json` → the number of issues on the first page. */
+function pmIssueCount(): number {
+  const r = cli(['pm', 'issues', '--json']);
+  if (!r.ok) fail(`echo agent: pm issues failed: ${r.output}`);
+  return ((r.json as { data?: unknown[] } | undefined)?.data ?? []).length;
+}
+
+function finish(summary: string, inputTokens: number, outputTokens: number): void {
+  emit({ type: 'text', text: summary });
+  emit({ type: 'result', session_id: `echo-${process.env.NOCOPROJECT_RUN_ID ?? 'session'}`, text: summary, usage: { inputTokens, outputTokens } });
 }
 
 /** First non-empty line of a skill's SKILL.md body (front matter skipped). */
@@ -187,8 +224,14 @@ async function main(): Promise<void> {
     await new Promise((r) => setTimeout(r, sleepMs));
   }
 
+  const ctx = runContext();
+  const manager = ctx.agent?.kind === 'manager';
   let status = issue.statusKey;
-  if (status === 'todo' || status === 'blocked') {
+  if (text.includes('[echo:design]') && !ctx.issue?.designApprovedAt) {
+    const commentId = proposeDesign(issueKey, issue.title ?? '', status);
+    return finish(`Echo agent submitted a design proposal (comment ${commentId}) on ${issue.identifier ?? issueKey}.`, prompt.length, 0);
+  }
+  if (!manager && (status === 'todo' || status === 'blocked')) {
     const moved = cli(['issue', 'status', issueKey, 'in_progress', '--json']);
     if (!moved.ok) fail(`echo agent: status in_progress failed: ${moved.output}`);
     status = 'in_progress';
@@ -207,6 +250,8 @@ async function main(): Promise<void> {
   if (skillSlug) extra.push(`Skill ${skillSlug}: ${skillFirstLine(skillSlug)}`);
   const kbSlug = directive(text, 'kb');
   if (kbSlug) extra.push(`KB ${kbSlug}: ${kbFirstLine(kbSlug)}`);
+  const pmQuestion = directive(text, 'pm');
+  if (pmQuestion !== undefined) extra.push(`PM ${pmQuestion}: ${pmIssueCount()} issues`);
   const kbTitle = directive(text, 'kb-propose');
   if (kbTitle) extra.push(`Proposed knowledge "${kbTitle}" (proposal ${kbPropose(issueKey, kbTitle)}).`);
   const prUrl = directive(text, 'pr');
@@ -253,19 +298,12 @@ async function main(): Promise<void> {
   const commented = cli(commentArgs);
   if (!commented.ok) fail(`echo agent: comment add failed: ${commented.output}`);
 
-  if (status === 'in_progress' && !coordinating && !statusKey && executionMode() !== 'session') {
+  if (!manager && status === 'in_progress' && !coordinating && !statusKey && ctx.issue?.executionMode !== 'session') {
     const reviewed = cli(['issue', 'status', issueKey, 'in_review', '--json']);
     if (!reviewed.ok) fail(`echo agent: status in_review failed: ${reviewed.output}`);
   }
 
-  const summary = `Echo agent delivered a reply on ${issue.identifier ?? issueKey}.`;
-  emit({ type: 'text', text: summary });
-  emit({
-    type: 'result',
-    session_id: `echo-${process.env.NOCOPROJECT_RUN_ID ?? 'session'}`,
-    text: summary,
-    usage: { inputTokens: prompt.length, outputTokens: reply.length },
-  });
+  finish(`Echo agent delivered a reply on ${issue.identifier ?? issueKey}.`, prompt.length, reply.length);
 }
 
 main().catch((error: unknown) => fail(`echo agent crashed: ${(error as Error).message}`));

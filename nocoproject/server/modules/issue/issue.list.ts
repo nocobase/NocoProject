@@ -15,9 +15,9 @@ import { iso, num, str, unique } from '../shared/db.js';
 import { decodeCursor, encodeCursor, pageLimit } from '../shared/pagination.js';
 import type {
   BoardGroupV3Server,
-  IssueListItemV2,
+  IssueListItemV4,
   IssueListPageV3,
-  IssueV2,
+  IssueV4,
 } from '../shared/protocol.js';
 import {
   BOARD_COLUMN_DEFAULT_LIMIT,
@@ -40,6 +40,8 @@ export interface IssueListFilter {
   readonly executorId?: string | null;
   /** An issue id, or `none` for top-level issues only. */
   readonly parentIssueId?: string | null;
+  /** Iteration 4 (`/np/agent/pm/issues`): only issues updated at or after this instant. */
+  readonly updatedSince?: Date | null;
 }
 
 export interface IssuePageOptions {
@@ -67,8 +69,8 @@ function escapeLike(value: string): string {
 export async function withNames(
   deps: ListDeps,
   conn: Conn,
-  issues: readonly IssueV2[],
-): Promise<IssueListItemV2[]> {
+  issues: readonly IssueV4[],
+): Promise<IssueListItemV4[]> {
   const userNames = await deps.users.names(conn, [
     ...issues.map((issue) => issue.ownerUserId),
     ...issues
@@ -144,6 +146,15 @@ async function filteredQuery(
     query = query.where((eb) =>
       eb.or([eb('projectId', 'is', null), eb('projectId', 'not in', hidden)]),
     );
+  // Iteration 4: project manager conversations are private to their owner.
+  query = query.where((eb) =>
+    eb.or([
+      eb('originType', '!=', 'pm'),
+      eb('ownerUserId', '=', viewer.userId),
+    ]),
+  );
+  if (filter.updatedSince)
+    query = query.where('updatedAt', '>=', filter.updatedSince);
   if (filter.statusKey) query = query.where('statusKey', '=', filter.statusKey);
   if (filter.projectId) query = query.where('projectId', '=', filter.projectId);
   if (filter.ownerUserId)
@@ -175,7 +186,7 @@ async function filteredQuery(
 }
 
 interface RawPage {
-  readonly issues: IssueV2[];
+  readonly issues: IssueV4[];
   readonly nextCursor: string | null;
 }
 
@@ -241,7 +252,7 @@ export async function issueList(
   viewer: Viewer,
   filter: IssueListFilter,
   max: number,
-): Promise<IssueListItemV2[]> {
+): Promise<IssueListItemV4[]> {
   const page = await rawPage(conn, viewer, filter, {}, max);
   return withNames(deps, conn, page.issues);
 }
@@ -307,7 +318,7 @@ export async function issueBoard(
       statusKey,
       issues: page.issues
         .map((issue) => byId.get(issue.id))
-        .filter((item): item is IssueListItemV2 => item !== undefined),
+        .filter((item): item is IssueListItemV4 => item !== undefined),
       hasMore: page.nextCursor !== null,
       nextCursor: page.nextCursor,
     })),
