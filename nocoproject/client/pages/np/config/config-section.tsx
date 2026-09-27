@@ -15,7 +15,7 @@ export function ConfigSectionHeading({
   return (
     <div className='flex flex-wrap items-end justify-between gap-3'>
       <div className='min-w-0'>
-        <h2 id={id} className='font-heading text-base font-semibold'>
+        <h2 id={id} className='font-heading text-sm font-semibold'>
           {title}
         </h2>
         {description ? (

@@ -164,15 +164,26 @@ export function IssueDescription({
     );
   }
 
+  // Without a description the block is one muted row, so an empty issue shows no blank area (ui-design.md §8.2).
+  if (!description.trim()) {
+    return (
+      <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+        <p>{t('np.issue.noDescription')}</p>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='text-muted-foreground'
+          onClick={() => setDraft(description)}
+        >
+          <PencilIcon data-icon='inline-start' />
+          {t('np.issue.editDescription')}
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className='group relative'>
-      {description.trim() ? (
-        <NpMarkdown content={description} />
-      ) : (
-        <p className='text-sm text-muted-foreground'>
-          {t('np.issue.noDescription')}
-        </p>
-      )}
+      <NpMarkdown content={description} className='max-w-3xl' />
       <Button
         variant='ghost'
         size='sm'

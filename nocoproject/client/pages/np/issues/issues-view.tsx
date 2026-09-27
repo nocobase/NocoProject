@@ -2,7 +2,7 @@ import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ListTodoIcon } from 'lucide-react';
-import type { ReactElement, ReactNode } from 'react';
+import { type ReactElement, type ReactNode, useState } from 'react';
 import { type To, useLocation, useNavigate } from 'react-router';
 
 import { DataTable } from '@/components/data-table';
@@ -34,7 +34,9 @@ import {
   type IssueFilterKey,
   hasIssueFilters,
   readIssueFilters,
-  readIssueView,
+  readStoredIssueView,
+  resolveIssueView,
+  storeIssueView,
   withIssueFilter,
   withIssueView,
   withoutIssueFilters,
@@ -53,11 +55,14 @@ export interface IssuesViewProps {
   readonly emptyTitle: string;
   readonly emptyDescription: string;
   readonly emptyAction?: ReactNode;
+  /** The page the list / board choice is remembered for (`issues`, `my-issues`). */
+  readonly viewKey?: string;
 }
 
 /**
- * The issue list and board with their toolbar (§J 1, iteration 3 §D, §G), shared by `/issues` and `/my-issues`. View,
- * search and filters live in the query string; the list loads cursor pages with "load more" and virtualizes past 200
+ * The issue list and board with their toolbar (§J 1, iteration 3 §D, §G), shared by `/issues` and `/my-issues`.
+ * Search and filters live in the query string; the view is `?view=`, else the person's last choice on the page
+ * (localStorage), else the board; the list loads cursor pages with "load more" and virtualizes past 200
  * rows, the board loads more per column. This component owns the `np:issues` subscription for the page and for the
  * issue detail covering it.
  */
@@ -68,6 +73,7 @@ export function IssuesView({
   emptyTitle,
   emptyDescription,
   emptyAction,
+  viewKey = 'issues',
 }: IssuesViewProps): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
@@ -84,8 +90,9 @@ export function IssuesView({
     searchRef,
   } = useUrlSearch();
 
-  const view = readIssueView(params);
-  const urlFilters = readIssueFilters(params, KNOWN_STATUS_KEYS);
+  const [stored, setStored] = useState(() => readStoredIssueView(viewKey));
+  const view = resolveIssueView(params, stored);
+  const urlFilters = readIssueFilters(params, KNOWN_STATUS_KEYS, view);
   const filters: IssueFilters = { ...urlFilters, ...fixedFilters };
   const list = useIssuePages(filters, view === 'list');
   const board = useBoardPages(filters, view === 'board');
@@ -240,6 +247,7 @@ export function IssuesView({
         catalog={catalog}
         issueLink={detailBase ? issueLink : undefined}
         columnMore={board.more}
+        fill
       />
     );
   } else if (rows.length === 0 && !filtered) {
@@ -253,10 +261,11 @@ export function IssuesView({
     );
   } else {
     content = (
-      <div className='space-y-3'>
+      <div className='flex h-full min-h-0 flex-col gap-3'>
         <DataTable
           columns={columns}
           data={rows}
+          fillHeight
           pagination={false}
           virtualizeAfter={NP_VIRTUALIZE_TABLE_AFTER}
           showSelectedCount={false}
@@ -272,7 +281,7 @@ export function IssuesView({
           }
         />
         {rows.length > 0 ? (
-          <div className='flex items-center justify-between gap-3 text-sm text-muted-foreground'>
+          <div className='flex shrink-0 items-center justify-between gap-3 text-sm text-muted-foreground'>
             <span className='tabular-nums'>
               {t('np.pagination.shown', { count: rows.length })}
             </span>
@@ -295,8 +304,10 @@ export function IssuesView({
     );
   }
 
+  // The view fills its page (docs/design/ui-design.md §8.4): the toolbar on top, the board or the table below in a
+  // bounded area that scrolls inside — board columns each on their own, the table body under a sticky header.
   return (
-    <div className='space-y-4'>
+    <div className='flex h-full min-h-0 flex-col gap-4'>
       <IssueToolbar
         searchRef={searchRef}
         searchText={text}
@@ -309,12 +320,14 @@ export function IssuesView({
         onFilterChange={(key, value) =>
           updateParams((current) => withIssueFilter(current, key, value))
         }
-        onViewChange={(next) =>
-          updateParams((current) => withIssueView(current, next))
-        }
+        onViewChange={(next) => {
+          storeIssueView(viewKey, next);
+          setStored(next);
+          updateParams((current) => withIssueView(current, next));
+        }}
         onClear={clearFilters}
       />
-      {content}
+      <div className='min-h-0 flex-1'>{content}</div>
     </div>
   );
 }

@@ -18,7 +18,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import {
   Empty,
@@ -81,9 +81,7 @@ export default function AgentsPage(): ReactElement {
       {
         accessorKey: 'provider',
         header: t('np.agents.columns.provider'),
-        cell: ({ row }) => (
-          <Badge variant='outline'>{row.original.provider}</Badge>
-        ),
+        cell: ({ row }) => <NpTag tone='grey'>{row.original.provider}</NpTag>,
       },
       {
         accessorKey: 'model',

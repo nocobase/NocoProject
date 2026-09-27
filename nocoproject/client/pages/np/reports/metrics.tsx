@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router';
 
 import { DateRangePicker } from '@/components/date-picker';
 import { NpListSkeleton, NpLoadError } from '@/components/np-states';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Spinner } from '@/components/ui/spinner';
 
 import { fetchMetrics } from '../api-iter3.js';
@@ -131,11 +131,13 @@ function MetricsBody({
     <div className='space-y-6'>
       <p className='flex flex-wrap items-center gap-2 text-sm text-muted-foreground'>
         {warnings > 0 ? (
-          <Badge variant='destructive'>
+          <NpTag tone='red' dot>
             {t('np.metrics.warnSummary', { count: warnings })}
-          </Badge>
+          </NpTag>
         ) : (
-          <Badge variant='secondary'>{t('np.metrics.allOk')}</Badge>
+          <NpTag tone='green' dot>
+            {t('np.metrics.allOk')}
+          </NpTag>
         )}
         <span>{t('np.metrics.thresholdHint')}</span>
       </p>

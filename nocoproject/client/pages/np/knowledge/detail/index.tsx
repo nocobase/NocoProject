@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from '@/components/ui/toast';
@@ -188,7 +188,7 @@ function KnowledgeLayout({
         }
       />
       {doc.archivedAt ? (
-        <Badge variant='outline'>{t('np.knowledge.archived')}</Badge>
+        <NpTag tone='slate'>{t('np.knowledge.archived')}</NpTag>
       ) : null}
       {detail.proposals.length > 0 ? (
         <section
@@ -197,7 +197,7 @@ function KnowledgeLayout({
         >
           <h2
             id='np-knowledge-doc-proposals'
-            className='font-heading text-base font-semibold'
+            className='font-heading text-sm font-semibold'
           >
             {t('np.knowledge.proposals.title', {
               count: detail.proposals.length,

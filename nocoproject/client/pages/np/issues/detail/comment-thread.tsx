@@ -12,7 +12,7 @@ import { type ReactElement, useState } from 'react';
 
 import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpMarkdown } from '@/components/np-markdown';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -89,10 +89,9 @@ export function ThreadCard({
         >
           <ChevronRightIcon />
         </Button>
-        <Badge variant='secondary'>
-          <CheckCircle2Icon data-icon='inline-start' />
+        <NpTag tone='green' icon={<CheckCircle2Icon aria-hidden='true' />}>
           {t('np.threads.resolved')}
-        </Badge>
+        </NpTag>
         <span className='shrink-0 font-medium text-foreground'>{name}</span>
         <span className='min-w-0 flex-1 truncate'>
           {commentSnippet(thread.root.content)}
@@ -193,7 +192,7 @@ function CommentBlock({
         <NpActorAvatar type={comment.authorType} name={name} />
         <span className='truncate font-medium'>{name}</span>
         {comment.authorType === 'agent' ? (
-          <Badge variant='outline'>{t('np.executor.agentMarker')}</Badge>
+          <NpTag tone='violet'>{t('np.executor.agentMarker')}</NpTag>
         ) : null}
         <time
           dateTime={comment.createdAt}

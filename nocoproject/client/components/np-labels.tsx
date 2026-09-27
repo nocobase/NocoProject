@@ -1,7 +1,8 @@
 import type { ReactElement } from 'react';
 
 import { cn } from '@/lib/utils';
-import { LABEL_DOT_CLASS } from '@/pages/np/constants';
+import { NpTag } from '@/components/np-tag';
+import { LABEL_DOT_CLASS, LABEL_TONE } from '@/pages/np/constants';
 import type { Label, LabelColor } from '@/pages/np/types';
 
 /** The colored dot of a label; decorative, the name beside it carries the meaning. */
@@ -24,17 +25,19 @@ export function NpLabelDot({
   );
 }
 
-/** A label as a small outlined chip with its dot and name. */
+/** A label as a tag in its colour's tint (docs/design/ui-design.md §2.4). */
 export function NpLabelChip({
   label,
 }: {
   readonly label: Label;
 }): ReactElement {
   return (
-    <span className='inline-flex h-5 max-w-40 items-center gap-1 rounded-4xl border px-2 text-xs'>
-      <NpLabelDot color={label.color} />
+    <NpTag
+      tone={LABEL_TONE[label.color] ?? 'grey'}
+      className='max-w-40 font-normal'
+    >
       <span className='truncate'>{label.name}</span>
-    </span>
+    </NpTag>
   );
 }
 

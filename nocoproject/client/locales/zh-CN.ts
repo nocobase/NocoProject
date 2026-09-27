@@ -2,6 +2,7 @@ import type { AppResource } from './en-US.js';
 import npCollabZhCN from './np-zh-CN.js';
 import npIter2ZhCN from './np-iter2-zh-CN.js';
 import npIter3ZhCN from './np-iter3-zh-CN.js';
+import npDesignZhCN from './np-design-zh-CN.js';
 
 const zhCN: AppResource = {
   'auth.welcome': '欢迎回来',
@@ -166,6 +167,7 @@ const zhCN: AppResource = {
     ...npCollabZhCN,
     ...npIter2ZhCN,
     ...npIter3ZhCN,
+    ...npDesignZhCN,
     common: {
       online: '在线',
       offline: '离线',
@@ -342,8 +344,7 @@ const zhCN: AppResource = {
     },
     comment: {
       label: '评论',
-      placeholder:
-        '写评论… 输入 @ 提及 Agent；以 /note 开头则不触发任何 Agent。',
+      placeholder: '写评论…',
       send: '评论',
       sendReply: '回复',
       reply: '回复',
@@ -371,7 +372,7 @@ const zhCN: AppResource = {
       attempt: '第几次',
       failure: '失败原因',
       branch: '分支',
-      viewTranscript: '查看运行记录',
+      viewTranscript: '查看执行过程',
       stop: '停止',
       stopping: '正在停止…',
       retry: '重试',

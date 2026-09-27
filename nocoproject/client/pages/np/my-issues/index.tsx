@@ -25,7 +25,7 @@ export default function MyIssuesPage(): ReactElement {
     );
   }
   return (
-    <PageContainer>
+    <PageContainer className='flex h-full min-h-0 flex-col gap-6 space-y-0'>
       <PageHeader
         title={t('np.myIssues.title')}
         description={t('np.myIssues.description')}
@@ -43,7 +43,9 @@ export default function MyIssuesPage(): ReactElement {
           { path: 'executing', label: t('np.myIssues.tabs.executing') },
         ]}
       />
-      <Outlet />
+      <div className='min-h-0 flex-1'>
+        <Outlet />
+      </div>
     </PageContainer>
   );
 }

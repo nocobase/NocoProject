@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 import { Link, type To, useLocation } from 'react-router';
 
 import { NpLabelChip } from '@/components/np-labels';
+import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpExecutor, NpPriorityLabel } from '@/components/np-badges';
 import { cn } from '@/lib/utils';
 
@@ -14,7 +15,11 @@ import type { IssueListItem } from '../../types.js';
 
 export type IssueLink = (issue: IssueListItem) => To;
 
-/** The face of a board card; also rendered in the drag overlay. */
+/**
+ * The face of a board card; also rendered in the drag overlay (docs/design/ui-design.md §8.4): identifier and
+ * priority icon, the title, dependency and sub-issue counts, labels, then owner and executor avatars with the due
+ * date or last update. A card whose agent is working carries a primary bar on its left edge and a "working" pulse.
+ */
 export function BoardCardFace({
   issue,
   dragging = false,
@@ -27,13 +32,23 @@ export function BoardCardFace({
   const { t } = useTranslation();
   const format = useNpFormatters();
   const location = useLocation();
+  const working =
+    issue.executorType === 'agent' && (issue.activeRunCount ?? 0) > 0;
   return (
     <div
+      data-working={working ? 'true' : undefined}
       className={cn(
-        'space-y-2 rounded-lg border bg-card p-3 text-card-foreground shadow-xs',
+        'relative space-y-2.5 rounded-lg border bg-card p-4 text-card-foreground transition-[border-color,box-shadow] duration-150 hover:border-foreground/20',
+        working && 'border-primary/30',
         dragging && 'shadow-md ring-2 ring-ring/50',
       )}
     >
+      {working ? (
+        <span
+          aria-hidden='true'
+          className='absolute top-3 bottom-3 left-0 w-0.5 rounded-full bg-primary'
+        />
+      ) : null}
       <div className='flex items-center justify-between gap-2 text-xs'>
         <span className='font-mono text-muted-foreground'>
           {issue.identifier}
@@ -77,12 +92,22 @@ export function BoardCardFace({
           ))}
         </div>
       ) : null}
-      <div className='flex items-center justify-between gap-2 text-xs text-muted-foreground'>
-        <NpExecutor
-          type={issue.executorType}
-          name={issue.executorName}
-          activeRunCount={issue.activeRunCount}
-        />
+      <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+        {issue.ownerName ? (
+          <NpActorAvatar
+            type='user'
+            name={issue.ownerName}
+            size='xs'
+            decorative={false}
+          />
+        ) : null}
+        <span className='min-w-0 flex-1'>
+          <NpExecutor
+            type={issue.executorType}
+            name={issue.executorName}
+            activeRunCount={issue.activeRunCount}
+          />
+        </span>
         {issue.dueDate ? (
           <span
             className='inline-flex shrink-0 items-center gap-1'

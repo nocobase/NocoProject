@@ -2,7 +2,7 @@ import { useLocale, useTranslation } from '@nocobase/i18n/client';
 import { CircleAlertIcon, CircleCheckIcon, InfoIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import {
   Card,
   CardAction,
@@ -29,24 +29,30 @@ export function MetricStatusBadge({
   const { t } = useTranslation();
   if (status === 'ok') {
     return (
-      <Badge variant='secondary' data-status='ok'>
-        <CircleCheckIcon data-icon='inline-start' />
+      <NpTag
+        tone='green'
+        data-status='ok'
+        icon={<CircleCheckIcon aria-hidden='true' />}
+      >
         {t('np.metrics.status.ok')}
-      </Badge>
+      </NpTag>
     );
   }
   if (status === 'warn') {
     return (
-      <Badge variant='destructive' data-status='warn'>
-        <CircleAlertIcon data-icon='inline-start' />
+      <NpTag
+        tone='red'
+        data-status='warn'
+        icon={<CircleAlertIcon aria-hidden='true' />}
+      >
         {t('np.metrics.status.warn')}
-      </Badge>
+      </NpTag>
     );
   }
   return (
-    <Badge variant='outline' data-status='n/a'>
+    <NpTag tone='grey' data-status='n/a'>
       {t('np.metrics.status.na')}
-    </Badge>
+    </NpTag>
   );
 }
 

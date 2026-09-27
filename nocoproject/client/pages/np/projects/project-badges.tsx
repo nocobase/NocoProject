@@ -1,12 +1,23 @@
 import { useTranslation } from '@nocobase/i18n/client';
 import type { ReactElement } from 'react';
 
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { NpProgressRing } from '@/components/np-live';
+import { NpTag } from '@/components/np-tag';
 
+import type { StatusTone } from '../constants.js';
 import type { ProjectStatus } from '../types.js';
 import { projectStatusKey } from './progress.js';
 
+/** Project statuses in the issue tones (docs/design/ui-design.md §2.4). */
+const PROJECT_STATUS_TONE: Readonly<Record<ProjectStatus, StatusTone>> = {
+  planned: 'grey',
+  in_progress: 'blue',
+  paused: 'amber',
+  completed: 'green',
+  cancelled: 'slate',
+};
+
+/** A project's status: the same tag as an issue status. */
 export function ProjectStatusBadge({
   status,
 }: {
@@ -15,23 +26,13 @@ export function ProjectStatusBadge({
   const { t } = useTranslation();
   const value = status ?? 'planned';
   return (
-    <Badge
-      variant={
-        value === 'in_progress'
-          ? 'secondary'
-          : value === 'completed'
-            ? 'default'
-            : 'outline'
-      }
-      className={
-        value === 'cancelled' ? 'text-muted-foreground line-through' : undefined
-      }
-    >
+    <NpTag tone={PROJECT_STATUS_TONE[value]} dot data-status={value}>
       {t(projectStatusKey(value))}
-    </Badge>
+    </NpTag>
   );
 }
 
+/** Progress in a list row: a small ring and "done/total" (docs/design/ui-design.md §8.3). */
 export function ProjectProgressBar({
   done,
   total,
@@ -44,10 +45,17 @@ export function ProjectProgressBar({
   readonly label: string;
 }): ReactElement {
   return (
-    <div className='flex min-w-32 items-center gap-2'>
-      <Progress value={percent} aria-label={label} className='flex-1' />
+    <div
+      className='flex min-w-24 items-center gap-2'
+      role='img'
+      aria-label={label}
+    >
+      <NpProgressRing percent={percent} size={18} showValue={false} />
       <span className='text-xs text-muted-foreground tabular-nums'>
         {done}/{total}
+      </span>
+      <span className='text-xs text-muted-foreground tabular-nums'>
+        {percent}%
       </span>
     </div>
   );

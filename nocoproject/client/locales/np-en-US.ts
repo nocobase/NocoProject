@@ -58,7 +58,7 @@ const npCollabEnUS = {
     createFailed: 'Unable to create the label.',
   },
   subscribers: {
-    title: 'Subscribers',
+    title: 'Participants & followers',
     label: '{{count}} subscribers',
     none: 'Nobody is subscribed.',
     subscribe: 'Subscribe',

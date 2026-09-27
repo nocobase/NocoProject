@@ -48,7 +48,7 @@ export function MetricGroupSection({
   return (
     <section aria-labelledby={headingId} className='space-y-3'>
       <div>
-        <h2 id={headingId} className='font-heading text-base font-semibold'>
+        <h2 id={headingId} className='font-heading text-sm font-semibold'>
           {t(`np.metrics.groups.${group.key}.title`)}
         </h2>
         <p className='text-sm text-muted-foreground'>

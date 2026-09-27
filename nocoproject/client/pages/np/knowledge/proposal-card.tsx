@@ -7,7 +7,7 @@ import { Link } from 'react-router';
 
 import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpMarkdown } from '@/components/np-markdown';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import {
   Collapsible,
@@ -100,7 +100,7 @@ export function KnowledgeProposalCard({
         </span>
         <span className='font-medium'>{name}</span>
         {proposal.docId ? null : (
-          <Badge variant='outline'>{t('np.knowledge.proposals.new')}</Badge>
+          <NpTag tone='blue'>{t('np.knowledge.proposals.new')}</NpTag>
         )}
         <time
           className='ml-auto text-xs text-muted-foreground'

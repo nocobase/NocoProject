@@ -181,6 +181,40 @@ describe.skipIf(!db)('subscriptions and inbox (PostgreSQL)', () => {
     expect((await services.inbox.unreadCount(BOB)).decision).toBe(0);
   });
 
+  it('narrows the list to one issue for the issue page decision section', async () => {
+    const delivered = await services.issues.create(ALICE, {
+      title: 'Deliver me',
+      ownerUserId: BOB.id,
+      executor: { type: 'agent', id: agentId },
+    });
+    const other = await services.issues.create(ALICE, {
+      title: 'Somewhere else',
+      ownerUserId: BOB.id,
+    });
+    await services.comments.create(ALICE, other.id, { content: 'ping' });
+    const agent = await runAs();
+    await services.issues.agentSetStatus(agent, delivered.id, 'in_progress');
+    await services.issues.agentSetStatus(agent, delivered.id, 'in_review');
+
+    const pending = await services.inbox.list(BOB, {
+      kind: 'decision',
+      resolved: 'false',
+      issueId: delivered.id,
+    });
+    expect(pending.data.map((item) => [item.type, item.issueId])).toEqual([
+      ['review_requested', delivered.id],
+    ]);
+    const elsewhere = await services.inbox.list(BOB, {
+      kind: 'decision',
+      issueId: other.id,
+    });
+    expect(elsewhere.data).toEqual([]);
+    // Without the filter the owner still sees everything addressed to them.
+    expect(
+      (await services.inbox.list(BOB, {})).data.map((item) => item.issueId),
+    ).toEqual(expect.arrayContaining([delivered.id, other.id]));
+  });
+
   it('reports a final run failure to subscribers and archives it when the issue reaches review', async () => {
     const issue = await services.issues.create(ALICE, {
       title: 'Fragile',

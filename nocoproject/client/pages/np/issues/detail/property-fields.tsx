@@ -56,6 +56,7 @@ export function PropertySelect({
   options,
   value,
   noneLabel,
+  noneAsDash = false,
   disabled,
   size = 'sm',
   className,
@@ -69,6 +70,8 @@ export function PropertySelect({
   readonly options: readonly SimpleOption[];
   readonly value: string | null | undefined;
   readonly noneLabel?: string;
+  /** Show an empty value as a muted dash in the trigger (properties panels); the list keeps `noneLabel`. */
+  readonly noneAsDash?: boolean;
   readonly disabled?: boolean;
   /** `sm` for the compact properties panel, `default` inside a form. */
   readonly size?: 'sm' | 'default';
@@ -98,7 +101,17 @@ export function PropertySelect({
         className={className ?? 'w-full'}
         aria-label={ariaLabel}
       >
-        <SelectValue />
+        <SelectValue>
+          {(current: string) =>
+            noneAsDash && current === 'none' ? (
+              <span className='text-muted-foreground'>
+                —<span className='sr-only'>{noneLabel}</span>
+              </span>
+            ) : (
+              (items.find((item) => item.value === current)?.label ?? current)
+            )
+          }
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {items.map((item) => (
@@ -127,7 +140,6 @@ export function DateField({
   readonly size?: 'sm' | 'default';
   readonly onChange: (value: string | null) => void;
 }): ReactElement {
-  const { t } = useTranslation();
   const locale = useDateFnsLocale();
   return (
     <div className='flex items-center gap-1'>
@@ -140,7 +152,8 @@ export function DateField({
         locale={locale}
         formatString='PP'
         disabled={disabled}
-        placeholder={t('np.dates.none')}
+        // An empty date shows a dash; the row's label names the field (ui-design.md §9).
+        placeholder='—'
         onChange={(date) => onChange(toDateOnly(date))}
       />
       {value ? (

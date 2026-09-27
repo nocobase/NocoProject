@@ -1,55 +1,82 @@
 # NocoProject pages: UI rules
 
-These rules come from iteration 3 §H (`docs/phase1/iteration-3-contract.md`). Every page under `client/pages/np/` follows them; a page that does not is a defect. Start from `client/pages/reference/examples` (orders, team-settings, inbox, dashboard) for structure and from `client/pages/reference/components` for component APIs.
+The design system is `docs/design/ui-design.md` (Chinese); these are its implementation rules. Every page under `client/pages/np/` follows them; a page that does not is a defect. Start from `client/pages/reference/examples` (orders, team-settings, inbox, dashboard) for structure and density, and from `client/pages/reference/components` for component APIs — copy structure, never import.
+
+## 0. Styling under the compact preset
+
+NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% under Tailwind's 0.25rem), so every `p-*`, `gap-*`, `h-*` and `w-*` shrinks. Our pages had picked values that were already tight under the default preset (32px nav rows, `size-8` header buttons, `w-72` board columns) and used `text-xs` for body copy, so under compact they looked cramped. Rules:
+
+- Never override `--spacing` or any preset token at page level, and never give one page its own density.
+- Size with the spacing scale and component size variants: buttons default / `sm` / `icon-sm`, the template's navigation row, the `DataTable` default row, cards `p-4` / `p-5`. No hand-picked tight values.
+- Body text `text-sm`; `text-xs` only for captions and metadata; tags use `NpTag` (13px).
+- Hit targets never below `icon-sm`.
+- Layout widths that must not shrink are written in rem with a comment: side column `20rem`, inbox list `26rem`, board column `18rem`.
+- Check both presets (compact, default) and both modes (light, dark).
 
 ## 1. Page frame
 
-- A top-level page is `PageContainer` + `PageHeader` (title = the menu name, one sentence of description, the primary action on the right). No `max-w-*` or `mx-auto` at page level: pages use the full width.
-- Only form content and dialog content are width-limited: forms use `max-w-2xl` (`FieldGroup className='max-w-2xl'`), dialogs size their `DialogContent` / `RouteDialog`.
-- Tabs of a page are child routes (`NpRouteTabs` + `useIsParentEntry` redirect to the default tab); tab content renders inside the parent's `PageContainer` and adds none of its own. A tab section starts with `ConfigSectionHeading`-style heading (title, one sentence, actions right).
-- Every top-level page renders `NpShortcuts` once (see §7).
+- A top-level page is `PageContainer` + `PageHeader` (title = the menu name, one sentence of description, the one primary action rightmost). No `max-w-*` or `mx-auto` at page level.
+- Only form and dialog content are width-limited (`FieldGroup className='max-w-2xl'`, the dialog's content).
+- Page tabs are child routes (`NpRouteTabs` + default-tab redirect). Sections inside a covering detail page use `NpTabBar` with `?tab=`, because the detail's child routes are its dialogs. Both look the same.
+- `/issues` and `/my-issues` fill the content area: header, toolbar, then the board or the table in a bounded area (`PageContainer className='flex h-full min-h-0 flex-col gap-6 space-y-0'`, `IssueBoard fill`, `DataTable fillHeight`). The page itself does not scroll.
+- Every top-level page renders `NpShortcuts` once (§8).
 
-## 2. Lists
+## 2. Lists and tables
 
-- Toolbar on the left (search, filters, view switch — `IssueToolbar` is the model), the primary button in the page header on the right.
-- Lists are `DataTable` (default density). Server-paged lists pass `pagination={false}` and show "Load more" under the table (`np.pagination.*`); client-paged lists keep `pageSize={20}`.
-- Loading: `NpListSkeleton` (or a skeleton shaped like the content). Empty: `NpEmpty` with an icon, a title, one sentence and the create action. Failed: `NpLoadError` (retry, none on 403).
+- Toolbar on the left (search, filters, view switch — `IssueToolbar`), the primary button in the page header.
+- Lists are `DataTable`. Server-paged lists pass `pagination={false}` and put "Load more" under the table; client-paged lists keep `pageSize={20}`.
+- Column widths go in `meta.className`: fixed widths for identifier, status, priority, people and dates; the title column `w-full max-w-0` with a single-line truncated cell capped at `max-w-[30rem]` and a `title` tooltip. One long title never stretches a table.
+- Sortable headers use `DataTableColumnHeader`: a click cycles ascending → descending → unsorted, the icon shows the state, there is no menu on the header. Column hiding lives in `DataTableViewOptions`.
+- `/issues` and `/my-issues` open on the board. The list / board choice is remembered per page in `localStorage` (`nocoproject:issues-view:<page>`, every access in try/catch); `?view=` overrides and is always written explicitly.
+- Loading: `NpListSkeleton` (or a skeleton shaped like the content). Empty: `NpEmpty` (icon, title, one sentence of fact, the create action). Failed: `NpLoadError` (retry, none on 403).
 
 ## 3. Detail pages
 
-- A record's page is a covering `RouteChildPage` in `NpDetailLayout`: main column `flex-1 min-w-0`, right column fixed `w-80` with its own scroll, folded into one column below `lg`.
-- The main column starts with `Breadcrumbs` + `PageHeader` (the issue detail keeps its inline-editable title as the header). Blocks are `Card`s (title + actions top right) with the same spacing (`space-y-6`).
-- Loading uses `NpDetailSkeleton`; a 404/403 uses `NpLoadError` with "back to the list".
+- A record's page is a covering `RouteChildPage`. The issue and knowledge details use `NpDetailLayout` (main column `flex-1 min-w-0`, side column fixed `20rem` holding small cards, one column below `lg`); the project detail is a header, `NpTabBar` and the tab's content.
+- **One scroll container.** The covering page scrolls as a whole; neither column scrolls on its own. The issue composer is `sticky bottom-0` inside the main column.
+- The main column starts with `Breadcrumbs` and the record's `text-2xl` title, then one meta line (identifier, status, project, and `NpLiveRun` while a run is active). Blocks are bordered cards (`rounded-lg border bg-card p-4`) headed by `NpSectionHeading`, `space-y-6` apart.
+- **Empty sections take no room.** No description is one muted row with "edit"; empty sub-issues fold into one dashed row with its actions; pull requests and dependencies render only with content or once revealed from the "添加" chips under the description; approvals and proposals render only when pending.
+- Loading uses `NpDetailSkeleton`; 404/403 uses an error with "back to the list".
 
-## 4. Identifiers, badges, people
+## 4. Decisions
 
-- Issue identifiers: `font-mono text-xs`. Slugs and versions: `font-mono text-xs`.
-- Status: only `NpStatusBadge` (outline badge, dot colored from the status catalog / workflow color). Priority: `NpPriorityLabel`. Run status: `NpRunStatusBadge`.
-- People, agents and the system: only `NpActorAvatar` (initials / bot / cog). `NpExecutor` builds on it and adds the "Agent" marker.
+- A decision is always shown with the thing being decided in full (`DecisionContent`: the agent's delivery comment and PR, the approval's from → to and requester, the proposals, the knowledge text with its diff) and the actions right under it (`DecisionActionsBar`). Never a bare "accept".
+- The inbox (`/inbox`) is master–detail: grouped list on the left (decisions first), the selected item's context under a sticky action bar on the right, `j` / `k` / `e` / Enter, `?tab=` / `?archived=1` / `?item=` in the URL, list → detail on narrow screens.
+- The issue page shows the viewer's open decisions on that issue ("等你决定", `GET /np/inbox?kind=decision&resolved=false&issueId=`); a decided card folds into one line for the rest of the visit.
+- Both run decisions through `useDecisionRunner` (optimistic resolve in every cached inbox list, toast, refetch on failure). Button hierarchy: the primary action is the one filled button and comes first; other requests outlined; rejection red; navigation (open, reassign) plain text. Type-specific wording goes in `np.decision.actions.<type>.<key>`.
 
-## 5. Feedback
+## 5. Identifiers, tags, people, empty values
 
-- Every explicit write action (a button, a menu item, a form submit) shows a toast on success and on failure; failures are localized (`np.common.forbidden`, `np.common.requestFailed`, or a specific key for 409s).
-- Inline property edits in the issue properties panel and emoji reactions change the value in place; they toast only on failure (a success toast per field change would drown the page).
-- Destructive actions (delete, archive, revert, reject a label) go through `AlertDialog` with a `destructive` action.
+- Identifiers, slugs, versions, branches: `font-mono text-xs`.
+- Every tag is `NpTag` (tinted pill: pale background, darker text of the same hue, 13px, dot for statuses) with its tone from one map. Status: `NpStatusBadge` (tone by meaning via `statusTone`: unstarted grey, started blue, in review violet, blocked amber, done green, cancelled slate). Priority: `NpPriorityLabel` (urgent red, high orange, medium blue, low grey). Runs: `NpRunStatusBadge`. Labels: `NpLabelChip`. Never a solid fill, never a dot on a neutral pill, never the shadcn `Badge` on these pages.
+- People, agents and the system: only `NpActorAvatar` (initials round / bot rounded-square in the agent hue / dashed cog; `live` for a working agent). `NpExecutor` builds on it.
+- Empty values (no priority, executor, owner, date, project) render a muted "—" with the word kept for screen readers. Editable controls keep their "none" option names in the list only.
 
-## 6. Reference pages
+## 6. Feedback and copy
 
-Copy structure from `client/pages/reference/`, never import from it.
+- Every explicit write action toasts on success and on failure; failures are localized (`np.common.forbidden`, `np.common.requestFailed`, or a specific key for 409s).
+- Inline property edits and emoji reactions change in place and toast only on failure.
+- Destructive actions go through `AlertDialog` with a `destructive` action.
+- UI text states facts and actions and never explains the UI: no "在这里可以…", "下面是…", "就在这里决定…". An empty state's sentence is a fact, not an instruction.
 
-## 7. Keyboard
+## 7. Colour, motion, themes
+
+- Colours are tokens only. Neutrals, primary and charts come from the theme presets; NocoProject's own semantic colours (`--agent`, `--attention`, `--success`, `--np-tint-*` / `--np-ink-*`) live in `client/np-tones.css`. Accent (primary) only for primary actions, focus and live state; amber only for "needs you".
+- Motion explains change and respects reduced motion: realtime inbox arrivals slide in, resolved decisions dim, running work pulses (`NpPulse`, `np-live-ring`), progress rings animate.
+
+## 8. Keyboard
 
 - `C` opens "New issue" (on `/issues` the create dialog beside the list), ignored while typing or when a dialog is open.
-- `⌘K` / `Ctrl+K` opens the issue search (`GET /np/issues?q=`, title or identifier); Enter opens the highlighted issue.
-- `⌘Enter` sends a comment in the composer, saves a knowledge document in its editor, and sends an inline inbox comment.
+- `⌘K` / `Ctrl+K` opens the issue search; Enter opens the highlighted issue.
+- `⌘Enter` sends a comment, saves a knowledge document, sends an inline decision comment.
+- In the inbox: `j` / `k` move, `e` archives, Enter opens the issue.
 
-## 8. Long lists
+## 9. Long lists
 
-- Cursor pages (`useInfiniteQuery`, §D): the issue list, board columns ("load more" per column), older issue activities, the inbox.
-- Virtualization (`react-virtuoso`): the activity timeline and board columns past 100 items (`NpVirtualList`), the issue table past 200 rows (`DataTable virtualizeAfter`). The list measures against the nearest scrolling ancestor, so it works in covering pages and drawers.
-- Query keys of pages sit under the family the realtime topics invalidate (`npKeys.issues`, `npKeys.issue(id)`), so a push refetches every loaded page.
+- Cursor pages (`useInfiniteQuery`): the issue list, board columns ("load more" per column), older issue activities, the inbox groups.
+- Virtualization (`react-virtuoso`): the activity timeline and board columns past 100 items (`NpVirtualList`), the issue table past 200 rows (`DataTable virtualizeAfter`), measured against the nearest scrolling ancestor.
+- Query keys sit under the family the realtime topics invalidate (`npKeys.issues`, `npKeys.issue(id)`, `npKeys.inbox`).
 
-## 9. Themes and languages
+## 10. Languages
 
-- Colors are tokens only (`bg-card`, `text-muted-foreground`, `bg-chart-N`); check both light and dark.
-- Every string is a key in `client/locales/` with `en-US` and `zh-CN`; `tests/logic/locale-coverage.test.ts` fails on a missing key. New groups go in the latest `np-iterN-*.ts`; avoid i18next plural suffixes (the Chinese side must have the same keys).
+- Every string is a key in `client/locales/` with `en-US` and `zh-CN`; `tests/logic/locale-coverage.test.ts` fails on a missing key. New groups go in the latest `np-*-en-US.ts` (today `np-design-en-US.ts`); avoid i18next plural suffixes.

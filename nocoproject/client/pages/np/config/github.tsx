@@ -12,7 +12,7 @@ import {
 import { type ReactElement, useState } from 'react';
 
 import { NpDetailSkeleton, NpEmpty, NpLoadError } from '@/components/np-states';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import {
   Field,
@@ -93,9 +93,9 @@ export default function GithubConfigTab(): ReactElement {
 function SecretState({ set }: { readonly set: boolean }): ReactElement {
   const { t } = useTranslation();
   return (
-    <Badge variant={set ? 'secondary' : 'outline'}>
+    <NpTag tone={set ? 'green' : 'grey'} dot>
       {set ? t('np.github.set') : t('np.github.notSet')}
-    </Badge>
+    </NpTag>
   );
 }
 

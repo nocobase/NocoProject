@@ -2,7 +2,7 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { BotIcon, ChevronRightIcon, CogIcon, UserIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import {
   Table,
   TableBody,
@@ -199,9 +199,9 @@ export function WorkflowMatrix({
                     <span className='inline-flex flex-col items-center gap-1'>
                       <ActorIcons actors={cell.actors} />
                       {cell.approval ? (
-                        <Badge variant='outline' className='h-4 px-1.5'>
+                        <NpTag tone='amber' className='px-2 py-0'>
                           {t('np.workflows.approval')}
-                        </Badge>
+                        </NpTag>
                       ) : null}
                     </span>
                   ) : row.from === cell.to ? null : (
@@ -247,13 +247,13 @@ export function WorkflowRules({
               })}
             </span>
             {rule.approval ? (
-              <Badge variant='secondary'>
+              <NpTag tone='amber'>
                 {t('np.workflows.approvalBy', {
                   roles: rule.approval
                     .map((role) => t(`np.workflows.approvers.${role}`))
                     .join(t('np.workflows.listSeparator')),
                 })}
-              </Badge>
+              </NpTag>
             ) : null}
           </li>
         ) : (

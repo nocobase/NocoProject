@@ -37,13 +37,16 @@ export function NpInboxNavIcon({
   });
   const text = inboxBadgeText(unread.data?.decision ?? 0);
 
+  // The count is a pill at the right end of the navigation row (the row is `relative`), amber because it means
+  // "needs you" (docs/design/ui-design.md §1.2); in the desktop icon mode it moves to the icon's corner.
   return (
-    <span className='relative inline-flex'>
+    <span className='inline-flex'>
       <InboxIcon className={className} aria-hidden='true' />
       {text ? (
         <span
           className={cn(
-            'absolute -top-1.5 -right-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[0.625rem] leading-none font-semibold text-primary-foreground tabular-nums',
+            'absolute top-1/2 right-2 flex h-4 min-w-4 -translate-y-1/2 items-center justify-center rounded-full bg-attention px-1 text-xs leading-none font-semibold text-attention-foreground tabular-nums',
+            'md:group-data-[collapsed=true]/nav:top-0.5 md:group-data-[collapsed=true]/nav:right-0.5 md:group-data-[collapsed=true]/nav:h-3.5 md:group-data-[collapsed=true]/nav:min-w-3.5 md:group-data-[collapsed=true]/nav:translate-y-0 md:group-data-[collapsed=true]/nav:px-0.5',
           )}
           data-testid='np-inbox-badge'
         >

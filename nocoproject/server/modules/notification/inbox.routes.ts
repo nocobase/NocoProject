@@ -13,7 +13,7 @@ const ACTIONS: readonly InboxAction[] = [
 
 /**
  * `/np/inbox` (browser, contract §E). `GET /` answers `{ data, unread, nextCursor }` (the extra keys sit beside
- * `data`, like `GET /np/runs/:id/events`).
+ * `data`, like `GET /np/runs/:id/events`); `kind`, `archived`, `resolved` and `issueId` narrow the list.
  */
 export function createInboxRoutes(inbox: InboxService): Hono<AuthEnv> {
   const routes = npRouter<AuthEnv>();
@@ -23,6 +23,7 @@ export function createInboxRoutes(inbox: InboxService): Hono<AuthEnv> {
         kind: queryText(context, 'kind'),
         archived: queryText(context, 'archived'),
         resolved: queryText(context, 'resolved'),
+        issueId: queryText(context, 'issueId'),
         cursor: queryText(context, 'cursor'),
       }),
     ),

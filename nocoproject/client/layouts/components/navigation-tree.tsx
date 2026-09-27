@@ -310,14 +310,16 @@ function NavigationLink({
   const link = (
     <Link
       aria-current={isSelected ? 'page' : undefined}
-      className={`flex items-center text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring transition-colors ${
+      // NocoProject (docs/design/ui-design.md §1.2): the template's row size, muted icons, the selected icon in
+      // primary, and `relative` so an entry's trailing count (the inbox badge) can sit at the row's right end.
+      className={`relative flex items-center text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring transition-colors ${
         inPopover
           ? 'gap-2 rounded-md px-2 py-1.5'
           : 'gap-3 rounded-lg px-3 py-2'
       } ${collapsed ? 'md:justify-center md:px-2' : ''} ${
         isSelected
-          ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-          : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+          ? 'bg-sidebar-primary font-medium text-sidebar-primary-foreground [&_[data-slot=nav-icon]]:text-primary'
+          : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&_[data-slot=nav-icon]]:text-muted-foreground'
       }`}
       onClick={onNavigate}
       to={route}
@@ -347,7 +349,10 @@ function NavigationIcon({
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <span className='flex size-4 shrink-0 items-center justify-center [&_svg]:size-4'>
+    <span
+      data-slot='nav-icon'
+      className='flex size-4 shrink-0 items-center justify-center [&_svg]:size-4'
+    >
       {children}
     </span>
   );

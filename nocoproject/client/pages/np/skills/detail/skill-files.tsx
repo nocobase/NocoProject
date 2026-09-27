@@ -109,10 +109,10 @@ export function SkillFiles({
       <div className='flex items-center justify-between gap-2'>
         <h2
           id='np-skill-files-heading'
-          className='font-heading text-base font-semibold'
+          className='font-heading text-sm font-semibold'
         >
           {t('np.skills.files')}
-          <span className='ml-2 text-sm font-normal text-muted-foreground tabular-nums'>
+          <span className='ml-2 text-xs font-normal text-muted-foreground tabular-nums'>
             {drafts.length}/{SKILL_MAX_FILES}
           </span>
         </h2>

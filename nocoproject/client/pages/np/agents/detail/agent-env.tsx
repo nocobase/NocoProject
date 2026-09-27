@@ -107,7 +107,7 @@ export function AgentEnvSection({
         <div className='space-y-1'>
           <h2
             id='np-agent-env-heading'
-            className='font-heading text-base font-semibold'
+            className='font-heading text-sm font-semibold'
           >
             {t('np.envVars.title')}
           </h2>

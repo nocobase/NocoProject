@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { type FormEvent, type ReactElement, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -35,7 +35,7 @@ import {
 } from '../../api-iter2.js';
 import type { IssuePullRequestView } from '../../types.js';
 import {
-  PR_BADGE_VARIANT,
+  PR_TONE,
   ciReading,
   looksLikePullRequestUrl,
   mergeableReading,
@@ -59,28 +59,28 @@ const CI_ICON = {
 export function PullRequestsSection({
   issueId,
   pullRequests,
+  initialLinking = false,
 }: {
   readonly issueId: string;
   readonly pullRequests: readonly IssuePullRequestView[];
+  /** Open the "link by URL" dialog on mount (the issue page's "+ 关联 PR" chip reveals the section this way). */
+  readonly initialLinking?: boolean;
 }): ReactElement {
   const { t } = useTranslation();
-  const [linking, setLinking] = useState(false);
+  const [linking, setLinking] = useState(initialLinking);
 
   return (
     <section className='space-y-3' aria-labelledby='np-prs-heading'>
       <div className='flex items-center justify-between gap-2'>
-        <h2
-          id='np-prs-heading'
-          className='font-heading text-base font-semibold'
-        >
+        <h2 id='np-prs-heading' className='font-heading text-sm font-semibold'>
           {t('np.pullRequests.title')}
           {pullRequests.length > 0 ? (
-            <span className='ml-2 text-sm font-normal text-muted-foreground tabular-nums'>
+            <span className='ml-2 text-xs font-normal text-muted-foreground tabular-nums'>
               {pullRequests.length}
             </span>
           ) : null}
         </h2>
-        <Button variant='outline' size='sm' onClick={() => setLinking(true)}>
+        <Button variant='ghost' size='sm' onClick={() => setLinking(true)}>
           <LinkIcon data-icon='inline-start' />
           {t('np.pullRequests.link')}
         </Button>
@@ -147,9 +147,9 @@ export function PullRequestCard({
           className='size-4 shrink-0 text-muted-foreground'
           aria-hidden='true'
         />
-        <Badge variant={PR_BADGE_VARIANT[state]}>
+        <NpTag tone={PR_TONE[state]} dot>
           {t(`np.pullRequests.state.${state}`)}
-        </Badge>
+        </NpTag>
         <a
           href={pr.url}
           target='_blank'

@@ -33,6 +33,7 @@ export function useIssueColumns(
       {
         accessorKey: 'identifier',
         enableHiding: false,
+        meta: { className: 'w-24' },
         header: ({ column }) => (
           <DataTableColumnHeader
             column={column}
@@ -61,17 +62,25 @@ export function useIssueColumns(
         enableHiding: false,
         enableSorting: false,
         header: t('np.issues.columns.title'),
+        // One line, capped at 30rem, the full title on hover: a long title never stretches the table (§1.5). The
+        // column takes the remaining width but may shrink (`max-w-0`), so the table never scrolls sideways for it.
+        meta: { className: 'w-full max-w-0 min-w-40' },
         cell: ({ row }) => (
-          <div className='min-w-48 space-y-1'>
-            <span className='line-clamp-2 font-medium wrap-anywhere'>
+          <div className='flex max-w-[30rem] items-center gap-2'>
+            <span className='truncate font-medium' title={row.original.title}>
               {row.original.title}
             </span>
             {row.original.labels && row.original.labels.length > 0 ? (
-              <div className='flex flex-wrap gap-1'>
-                {row.original.labels.map((label) => (
+              <span className='flex shrink-0 gap-1'>
+                {row.original.labels.slice(0, 2).map((label) => (
                   <NpLabelChip key={label.id} label={label} />
                 ))}
-              </div>
+                {row.original.labels.length > 2 ? (
+                  <span className='text-xs text-muted-foreground'>
+                    +{row.original.labels.length - 2}
+                  </span>
+                ) : null}
+              </span>
             ) : null}
           </div>
         ),
@@ -79,12 +88,14 @@ export function useIssueColumns(
       {
         accessorKey: 'statusKey',
         enableSorting: false,
+        meta: { className: 'w-28' },
         header: t('np.issues.columns.status'),
         cell: ({ row }) => <NpStatusBadge statusKey={row.original.statusKey} />,
       },
       {
         accessorKey: 'priority',
         enableHiding: false,
+        meta: { className: 'w-28' },
         header: ({ column }) => (
           <DataTableColumnHeader
             column={column}
@@ -99,6 +110,7 @@ export function useIssueColumns(
       {
         id: 'owner',
         enableSorting: false,
+        meta: { className: 'w-40 max-w-40' },
         header: t('np.issues.columns.owner'),
         cell: ({ row }) =>
           row.original.ownerName ? (
@@ -116,6 +128,7 @@ export function useIssueColumns(
       {
         id: 'executor',
         enableSorting: false,
+        meta: { className: 'w-48 max-w-48' },
         header: t('np.issues.columns.executor'),
         cell: ({ row }) => (
           <NpExecutor
@@ -128,6 +141,7 @@ export function useIssueColumns(
       {
         accessorKey: 'updatedAt',
         enableHiding: false,
+        meta: { className: 'w-32' },
         header: ({ column }) => (
           <DataTableColumnHeader
             column={column}

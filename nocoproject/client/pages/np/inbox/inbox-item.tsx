@@ -1,15 +1,7 @@
 import { useTranslation } from '@nocobase/i18n/client';
-import {
-  ArchiveIcon,
-  ArchiveRestoreIcon,
-  MailIcon,
-  MailOpenIcon,
-  MoreHorizontalIcon,
-} from 'lucide-react';
-import type { ReactElement } from 'react';
+import { CheckCircle2Icon, MoreHorizontalIcon } from 'lucide-react';
+import type { KeyboardEvent, ReactElement } from 'react';
 
-import { NpActorAvatar } from '@/components/np-actor-avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   ContextMenu,
@@ -28,153 +20,146 @@ import {
 import { cn } from '@/lib/utils';
 
 import type { InboxAction } from '../api-inbox.js';
-import { statusLabelKey } from '../constants.js';
-import { failureReasonKey, useNpFormatters } from '../format.js';
+import { InboxTypeIcon } from '../decision/decision-meta.js';
+import { useDecisionSentence } from '../decision/decision-model.js';
+import { useNpFormatters } from '../format.js';
 import type { InboxItem } from '../types.js';
-import type { InboxDecisionAction } from '../types-iter3.js';
-import { DecisionActionsBar } from './decision-actions-bar.js';
+import { INBOX_ACTION_ICON } from './inbox-icons.js';
 import { inboxActionsFor, isSettled } from './inbox-model.js';
-import { inboxBodyText } from './inbox-text.js';
-
-const ACTION_ICON = {
-  read: MailOpenIcon,
-  unread: MailIcon,
-  archive: ArchiveIcon,
-  unarchive: ArchiveRestoreIcon,
-} as const;
-
-/** What a decision card needs to act inline (iteration 3 §E). */
-export interface InboxDecisionProps {
-  readonly actions: readonly InboxDecisionAction[];
-  readonly pendingKey: string | null;
-  readonly onRun: (action: InboxDecisionAction, comment: string) => void;
-}
 
 /**
- * One inbox card. Opening it goes to the issue (and marks it read); the menu button and a right-click offer the same
- * read / unread and archive / unarchive toggles (§J 3). An unresolved decision shows its actions inline (§E), so the
- * viewer decides without leaving the inbox. Unread cards carry a dot and bold title; the dot has a text alternative
- * so the state is not carried by weight alone.
+ * One compact card of the inbox list (docs/design/ui-design.md §8.1). Selecting it shows its context in the detail
+ * pane (and marks it read); Enter on a focused card opens its issue. A decision that still waits carries an amber
+ * bar, an unread card a primary dot and a bold title (with a text alternative), a settled decision is dimmed with a
+ * check. The menu button and a right-click offer read / unread and archive / unarchive.
  */
 export function InboxItemCard({
   item,
+  selected,
   busy,
+  fresh,
+  onSelect,
   onOpen,
   onAction,
-  decision,
 }: {
   readonly item: InboxItem;
+  readonly selected: boolean;
   readonly busy: boolean;
+  /** Arrived by a realtime push after the list first loaded: slides in (§6). */
+  readonly fresh?: boolean;
+  readonly onSelect: (item: InboxItem) => void;
   readonly onOpen: (item: InboxItem) => void;
   readonly onAction: (item: InboxItem, action: InboxAction) => void;
-  readonly decision?: InboxDecisionProps;
 }): ReactElement {
   const { t } = useTranslation();
   const format = useNpFormatters();
+  const sentence = useDecisionSentence();
   const unread = item.readAt === null;
+  const settled = isSettled(item);
+  const waiting = item.kind === 'decision' && !settled;
   const actions = inboxActionsFor(item);
   const label = (action: InboxAction): string =>
     t(`np.inbox.actions.${action}`);
-  // The sentence from `type + payload` in the viewer's language; the server's English `body` when it cannot be built.
-  const localized = inboxBodyText(
-    item,
-    (key) => t(statusLabelKey(key), { defaultValue: key }),
-    (reason) => t(failureReasonKey(reason), { defaultValue: reason }),
-  );
-  const body = localized ? t(localized.key, localized.values) : item.body;
+  const body = sentence(item);
+
+  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
+    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) {
+      event.preventDefault();
+      onOpen(item);
+    }
+  }
 
   return (
     <ContextMenu>
       <ContextMenuTrigger
+        data-inbox-item={item.id}
+        data-selected={selected ? 'true' : undefined}
         className={cn(
-          'group flex items-start gap-3 rounded-lg border bg-card p-3 text-card-foreground transition-colors hover:bg-muted/50',
-          isSettled(item) && 'opacity-60',
+          'group relative flex items-start gap-3 rounded-lg border border-transparent p-3 pr-2 transition-[background-color,border-color,opacity] duration-200',
+          selected ? 'border-border bg-card shadow-xs' : 'hover:bg-accent/60',
+          settled && 'opacity-55',
+          fresh &&
+            'animate-in duration-200 fade-in slide-in-from-top-1 motion-reduce:animate-none',
         )}
       >
         <span
-          className='flex h-5 w-2 shrink-0 items-center'
-          aria-hidden={!unread}
-        >
-          {unread ? (
-            <span className='size-2 rounded-full bg-primary'>
-              <span className='sr-only'>{t('np.inbox.unread')}</span>
-            </span>
-          ) : null}
+          aria-hidden='true'
+          className={cn(
+            'absolute top-3 bottom-3 left-0 w-0.5 rounded-full',
+            selected
+              ? 'bg-primary'
+              : waiting
+                ? 'bg-attention'
+                : 'bg-transparent',
+          )}
+        />
+        <span className='mt-0.5 flex shrink-0 flex-col items-center gap-1.5'>
+          {settled ? (
+            <CheckCircle2Icon
+              className='size-4 text-success'
+              aria-hidden='true'
+            />
+          ) : (
+            <InboxTypeIcon item={item} />
+          )}
         </span>
-        <div className='min-w-0 flex-1 space-y-3'>
-          <button
-            type='button'
-            className='block w-full min-w-0 space-y-1 text-left focus-visible:outline-none'
-            onClick={() => onOpen(item)}
-          >
-            <span className='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
-              <Badge
-                variant={item.kind === 'decision' ? 'secondary' : 'outline'}
-              >
-                {t(`np.inbox.types.${item.type}`, { defaultValue: item.type })}
-              </Badge>
-              {item.issueIdentifier ? (
-                <span className='font-mono text-xs'>
-                  {item.issueIdentifier}
-                </span>
-              ) : null}
-              {item.count > 1 ? (
-                <span className='tabular-nums'>
-                  {t('np.inbox.count', { count: item.count })}
-                </span>
-              ) : null}
-              {isSettled(item) ? <span>{t('np.inbox.resolved')}</span> : null}
+        <button
+          type='button'
+          aria-current={selected ? 'true' : undefined}
+          className='block min-w-0 flex-1 space-y-1 text-left focus-visible:outline-none'
+          onClick={() => onSelect(item)}
+          onKeyDown={onKeyDown}
+        >
+          <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+            {item.issueIdentifier ? (
+              <span className='shrink-0 font-mono'>{item.issueIdentifier}</span>
+            ) : null}
+            <span className='truncate'>
+              {t(`np.inbox.types.${item.type}`, { defaultValue: item.type })}
             </span>
-            <span
-              className={cn(
-                'block truncate text-sm group-focus-within:underline',
-                unread ? 'font-semibold' : 'font-medium',
-              )}
-            >
-              {item.title}
-            </span>
-            {body ? (
-              <span className='line-clamp-2 block text-sm text-muted-foreground wrap-anywhere'>
-                {body}
+            {item.count > 1 ? (
+              <span className='shrink-0 tabular-nums'>
+                {t('np.inbox.count', { count: item.count })}
               </span>
             ) : null}
-            <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-              {item.actorName ? (
-                <>
-                  <NpActorAvatar
-                    type={item.actorType ?? 'user'}
-                    name={item.actorName}
-                    size='xs'
-                  />
-                  <span>{item.actorName}</span>
-                  <span aria-hidden='true'>·</span>
-                </>
-              ) : null}
-              <time
-                dateTime={item.updatedAt}
-                title={format.dateTime(item.updatedAt)}
-              >
-                {format.relative(item.updatedAt)}
-              </time>
+            {settled ? (
+              <span className='shrink-0'>{t('np.inbox.resolved')}</span>
+            ) : null}
+            <time
+              className='ml-auto shrink-0 tabular-nums'
+              dateTime={item.updatedAt}
+              title={format.dateTime(item.updatedAt)}
+            >
+              {format.relative(item.updatedAt)}
+            </time>
+          </span>
+          <span
+            className={cn(
+              'flex items-center gap-1.5 text-sm group-focus-within:underline',
+              unread ? 'font-semibold' : 'font-normal',
+            )}
+          >
+            {unread ? (
+              <span className='size-1.5 shrink-0 rounded-full bg-primary'>
+                <span className='sr-only'>{t('np.inbox.unread')}</span>
+              </span>
+            ) : null}
+            <span className='truncate'>{item.title}</span>
+          </span>
+          {body ? (
+            <span className='line-clamp-1 text-sm text-muted-foreground wrap-anywhere'>
+              {body}
             </span>
-          </button>
-          {decision && !isSettled(item) ? (
-            <DecisionActionsBar
-              actions={decision.actions}
-              itemTitle={item.title}
-              pendingKey={decision.pendingKey}
-              disabled={busy}
-              onRun={decision.onRun}
-            />
           ) : null}
-        </div>
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <Button
                 variant='ghost'
-                size='icon-sm'
+                size='icon-xs'
                 disabled={busy}
+                className='opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100'
                 aria-label={t('np.inbox.actionsFor', { title: item.title })}
               />
             }
@@ -184,7 +169,7 @@ export function InboxItemCard({
           <DropdownMenuContent align='end'>
             <DropdownMenuGroup>
               {actions.map((action) => {
-                const Icon = ACTION_ICON[action];
+                const Icon = INBOX_ACTION_ICON[action];
                 return (
                   <DropdownMenuItem
                     key={action}
@@ -202,7 +187,7 @@ export function InboxItemCard({
       <ContextMenuContent>
         <ContextMenuGroup>
           {actions.map((action) => {
-            const Icon = ACTION_ICON[action];
+            const Icon = INBOX_ACTION_ICON[action];
             return (
               <ContextMenuItem
                 key={action}

@@ -39,6 +39,7 @@ export function MyIssuesTab({
       fixedFilters={fixedFilters}
       hiddenFilters={hiddenFilters}
       detailBase='/issues'
+      viewKey='my-issues'
       emptyTitle={t(`np.myIssues.empty.${role}`)}
       emptyDescription={t('np.myIssues.emptyDescription')}
       emptyAction={<NewIssueButtonAbsolute variant='outline' />}

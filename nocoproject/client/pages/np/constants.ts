@@ -67,6 +67,40 @@ export function statusColor(
       : 'gray';
 }
 
+/**
+ * The tone a status is drawn in (docs/design/ui-design.md §2.4, `NpTag`): by meaning, not by the workflow's colour name, so
+ * every workflow reads the same — not started grey, started blue, in review violet, blocked amber, done green,
+ * cancelled slate. A custom started status the workflow marks purple reads as review, red / orange as blocked.
+ */
+export type StatusTone =
+  'grey' | 'blue' | 'violet' | 'amber' | 'green' | 'slate';
+
+export function statusTone(
+  statusKey: string,
+  catalog: readonly StatusCatalogEntry[] = DEFAULT_STATUS_CATALOG,
+): StatusTone {
+  const category = statusCategory(statusKey, catalog);
+  if (category === 'done') return 'green';
+  if (category === 'closed') return 'slate';
+  if (category === 'unstarted') return 'grey';
+  if (statusKey === 'in_review') return 'violet';
+  if (statusKey === 'blocked') return 'amber';
+  const color = catalog.find((entry) => entry.key === statusKey)?.color ?? null;
+  if (color === 'purple') return 'violet';
+  if (color === 'red' || color === 'orange') return 'amber';
+  return 'blue';
+}
+
+/** Priority tones: urgent red, high orange, medium blue, low grey; no priority has no tag. */
+export const PRIORITY_TONE: Readonly<
+  Record<Exclude<IssuePriority, 'none'>, 'red' | 'orange' | 'blue' | 'grey'>
+> = {
+  urgent: 'red',
+  high: 'orange',
+  medium: 'blue',
+  low: 'grey',
+};
+
 /** Locale keys under `np.status.*` are the status keys with the underscore removed (`in_progress` → `inProgress`). */
 export function statusLabelKey(statusKey: string): string {
   return `np.status.${statusKey.replace(/_([a-z])/gu, (_, letter: string) => letter.toUpperCase())}`;
@@ -87,16 +121,6 @@ export function statusCategory(
   );
 }
 
-export type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
-
-/** Status category → Badge variant. Semantic variants only, so both themes follow the tokens. */
-export const CATEGORY_BADGE: Readonly<Record<StatusCategory, BadgeVariant>> = {
-  unstarted: 'outline',
-  started: 'secondary',
-  done: 'default',
-  closed: 'outline',
-};
-
 export const ISSUE_PRIORITIES: readonly IssuePriority[] = [
   'urgent',
   'high',
@@ -104,16 +128,6 @@ export const ISSUE_PRIORITIES: readonly IssuePriority[] = [
   'low',
   'none',
 ];
-
-export const RUN_BADGE: Readonly<Record<RunStatus, BadgeVariant>> = {
-  queued: 'outline',
-  deferred: 'outline',
-  dispatched: 'secondary',
-  running: 'secondary',
-  completed: 'default',
-  failed: 'destructive',
-  cancelled: 'outline',
-};
 
 export const ACTIVE_RUN_STATUSES: ReadonlySet<RunStatus> = new Set([
   'queued',
@@ -160,6 +174,9 @@ export const npKeys = {
   inboxList: (kind: InboxKind, archived: boolean) =>
     ['np', 'inbox', 'list', kind, archived] as const,
   inboxUnread: ['np', 'inbox', 'unread'] as const,
+  /** The viewer's open decisions on one issue (the issue page's "等你决定" section). */
+  issueDecisions: (issueId: string) =>
+    ['np', 'inbox', 'issue', issueId] as const,
   // Phase 1 iteration 2
   gitConnection: ['np', 'integrations', 'github'] as const,
   approvals: ['np', 'approvals'] as const,
@@ -241,15 +258,30 @@ export const LABEL_COLORS: readonly LabelColor[] = [
 ];
 
 /**
- * Label color names mapped onto theme tokens, so a label follows light, dark and every preset. The name beside the
- * dot carries the meaning; the color only helps scanning.
+ * Label colour names mapped onto the tag hues (docs/design/ui-design.md §2.4), so a label's dot and chip match the
+ * status and priority tags in light and dark. The name beside the dot carries the meaning; the colour helps scanning.
  */
+export const LABEL_TONE: Readonly<
+  Record<
+    LabelColor,
+    'grey' | 'red' | 'orange' | 'amber' | 'green' | 'blue' | 'violet'
+  >
+> = {
+  gray: 'grey',
+  red: 'red',
+  orange: 'orange',
+  yellow: 'amber',
+  green: 'green',
+  blue: 'blue',
+  purple: 'violet',
+};
+
 export const LABEL_DOT_CLASS: Readonly<Record<LabelColor, string>> = {
-  gray: 'bg-muted-foreground',
-  red: 'bg-destructive',
-  orange: 'bg-chart-1',
-  yellow: 'bg-chart-4',
-  green: 'bg-chart-2',
-  blue: 'bg-chart-3',
-  purple: 'bg-chart-5',
+  gray: 'bg-np-ink-grey',
+  red: 'bg-np-ink-red',
+  orange: 'bg-np-ink-orange',
+  yellow: 'bg-np-ink-amber',
+  green: 'bg-np-ink-green',
+  blue: 'bg-np-ink-blue',
+  purple: 'bg-np-ink-violet',
 };

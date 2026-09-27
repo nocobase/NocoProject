@@ -66,12 +66,12 @@ Phase 0 字段 + `agentTransitions`、`subtasks: SubtaskSummary[]`（按编号�
 
 ## 5. 收件箱
 
-| 接口                                                                 | 成功                                                                                                                     |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `GET /np/inbox?kind=decision\|info&archived=false&resolved=&cursor=` | `{ data: InboxItem[], unread: { decision, info }, nextCursor: string \| null }`（`unread`、`nextCursor` 与 `data` 同级） |
-| `GET /np/inbox/unread-count`                                         | `{ data: { decision, info } }`                                                                                           |
-| `POST /np/inbox/:id/read\|unread\|archive\|unarchive`                | `InboxItem`；不是自己的 404                                                                                              |
-| `POST /np/inbox/read-all { kind? }`（请求体可省略）                  | `{ data: { unread: { decision, info } } }`                                                                               |
+| 接口                                                                          | 成功                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /np/inbox?kind=decision\|info&archived=false&resolved=&issueId=&cursor=` | `{ data: InboxItem[], unread: { decision, info }, nextCursor: string \| null }`（`unread`、`nextCursor` 与 `data` 同级；`issueId` 只列关于该任务的项，2026-09-27 界面改版加入，供任务页「等你决定」） |
+| `GET /np/inbox/unread-count`                                                  | `{ data: { decision, info } }`                                                                                                                                                                        |
+| `POST /np/inbox/:id/read\|unread\|archive\|unarchive`                         | `InboxItem`；不是自己的 404                                                                                                                                                                           |
+| `POST /np/inbox/read-all { kind? }`（请求体可省略）                           | `{ data: { unread: { decision, info } } }`                                                                                                                                                            |
 
 - 按 `updatedAt` 倒序，每页 50；`archived` 默认 false；`resolved` 不传则都返回。未读数 = 未读、未归档、未解决。
 - 合并：同 `dedupeKey` 且未解决的项 `count + 1`（若已归档则从 1 重新计），标题 / 正文 / actor / payload 替换，置未读并取消归档。`dedupeKey = user:<userId>:<type>:<issueId>`，`proposal_pending` 为 `user:<owner>:proposal:<parentIssueId>`。

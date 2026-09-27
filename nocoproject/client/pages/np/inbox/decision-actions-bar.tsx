@@ -6,31 +6,40 @@ import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 
 import type { InboxDecisionAction } from '../types-iter3.js';
-import { actionVariant, externalUrl } from './decision-actions.js';
+import { actionVariant, externalUrl, inAppPath } from './decision-actions.js';
 import { useActionLabel } from './use-action-label.js';
 
 /**
- * The buttons of a decision card (§E), acted on without leaving the inbox. An action that `needsComment` opens an
- * inline text field first (⌘Enter sends); `opensIssue` goes to the issue; an external link (`openPr`) opens a new
- * tab. `pendingKey` is the action in flight.
+ * The buttons of a decision (§E), shared by the inbox's detail pane and the issue page's "等你决定" card
+ * (docs/design/ui-design.md §7). The hierarchy is fixed: the primary action is the one filled button and comes
+ * first, the other requests are outlined, a rejection is red, and navigation (open the issue, reassign) is a plain
+ * text button. An action that `needsComment` opens an inline text field first (⌘Enter sends); an external link
+ * (`openPr`) opens a new tab. `pendingKey` is the action in flight.
  */
 export function DecisionActionsBar({
   actions,
   itemTitle,
+  itemType,
   pendingKey,
   disabled,
   onRun,
+  className,
 }: {
   readonly actions: readonly InboxDecisionAction[];
   readonly itemTitle: string;
+  /** The inbox item type, for type-specific labels ("验收通过" rather than "接受"). */
+  readonly itemType?: string;
   readonly pendingKey: string | null;
   readonly disabled: boolean;
   readonly onRun: (action: InboxDecisionAction, comment: string) => void;
+  readonly className?: string;
 }): ReactElement | null {
   const { t } = useTranslation();
-  const label = useActionLabel();
+  const labelOf = useActionLabel();
+  const label = (action: InboxDecisionAction) => labelOf(action, itemType);
   const [commenting, setCommenting] = useState<InboxDecisionAction | null>(
     null,
   );
@@ -47,7 +56,10 @@ export function DecisionActionsBar({
   if (commenting) {
     const name = label(commenting);
     return (
-      <div className='space-y-2' data-commenting={commenting.key}>
+      <div
+        className={cn('w-full space-y-2', className)}
+        data-commenting={commenting.key}
+      >
         <Textarea
           value={comment}
           rows={3}
@@ -98,16 +110,21 @@ export function DecisionActionsBar({
     );
   }
 
+  const ordered = [...actions].sort((a, b) => actionRank(a) - actionRank(b));
   return (
-    <div className='flex flex-wrap gap-2'>
-      {actions.map((action) => {
+    <div className={cn('flex flex-wrap items-center gap-2', className)}>
+      {ordered.map((action) => {
         const external = externalUrl(action);
         const pending = pendingKey === action.key;
         return (
           <Button
             key={action.key}
             size='sm'
-            variant={actionVariant(action.kind)}
+            variant={
+              isNavigation(action) && action.kind !== 'primary'
+                ? 'ghost'
+                : actionVariant(action.kind)
+            }
             disabled={disabled || pendingKey !== null}
             data-action={action.key}
             onClick={() => {
@@ -123,4 +140,20 @@ export function DecisionActionsBar({
       })}
     </div>
   );
+}
+
+/** Navigation rather than a decision: opening the issue, reassigning there, or a page elsewhere. */
+function isNavigation(action: InboxDecisionAction): boolean {
+  return (
+    action.opensIssue === true ||
+    inAppPath(action) !== null ||
+    (!action.path && !externalUrl(action))
+  );
+}
+
+/** Primary first, then the other decisions, then red, then navigation. */
+function actionRank(action: InboxDecisionAction): number {
+  if (action.kind === 'primary') return 0;
+  if (isNavigation(action)) return 3;
+  return action.kind === 'danger' ? 2 : 1;
 }

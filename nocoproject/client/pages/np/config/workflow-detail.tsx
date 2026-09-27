@@ -9,7 +9,7 @@ import { NpDetailSkeleton, NpLoadError } from '@/components/np-states';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { RouteChildPage } from '@/components/route-child-page';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -73,7 +73,7 @@ export default function WorkflowDetailPage(): ReactElement {
             <span className='inline-flex items-center gap-3'>
               {workflow.data.name}
               {workflow.data.isDefault ? (
-                <Badge variant='secondary'>{t('np.workflows.default')}</Badge>
+                <NpTag tone='blue'>{t('np.workflows.default')}</NpTag>
               ) : null}
             </span>
           }

@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
@@ -77,7 +77,7 @@ export function BatchesList({
     <section className='space-y-3' aria-labelledby='np-intake-batches-heading'>
       <h2
         id='np-intake-batches-heading'
-        className='font-heading text-base font-semibold'
+        className='font-heading text-sm font-semibold'
       >
         {t('np.intake.recentTitle')}
       </h2>
@@ -100,9 +100,9 @@ export function BatchesList({
               key={batch.id}
               className='flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm'
             >
-              <Badge variant='secondary'>
+              <NpTag tone='blue' dot>
                 {t(`np.intake.status.${batch.status}`)}
-              </Badge>
+              </NpTag>
               <span>
                 {t(`np.intake.source.${batch.source}`)}
                 {projectName(batch) ? ` · ${projectName(batch)}` : ''}

@@ -3,7 +3,7 @@ import { HistoryIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 
 import { NpActorAvatar } from '@/components/np-actor-avatar';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { cn } from '@/lib/utils';
 
 import { useNpFormatters } from '../../format.js';
@@ -91,14 +91,12 @@ export function KnowledgeSidePanel({
                       v{version.version}
                     </span>
                     {version.version === doc.version ? (
-                      <Badge variant='secondary'>
-                        {t('np.knowledge.current')}
-                      </Badge>
+                      <NpTag tone='green'>{t('np.knowledge.current')}</NpTag>
                     ) : null}
                     {version.proposalId ? (
-                      <Badge variant='outline'>
+                      <NpTag tone='violet'>
                         {t('np.knowledge.fromProposal')}
-                      </Badge>
+                      </NpTag>
                     ) : null}
                     <time
                       className='ml-auto text-xs text-muted-foreground'

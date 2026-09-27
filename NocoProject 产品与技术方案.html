@@ -1134,6 +1134,16 @@ Agent
 <li>文件超过 800 行、函数超过 120 行视为需要拆分。在 lint 里配硬阈值。</li>
 <li>迁移不可变；每张表在模块内声明；不加跨模块外键，用应用层删除图。</li>
 </ul>
+<p><strong>前端样式规范</strong>（2026-09-27 记录，起因：迭代 3 验收时界面过密）。NocoBase 应用必须默认使用 <code>compact</code> 主题预设，且 compact 与 <code>default</code> 两套预设都要正常显示；不能通过改默认预设来&quot;修&quot;密度。compact 把全局 <code>--spacing</code> 设为 0.2rem（比 Tailwind 默认紧 20%），所有间距与高度随之缩放；我们的页面自己又挑了偏紧的值并大量使用最小号字，叠加后才显得拥挤。规则：</p>
+<ul>
+<li>页面级不覆盖任何预设 token（<code>--spacing</code>、字号、圆角、颜色）。</li>
+<li>尺寸只用组件的尺寸变体与 spacing 刻度（按钮 default / sm / icon-sm，侧栏项默认尺寸，卡片 <code>p-4</code> 起，表格行用 DataTable 默认），不手写 <code>h-6</code>、<code>py-0.5</code> 一类紧值。</li>
+<li>正文 <code>text-sm</code>；<code>text-xs</code> 只给附注、时间戳、徽标。</li>
+<li>点击区不低于 32px。</li>
+<li>以模板 <code>client/pages/reference/examples</code> 的密度为基准。</li>
+<li>截图验收在 compact 与 default 两套预设、深浅两个主题下都做。
+细则维护在应用仓库 <code>client/pages/np/README.md</code>；界面设计系统（布局、配色、字体、动效、组件词汇、决定交互）在 <code>docs/design/ui-design.md</code>。</li>
+</ul>
 <h3 id="s-6-2"><a class="anchor" href="#s-6-2">5.2 测试分层</a></h3><ul>
 <li>单元：简报组装、触发规则表、状态机转换、评论 @ 解析、失败分类。</li>
 <li>集成：认领协议（并发认领、租约过期、重试）跑在真实 PostgreSQL 上。</li>

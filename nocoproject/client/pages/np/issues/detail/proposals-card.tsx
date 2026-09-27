@@ -41,10 +41,16 @@ export function ProposalsCard({
   issueId,
   proposals,
   agents,
+  embedded = false,
 }: {
   readonly issueId: string;
   readonly proposals: readonly ExecutorProposal[];
   readonly agents: readonly AgentListItem[];
+  /**
+   * Inside a decision card (docs/design/ui-design.md §8): only the list, with per-proposal buttons; the card's own
+   * action row carries "accept all".
+   */
+  readonly embedded?: boolean;
 }): ReactElement | null {
   const { t } = useTranslation();
   const api = useApiClient();
@@ -97,6 +103,61 @@ export function ProposalsCard({
   const canInvoke = (agentId: string): boolean =>
     agents.find((agent) => agent.id === agentId)?.canInvoke !== false;
 
+  const list = (
+    <ul className='divide-y'>
+      {pending.map((proposal) => (
+        <li
+          key={proposal.id}
+          className='flex flex-wrap items-center gap-x-3 gap-y-2 py-2 text-sm first:pt-0 last:pb-0'
+        >
+          <div className='min-w-0 flex-1 space-y-0.5'>
+            <p className='truncate'>
+              <span className='font-mono text-xs text-muted-foreground'>
+                {proposal.issueIdentifier}
+              </span>{' '}
+              {proposal.issueTitle}
+            </p>
+            <p className='flex items-center gap-1.5 text-xs text-muted-foreground'>
+              <BotIcon className='size-3.5' aria-hidden='true' />
+              {t('np.proposals.line', {
+                agent: proposal.proposedAgentName,
+                by: proposal.proposedByAgentName,
+              })}
+            </p>
+          </div>
+          <div className='flex shrink-0 gap-1.5'>
+            <Button
+              variant='outline'
+              size='sm'
+              disabled={decide.isPending}
+              aria-label={t('np.proposals.rejectOne', {
+                identifier: proposal.issueIdentifier,
+              })}
+              onClick={() => decide.mutate({ kind: 'reject', proposal })}
+            >
+              <XIcon data-icon='inline-start' />
+              {t('np.proposals.reject')}
+            </Button>
+            <Button
+              size='sm'
+              disabled={
+                decide.isPending || !canInvoke(proposal.proposedAgentId)
+              }
+              aria-label={t('np.proposals.acceptOne', {
+                identifier: proposal.issueIdentifier,
+              })}
+              onClick={() => decide.mutate({ kind: 'accept', proposal })}
+            >
+              <CheckIcon data-icon='inline-start' />
+              {t('np.proposals.accept')}
+            </Button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+  if (embedded) return list;
+
   return (
     <Card size='sm' role='region' aria-labelledby='np-proposals-title'>
       <CardHeader>
@@ -117,59 +178,7 @@ export function ProposalsCard({
           </CardAction>
         ) : null}
       </CardHeader>
-      <CardContent>
-        <ul className='divide-y'>
-          {pending.map((proposal) => (
-            <li
-              key={proposal.id}
-              className='flex flex-wrap items-center gap-x-3 gap-y-2 py-2 text-sm first:pt-0 last:pb-0'
-            >
-              <div className='min-w-0 flex-1 space-y-0.5'>
-                <p className='truncate'>
-                  <span className='font-mono text-xs text-muted-foreground'>
-                    {proposal.issueIdentifier}
-                  </span>{' '}
-                  {proposal.issueTitle}
-                </p>
-                <p className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-                  <BotIcon className='size-3.5' aria-hidden='true' />
-                  {t('np.proposals.line', {
-                    agent: proposal.proposedAgentName,
-                    by: proposal.proposedByAgentName,
-                  })}
-                </p>
-              </div>
-              <div className='flex shrink-0 gap-1.5'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  disabled={decide.isPending}
-                  aria-label={t('np.proposals.rejectOne', {
-                    identifier: proposal.issueIdentifier,
-                  })}
-                  onClick={() => decide.mutate({ kind: 'reject', proposal })}
-                >
-                  <XIcon data-icon='inline-start' />
-                  {t('np.proposals.reject')}
-                </Button>
-                <Button
-                  size='sm'
-                  disabled={
-                    decide.isPending || !canInvoke(proposal.proposedAgentId)
-                  }
-                  aria-label={t('np.proposals.acceptOne', {
-                    identifier: proposal.issueIdentifier,
-                  })}
-                  onClick={() => decide.mutate({ kind: 'accept', proposal })}
-                >
-                  <CheckIcon data-icon='inline-start' />
-                  {t('np.proposals.accept')}
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
+      <CardContent>{list}</CardContent>
     </Card>
   );
 }

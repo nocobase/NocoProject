@@ -9,8 +9,11 @@ import {
   type NpRichTextHandle,
 } from '@/components/np-rich-text-editor';
 import { Button } from '@/components/ui/button';
+import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/toast';
+import { cn } from '@/lib/utils';
 
 import { fetchMembers } from '../../api-collab.js';
 import { createComment } from '../../api.js';
@@ -55,6 +58,7 @@ export function CommentComposer({
   const api = useApiClient();
   const queryClient = useQueryClient();
   const [content, setContent] = useState('');
+  const [mode, setMode] = useState<'comment' | 'note'>('comment');
   const [pending, setPending] = useState(false);
   const members = useQuery({
     queryKey: npKeys.members,
@@ -62,14 +66,23 @@ export function CommentComposer({
   });
   const candidates = useMentionCandidates(agents, members.data);
 
-  const preview = computeTriggerPreview({ content, replyTo, executor });
+  // "备注" posts the comment as a `/note`, which wakes nobody (docs/design/ui-design.md §8.2).
+  const outgoing =
+    mode === 'note' && content.trim() && !/^\s*\/note\b/u.test(content)
+      ? `/note ${content}`
+      : content;
+  const preview = computeTriggerPreview({
+    content: outgoing,
+    replyTo,
+    executor,
+  });
   const names = preview.agentIds
     .map((id) => agentName(id) ?? t('np.common.unknownAgent'))
     .join(t('np.comment.nameSeparator'));
 
   async function submit(): Promise<void> {
-    const text = content.trim();
-    if (!text || pending) return;
+    const text = outgoing.trim();
+    if (!content.trim() || pending) return;
     setPending(true);
     try {
       await createComment(api, issueId, {
@@ -95,25 +108,41 @@ export function CommentComposer({
     }
   }
 
+  const waking = preview.agentIds.length > 0;
   return (
     <div className='space-y-2'>
-      {replyTo ? (
-        <div className='flex items-center gap-2 text-xs text-muted-foreground'>
-          <span className='truncate'>
-            {t('np.comment.replyingTo', {
-              name: replyToName ?? t('np.common.unknown'),
-            })}
-          </span>
-          <Button
-            variant='ghost'
-            size='icon-xs'
-            aria-label={t('np.comment.cancelReply')}
-            onClick={onCancelReply}
-          >
-            <XIcon />
-          </Button>
-        </div>
-      ) : null}
+      <div className='flex items-center gap-2'>
+        <Tabs
+          value={mode}
+          onValueChange={(value) =>
+            setMode(value === 'note' ? 'note' : 'comment')
+          }
+        >
+          <TabsList variant='line' className='h-7'>
+            <TabsTrigger value='comment'>
+              {t('np.composer.comment')}
+            </TabsTrigger>
+            <TabsTrigger value='note'>{t('np.composer.note')}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {replyTo ? (
+          <div className='flex min-w-0 items-center gap-1 text-xs text-muted-foreground'>
+            <span className='truncate'>
+              {t('np.comment.replyingTo', {
+                name: replyToName ?? t('np.common.unknown'),
+              })}
+            </span>
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              aria-label={t('np.comment.cancelReply')}
+              onClick={onCancelReply}
+            >
+              <XIcon />
+            </Button>
+          </div>
+        ) : null}
+      </div>
       <NpRichTextEditor
         ref={editorRef}
         value={content}
@@ -122,28 +151,43 @@ export function CommentComposer({
         onSubmit={() => void submit()}
         disabled={pending}
         toolbar={false}
-        placeholder={placeholder ?? t('np.comment.placeholder')}
+        placeholder={
+          mode === 'note'
+            ? t('np.composer.notePlaceholder')
+            : (placeholder ?? t('np.comment.placeholder'))
+        }
         aria-label={t('np.comment.label')}
         contentClassName='max-h-64 overflow-y-auto'
       />
       {notice ?? null}
-      <div className='flex flex-wrap items-center gap-2'>
-        <p
-          className='flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground'
-          aria-live='polite'
-          data-testid='np-trigger-preview'
-        >
-          {preview.agentIds.length > 0 ? (
-            <ZapIcon className='size-3.5 shrink-0' aria-hidden='true' />
-          ) : (
-            <BotIcon className='size-3.5 shrink-0' aria-hidden='true' />
-          )}
-          <span className='truncate'>
-            {t(`np.comment.preview.${preview.reason}`, { names })}
-          </span>
-        </p>
+      <p
+        className={cn(
+          'flex min-w-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs',
+          waking
+            ? 'bg-primary/8 text-primary'
+            : 'bg-muted/60 text-muted-foreground',
+        )}
+        aria-live='polite'
+        data-testid='np-trigger-preview'
+      >
+        {waking ? (
+          <ZapIcon className='size-3.5 shrink-0' aria-hidden='true' />
+        ) : (
+          <BotIcon className='size-3.5 shrink-0' aria-hidden='true' />
+        )}
+        <span className='truncate'>
+          {t(`np.comment.preview.${preview.reason}`, { names })}
+        </span>
+      </p>
+      <div className='flex items-center gap-2'>
+        <span className='mr-auto hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex'>
+          <Kbd>⌘</Kbd>
+          <Kbd>Enter</Kbd>
+          {t('np.composer.quickSend')}
+        </span>
         <Button
           size='sm'
+          className='ml-auto'
           disabled={pending || content.trim() === ''}
           onClick={() => void submit()}
         >
@@ -152,7 +196,11 @@ export function CommentComposer({
           ) : (
             <SendIcon data-icon='inline-start' />
           )}
-          {replyTo ? t('np.comment.sendReply') : t('np.comment.send')}
+          {replyTo
+            ? t('np.comment.sendReply')
+            : mode === 'note'
+              ? t('np.composer.sendNote')
+              : t('np.comment.send')}
         </Button>
       </div>
     </div>

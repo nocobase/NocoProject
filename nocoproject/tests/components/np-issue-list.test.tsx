@@ -56,7 +56,7 @@ const ISSUES: IssueListItem[] = [
   },
 ];
 
-async function renderPage(entry = '/issues') {
+async function renderPage(entry = '/issues?view=list') {
   const runtime = new I18nRuntime({
     defaultLocale: 'en-US',
     locales: ['en-US', 'zh-CN'],
@@ -67,7 +67,7 @@ async function renderPage(entry = '/issues') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  render(
+  return render(
     <I18nProvider runtime={runtime}>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[entry]}>
@@ -143,7 +143,7 @@ describe('issue list', () => {
     api.request.mockImplementation((options: { path: string }) =>
       Promise.resolve({ data: options.path === 'np/issues' ? ISSUES : [] }),
     );
-    await renderPage('/issues?q=claim&status=in_progress');
+    await renderPage('/issues?view=list&q=claim&status=in_progress');
 
     await screen.findByText('Wire up the claim endpoint');
     expect(screen.getByRole('textbox', { name: 'Search issues' })).toHaveValue(
@@ -161,6 +161,32 @@ describe('issue list', () => {
     // A filtered result offers to clear the filters; the table has no row selection to count.
     expect(screen.getByRole('button', { name: /Clear filters/ })).toBeVisible();
     expect(screen.queryByText(/row\(s\) selected/)).toBeNull();
+  });
+
+  it('opens on the board by default and remembers the list once chosen', async () => {
+    const user = userEvent.setup();
+    localStorage.clear();
+    api.request.mockImplementation(
+      (options: { path: string; query?: Record<string, unknown> }) =>
+        Promise.resolve(
+          options.query?.view === 'board'
+            ? { data: { groups: [{ statusKey: 'todo', issues: [ISSUES[1]] }] } }
+            : { data: options.path === 'np/issues' ? ISSUES : [] },
+        ),
+    );
+    const view = await renderPage('/issues');
+    expect(
+      await screen.findByRole('region', { name: 'Issue board' }),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'List' }));
+    expect(await screen.findByText('Wire up the claim endpoint')).toBeVisible();
+    expect(localStorage.getItem('nocoproject:issues-view:issues')).toBe('list');
+    view.unmount();
+
+    // Back on the page without `?view=`: the list is remembered.
+    await renderPage('/issues');
+    expect(await screen.findByRole('table')).toBeVisible();
+    localStorage.clear();
   });
 
   it('switches to the board view', async () => {

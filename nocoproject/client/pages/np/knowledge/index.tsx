@@ -12,7 +12,7 @@ import { NpShortcuts } from '@/components/np-shortcuts';
 import { NpEmpty, NpListSkeleton, NpLoadError } from '@/components/np-states';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import {
   InputGroup,
@@ -103,9 +103,9 @@ export default function KnowledgePage(): ReactElement {
               {row.original.title}
             </Link>
             {row.original.archivedAt ? (
-              <Badge variant='outline' className='ml-2'>
+              <NpTag tone='slate' className='ml-2'>
                 {t('np.knowledge.archived')}
-              </Badge>
+              </NpTag>
             ) : null}
             {row.original.summary ? (
               <p className='line-clamp-1 text-xs text-muted-foreground'>
@@ -239,7 +239,7 @@ export default function KnowledgePage(): ReactElement {
         <section className='space-y-3' aria-labelledby='np-knowledge-pending'>
           <h2
             id='np-knowledge-pending'
-            className='font-heading text-base font-semibold'
+            className='font-heading text-sm font-semibold'
           >
             {t('np.knowledge.proposals.title', { count: pending.length })}
           </h2>

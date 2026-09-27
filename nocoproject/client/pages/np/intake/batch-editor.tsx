@@ -13,7 +13,7 @@ import { Link } from 'react-router';
 
 import { NpExecutorSelect } from '@/components/np-executor-select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
@@ -182,7 +182,7 @@ export function BatchEditor({
   if (created) {
     return (
       <section className='space-y-3 rounded-lg border bg-card p-4 text-card-foreground'>
-        <h2 className='flex items-center gap-2 font-heading text-base font-semibold'>
+        <h2 className='flex items-center gap-2 font-heading text-sm font-semibold'>
           <CheckIcon className='size-4' aria-hidden='true' />
           {t('np.intake.created', { count: created.length })}
         </h2>
@@ -213,14 +213,14 @@ export function BatchEditor({
       <div className='flex flex-wrap items-center gap-2'>
         <h2
           id='np-intake-batch-heading'
-          className='font-heading text-base font-semibold'
+          className='font-heading text-sm font-semibold'
         >
           {t('np.intake.draftsTitle', { count: rows.length })}
         </h2>
-        <Badge variant='outline'>{t(`np.intake.parser.${batch.parser}`)}</Badge>
-        <Badge variant='secondary'>
+        <NpTag tone='grey'>{t(`np.intake.parser.${batch.parser}`)}</NpTag>
+        <NpTag tone='blue' dot>
           {t(`np.intake.status.${batch.status}`)}
-        </Badge>
+        </NpTag>
         {projectName ? (
           <span className='text-sm text-muted-foreground'>{projectName}</span>
         ) : null}

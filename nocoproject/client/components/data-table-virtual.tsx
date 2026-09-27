@@ -94,12 +94,12 @@ export function DataTableVirtual<TData>({
           components={{ Table: VirtualTable, TableRow: VirtualRow }}
           fixedHeaderContent={() =>
             table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className='border-b bg-background'>
+              <tr key={headerGroup.id} className='border-b bg-muted'>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
                     colSpan={header.colSpan}
-                    className='h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground'
+                    className='h-10 px-3 text-left align-middle font-medium whitespace-nowrap text-muted-foreground'
                   >
                     {header.isPlaceholder
                       ? null
@@ -114,7 +114,10 @@ export function DataTableVirtual<TData>({
           }
           itemContent={(_, row) =>
             row.getVisibleCells().map((cell) => (
-              <td key={cell.id} className='p-2 align-middle whitespace-nowrap'>
+              <td
+                key={cell.id}
+                className='p-2 px-3 align-middle whitespace-nowrap'
+              >
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </td>
             ))

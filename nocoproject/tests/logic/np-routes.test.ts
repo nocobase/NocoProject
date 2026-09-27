@@ -146,7 +146,13 @@ describe('browser API /np/*', () => {
     });
     expect(doubles.inbox.list).toHaveBeenCalledWith(
       { type: 'user', id: 'u1' },
-      { kind: 'decision', archived: null, resolved: null, cursor: null },
+      {
+        kind: 'decision',
+        archived: null,
+        resolved: null,
+        issueId: null,
+        cursor: null,
+      },
     );
     const count = await router.request('/np/inbox/unread-count', {
       headers: signedIn,

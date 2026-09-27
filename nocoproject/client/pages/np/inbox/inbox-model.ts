@@ -1,10 +1,44 @@
 import type { InboxAction } from '../api-inbox.js';
 import type { InboxItem, InboxKind, InboxUnread } from '../types.js';
 
-export const INBOX_TABS: readonly InboxKind[] = ['decision', 'info'];
-
 export function readInboxTab(value: string | null): InboxKind {
   return value === 'info' ? 'info' : 'decision';
+}
+
+/** The inbox list filter (docs/design/ui-design.md §8.1): both groups by default, or one of them. */
+export type InboxFilter = 'all' | InboxKind;
+
+export const INBOX_FILTERS: readonly InboxFilter[] = [
+  'all',
+  'decision',
+  'info',
+];
+
+export function readInboxFilter(value: string | null): InboxFilter {
+  return value === 'decision' || value === 'info' ? value : 'all';
+}
+
+/**
+ * The decision group in reading order: what still waits first, settled decisions after (they stay listed, dimmed,
+ * until archived); the server's newest-first order is kept inside each part.
+ */
+export function orderDecisions(items: readonly InboxItem[]): InboxItem[] {
+  return [
+    ...items.filter((item) => item.resolvedAt === null),
+    ...items.filter((item) => item.resolvedAt !== null),
+  ];
+}
+
+/** The id `step` places away from `currentId` in `ids` (j / k), clamped to the ends; the first id when none. */
+export function stepSelection(
+  ids: readonly string[],
+  currentId: string | null,
+  step: number,
+): string | null {
+  if (ids.length === 0) return null;
+  const index = currentId ? ids.indexOf(currentId) : -1;
+  if (index === -1) return ids[0];
+  return ids[Math.min(ids.length - 1, Math.max(0, index + step))];
 }
 
 /** Unread counts per tab: the dedicated counter when it has loaded, else what the list response carried. */

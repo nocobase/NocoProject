@@ -3,7 +3,11 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 
-import { NpExecutor, NpStatusBadge } from '@/components/np-badges';
+import {
+  NpExecutor,
+  NpPriorityLabel,
+  NpStatusBadge,
+} from '@/components/np-badges';
 import { NpExecutorSelect } from '@/components/np-executor-select';
 import { NpLabelColorPicker } from '@/components/np-label-color-picker';
 import { NpStartDialog } from '@/components/np-start-dialog';
@@ -15,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/ui/toast';
@@ -54,6 +57,9 @@ import { SessionPanel } from './session-panel.js';
 import { Subscribers } from './subscribers.js';
 import { useConfirmedUpdate } from './use-confirmed-update.js';
 import { useIssueUpdate } from './use-issue-update.js';
+
+const PANEL_CARD =
+  'space-y-3 rounded-lg border bg-card p-4 text-card-foreground';
 
 /**
  * The right-hand panel: editable properties, dates, labels, subscribers, timestamps and the execution log.
@@ -133,8 +139,10 @@ export function PropertiesPanel({
   const busy = update.isPending;
 
   return (
-    <div className='space-y-6 p-4 md:p-6'>
-      <section className='space-y-3' aria-labelledby='np-properties-heading'>
+    // The side column is a stack of small cards (docs/design/ui-design.md §8.2): properties, the session, runs,
+    // participants, details and usage.
+    <div className='space-y-3 p-3 md:p-4'>
+      <section className={PANEL_CARD} aria-labelledby='np-properties-heading'>
         <h2
           id='np-properties-heading'
           className='flex items-center gap-2 text-sm font-semibold'
@@ -196,7 +204,9 @@ export function PropertiesPanel({
             }}
           >
             <SelectTrigger id='np-prop-priority' size='sm' className='w-full'>
-              <SelectValue />
+              <SelectValue>
+                {() => <NpPriorityLabel priority={issue.priority} />}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {priorityItems.map((item) => (
@@ -296,6 +306,7 @@ export function PropertiesPanel({
             }))}
             value={projectId}
             noneLabel={t('np.issueForm.noProject')}
+            noneAsDash
             disabled={busy || !projects.data}
             onChange={(value) => update.mutate({ projectId: value })}
           />
@@ -354,15 +365,16 @@ export function PropertiesPanel({
       </section>
 
       {sessionMode ? (
-        <>
-          <Separator />
+        <div className={PANEL_CARD}>
           <SessionPanel detail={detail} agents={agents} />
-        </>
+        </div>
       ) : null}
 
-      <Separator />
+      <div className={PANEL_CARD}>
+        <ExecutionLog runs={detail.runs} agents={agents} issueId={issue.id} />
+      </div>
 
-      <section className='space-y-3' aria-labelledby='np-subscribers-heading'>
+      <section className={PANEL_CARD} aria-labelledby='np-subscribers-heading'>
         <h2 id='np-subscribers-heading' className='text-sm font-semibold'>
           {t('np.subscribers.title')}
         </h2>
@@ -373,9 +385,7 @@ export function PropertiesPanel({
         />
       </section>
 
-      <Separator />
-
-      <section className='space-y-3' aria-labelledby='np-details-heading'>
+      <section className={PANEL_CARD} aria-labelledby='np-details-heading'>
         <h2 id='np-details-heading' className='text-sm font-semibold'>
           {t('np.properties.details')}
         </h2>
@@ -391,13 +401,9 @@ export function PropertiesPanel({
         </PropertyRow>
       </section>
 
-      <Separator />
-
-      <IssueUsage issue={issue} usage={detail.usage} />
-
-      <Separator />
-
-      <ExecutionLog runs={detail.runs} agents={agents} issueId={issue.id} />
+      <div className={PANEL_CARD}>
+        <IssueUsage issue={issue} usage={detail.usage} />
+      </div>
 
       <NpStartDialog
         request={confirmed.startRequest}

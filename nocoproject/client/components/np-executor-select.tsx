@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { cn } from '@/lib/utils';
 import { isRuntimeOnline } from '@/pages/np/constants';
 import type { AgentListItem, ExecutorRef, Member } from '@/pages/np/types';
@@ -100,7 +101,27 @@ export function NpExecutorSelect({
         aria-label={ariaLabel}
         className={cn('w-full', className)}
       >
-        <SelectValue />
+        {/* The trigger shows who executes as the shared avatar and name, and a muted dash for nobody (ui-design.md §9). */}
+        <SelectValue>
+          {(current: string) => {
+            const item = items.find((entry) => entry.value === current);
+            if (!item || current === 'none') {
+              return (
+                <span className='text-muted-foreground'>
+                  —<span className='sr-only'>{t('np.executor.none')}</span>
+                </span>
+              );
+            }
+            return (
+              <NpActorAvatar
+                type={current.startsWith('agent:') ? 'agent' : 'user'}
+                name={item.label}
+                size='xs'
+                showName
+              />
+            );
+          }}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {items.map((item) => {

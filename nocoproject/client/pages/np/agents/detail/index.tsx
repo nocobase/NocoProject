@@ -18,7 +18,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 
 import { fetchMembers } from '../../api-collab.js';
@@ -122,7 +122,7 @@ function AgentDetailView({
           <span className='inline-flex flex-wrap items-center gap-3'>
             <NpActorAvatar type='agent' name={agent.name} size='default' />
             {agent.name}
-            <Badge variant='outline'>{agent.provider}</Badge>
+            <NpTag tone='grey'>{agent.provider}</NpTag>
             <NpOnlineState online={isRuntimeOnline(agent)} />
           </span>
         }

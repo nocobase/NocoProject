@@ -1,5 +1,6 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 // Outside an `I18nProvider` the runtime returns default values verbatim; interpolate them the way the application does.
@@ -58,6 +59,52 @@ describe('DataTable', () => {
 
     expect(screen.getByText('user11@example.com')).toBeInTheDocument();
     expect(screen.queryByText(/Page 1 of/)).not.toBeInTheDocument();
+  });
+
+  it('sorts on a header click: ascending, descending, then back to unsorted', async () => {
+    const user = userEvent.setup();
+    const data = [
+      { id: 'b', email: 'b@example.com', amount: 1 },
+      { id: 'a', email: 'a@example.com', amount: 2 },
+      { id: 'c', email: 'c@example.com', amount: 3 },
+    ];
+    render(<DataTable columns={columns} data={data} pagination={false} />);
+    const header = screen.getByRole('button', { name: 'Email' });
+    const emails = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => row.querySelector('td')?.textContent);
+
+    expect(header).toHaveAttribute('data-sort', 'none');
+    expect(emails()).toEqual([
+      'b@example.com',
+      'a@example.com',
+      'c@example.com',
+    ]);
+    await user.click(header);
+    expect(header).toHaveAttribute('data-sort', 'asc');
+    expect(emails()).toEqual([
+      'a@example.com',
+      'b@example.com',
+      'c@example.com',
+    ]);
+    await user.click(header);
+    expect(header).toHaveAttribute('data-sort', 'desc');
+    expect(emails()).toEqual([
+      'c@example.com',
+      'b@example.com',
+      'a@example.com',
+    ]);
+    await user.click(header);
+    expect(header).toHaveAttribute('data-sort', 'none');
+    expect(emails()).toEqual([
+      'b@example.com',
+      'a@example.com',
+      'c@example.com',
+    ]);
+    // No menu opens from the header.
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('shows the empty message when there is no data', () => {

@@ -64,7 +64,7 @@ export function AgentSkillsSection({
       <div className='space-y-1'>
         <h2
           id='np-agent-skills-heading'
-          className='font-heading text-base font-semibold'
+          className='font-heading text-sm font-semibold'
         >
           {t('np.agentSkills.title')}
         </h2>

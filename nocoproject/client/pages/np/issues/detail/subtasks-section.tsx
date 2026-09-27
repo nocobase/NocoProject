@@ -6,7 +6,7 @@ import type { ReactElement } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 import { NpExecutor, NpStatusBadge } from '@/components/np-badges';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
@@ -38,10 +38,9 @@ function SubtaskRow({
         <span className='truncate'>{subtask.title}</span>
       </Link>
       {subtask.blockedCount > 0 ? (
-        <Badge variant='outline' className='text-muted-foreground'>
-          <HourglassIcon data-icon='inline-start' />
+        <NpTag tone='amber' icon={<HourglassIcon aria-hidden='true' />}>
           {t('np.subtasks.waiting', { count: subtask.blockedCount })}
-        </Badge>
+        </NpTag>
       ) : null}
       <NpExecutor
         type={subtask.executorType ?? (subtask.executorName ? 'agent' : 'none')}
@@ -85,23 +84,43 @@ export function SubtasksSection({
   const done = groups.reduce((total, group) => total + group.done, 0);
   const staged = groups.some((group) => group.stage !== null);
 
+  const empty = subtasks.length === 0;
+  // Empty, the section is one compact row (docs/design/ui-design.md §8.2): a muted heading, "none" and the actions.
   return (
-    <section className='space-y-3' aria-labelledby='np-subtasks-heading'>
-      <div className='flex items-center justify-between gap-2'>
+    <section
+      className={
+        empty
+          ? 'flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-4 py-2'
+          : 'space-y-3'
+      }
+      aria-labelledby='np-subtasks-heading'
+    >
+      <div
+        className={
+          empty ? 'contents' : 'flex items-center justify-between gap-2'
+        }
+      >
         <h2
           id='np-subtasks-heading'
-          className='font-heading text-base font-semibold'
+          className={
+            empty
+              ? 'font-heading text-sm font-medium text-muted-foreground'
+              : 'font-heading text-sm font-semibold'
+          }
         >
           {t('np.subtasks.title')}
+          {empty ? (
+            <span className='ml-2 font-normal'>· {t('np.issueAdd.none')}</span>
+          ) : null}
           {subtasks.length > 0 ? (
-            <span className='ml-2 text-sm font-normal text-muted-foreground tabular-nums'>
+            <span className='ml-2 text-xs font-normal text-muted-foreground tabular-nums'>
               {done}/{subtasks.length}
             </span>
           ) : null}
         </h2>
-        <div className='flex gap-2'>
+        <div className='flex gap-1'>
           <Button
-            variant='outline'
+            variant='ghost'
             size='sm'
             disabled={breakdown.isPending}
             onClick={() => breakdown.mutate()}
@@ -114,7 +133,7 @@ export function SubtasksSection({
             {t('np.intake.aiBreakdown')}
           </Button>
           <Button
-            variant='outline'
+            variant='ghost'
             size='sm'
             nativeButton={false}
             render={<Link to='new-subtask' />}
@@ -124,11 +143,7 @@ export function SubtasksSection({
           </Button>
         </div>
       </div>
-      {subtasks.length === 0 ? (
-        <p className='text-sm text-muted-foreground'>
-          {t('np.subtasks.empty')}
-        </p>
-      ) : (
+      {empty ? null : (
         <div className='space-y-3'>
           {groups.map((group) => (
             <div

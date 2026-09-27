@@ -6,7 +6,7 @@ import type { ReactElement } from 'react';
 import { Link, Outlet } from 'react-router';
 
 import { NpEmpty, NpListSkeleton, NpLoadError } from '@/components/np-states';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import {
   Card,
   CardAction,
@@ -97,7 +97,7 @@ function WorkflowCard({
             {workflow.name}
           </Link>
           {workflow.isDefault ? (
-            <Badge variant='secondary'>{t('np.workflows.default')}</Badge>
+            <NpTag tone='blue'>{t('np.workflows.default')}</NpTag>
           ) : null}
         </CardTitle>
         <CardDescription>

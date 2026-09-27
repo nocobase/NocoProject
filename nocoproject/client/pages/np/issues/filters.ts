@@ -22,14 +22,48 @@ export function readIssueView(params: URLSearchParams): IssueView {
 }
 
 /**
+ * The view to show (docs/design/ui-design.md §8.4): `?view=` when the URL names one, else the person's last choice
+ * on this page, else the board.
+ */
+export function resolveIssueView(
+  params: URLSearchParams,
+  stored: IssueView | null,
+): IssueView {
+  const value = params.get('view');
+  if (value === 'board' || value === 'list') return value;
+  return stored ?? 'board';
+}
+
+const VIEW_STORAGE_PREFIX = 'nocoproject:issues-view:';
+
+/** The last view chosen on `page` (`issues`, `my-issues`), or null when none is saved or storage is unavailable. */
+export function readStoredIssueView(page: string): IssueView | null {
+  try {
+    const value = window.localStorage.getItem(VIEW_STORAGE_PREFIX + page);
+    return value === 'board' || value === 'list' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remembers the view for `page`; a private window or blocked storage just forgets it. */
+export function storeIssueView(page: string, view: IssueView): void {
+  try {
+    window.localStorage.setItem(VIEW_STORAGE_PREFIX + page, view);
+  } catch {
+    // The choice is a convenience; the URL still carries it for this visit.
+  }
+}
+
+/**
  * Filters from the query string. The search term is trimmed for the request; an unknown status is dropped, and the
  * status filter does not apply to the board, whose columns are the statuses.
  */
 export function readIssueFilters(
   params: URLSearchParams,
   knownStatusKeys: ReadonlySet<string>,
+  view: IssueView = readIssueView(params),
 ): IssueFilters {
-  const view = readIssueView(params);
   const value = (key: IssueFilterKey): string | undefined =>
     params.get(ISSUE_FILTER_PARAMS[key])?.trim() || undefined;
   const status = value('statusKey');
@@ -62,9 +96,9 @@ export function withIssueView(
   params: URLSearchParams,
   view: IssueView,
 ): URLSearchParams {
+  // Always explicit: without `view` the page falls back to the remembered choice, which may be the other one.
   const next = new URLSearchParams(params);
-  if (view === 'board') next.set('view', 'board');
-  else next.delete('view');
+  next.set('view', view);
   return next;
 }
 

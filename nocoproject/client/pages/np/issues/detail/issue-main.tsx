@@ -1,21 +1,22 @@
 import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery } from '@tanstack/react-query';
-import { CornerLeftUpIcon } from 'lucide-react';
+import { CornerLeftUpIcon, PlusIcon } from 'lucide-react';
 import { type ReactElement, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NpStatusBadge } from '@/components/np-badges';
+import { NpLiveRun } from '@/components/np-live';
 import type { NpRichTextHandle } from '@/components/np-rich-text-editor';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 
 import { fetchMembers } from '../../api-collab.js';
-import { npKeys } from '../../constants.js';
+import { ACTIVE_RUN_STATUSES, npKeys } from '../../constants.js';
 import type {
   AgentListItem,
+  InboxItem,
   IssueComment,
   IssueDetail,
   Me,
@@ -23,16 +24,44 @@ import type {
 import { ActivityTimeline } from './activity-timeline.js';
 import { ApprovalsCard } from './approvals-card.js';
 import { CommentComposer } from './comment-composer.js';
+import { DecisionSection } from './decision-section.js';
 import { DependenciesSection } from './dependencies-section.js';
 import { IssueDescription, IssueTitle } from './issue-content.js';
 import { ProposalsCard } from './proposals-card.js';
 import { PullRequestsSection } from './pull-requests-section.js';
 import { SubtasksSection } from './subtasks-section.js';
 import { buildTimeline, mergeActivities } from './timeline.js';
+import { useIssueDecisions } from './use-issue-decisions.js';
 import { useOlderActivities } from './use-older-activities.js';
 
 /**
- * The main column: parent link, heading, description, pending approvals, executor proposals, then pull requests,
+ * What the decision section already shows, so the cards below do not repeat it: the approvals it covers, and whether
+ * it holds the executor proposals.
+ */
+function coveredByDecisions(decisions: readonly InboxItem[]): {
+  readonly approvalIds: ReadonlySet<string>;
+  readonly proposals: boolean;
+} {
+  const approvalIds = new Set<string>();
+  let proposals = false;
+  for (const item of decisions) {
+    if (item.resolvedAt !== null) continue;
+    if (item.type === 'approval_pending') {
+      const payload = item.payload ?? {};
+      for (const key of ['requestId', 'approvalId', 'approvalRequestId']) {
+        const value = payload[key];
+        if (typeof value === 'string' && value) approvalIds.add(value);
+      }
+    }
+    if (item.type === 'proposal_pending') proposals = true;
+  }
+  return { approvalIds, proposals };
+}
+
+/**
+ * The main column (docs/design/ui-design.md §8.2): parent link, title, the meta line (identifier, status, project, the
+ * live run), "等你决定", description, pending approvals and executor proposals not already in a decision, then pull
+ * requests,
  * sub-issues and dependencies as cards, the activity timeline (older activities on demand, virtualized when long,
  * iteration 3 §D / §H 8) and the comment composer pinned under it (⌘Enter sends).
  */
@@ -79,11 +108,26 @@ export function IssueMain({
       (replyTo.authorType === 'agent' ? agentName(replyTo.authorId) : null))
     : null;
 
+  const [revealed, setRevealed] = useState<ReadonlySet<'prs' | 'dependencies'>>(
+    () => new Set(),
+  );
+  const reveal = (section: 'prs' | 'dependencies') =>
+    setRevealed((current) => new Set(current).add(section));
+  const showPrs = detail.pullRequests.length > 0 || revealed.has('prs');
+  const showDependencies =
+    detail.blockedBy.length > 0 ||
+    detail.blocks.length > 0 ||
+    revealed.has('dependencies');
+  const decisions = useIssueDecisions(issue.id);
+  const covered = coveredByDecisions(decisions);
+  const live = detail.runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status));
+  const project = detail.project;
+
   return (
     <>
-      <div className='min-h-0 flex-1 overflow-y-auto'>
-        <div className='w-full space-y-6 p-6 md:p-8'>
-          <div className='space-y-3'>
+      <div className='flex-1'>
+        <div className='w-full space-y-6 px-6 py-6 md:px-8'>
+          <div className='space-y-2'>
             <Breadcrumbs />
             {detail.parent ? (
               <Link
@@ -102,54 +146,125 @@ export function IssueMain({
                 <span className='truncate'>{detail.parent.title}</span>
               </Link>
             ) : null}
-            <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+            <IssueTitle issue={issue} />
+            <div className='flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground'>
               <span className='font-mono text-xs'>{issue.identifier}</span>
               <NpStatusBadge
                 statusKey={issue.statusKey}
                 catalog={detail.statusCatalog}
               />
+              {project ? (
+                <Link
+                  to={`/projects/${encodeURIComponent(project.id)}`}
+                  className='truncate hover:text-foreground hover:underline'
+                >
+                  {project.name}
+                </Link>
+              ) : null}
+              {live ? (
+                <NpLiveRun
+                  className='sm:ml-auto'
+                  agentName={
+                    live.agentName ??
+                    agentName(live.agentId) ??
+                    t('np.common.unknownAgent')
+                  }
+                  status={
+                    live.status as
+                      'queued' | 'dispatched' | 'running' | 'deferred'
+                  }
+                  since={live.startedAt ?? live.createdAt}
+                  to={`runs/${encodeURIComponent(live.id)}`}
+                />
+              ) : null}
             </div>
-            <IssueTitle issue={issue} />
           </div>
+          <DecisionSection
+            detail={detail}
+            agents={agents}
+            decisions={decisions}
+          />
           <IssueDescription issue={issue} agents={agents} />
           <ApprovalsCard
             issueId={issue.id}
-            approvals={detail.approvals}
+            approvals={detail.approvals.filter(
+              (approval) => !covered.approvalIds.has(approval.id),
+            )}
             catalog={detail.statusCatalog}
             meUserId={me?.userId}
           />
-          <ProposalsCard
-            issueId={issue.id}
-            proposals={detail.proposals}
-            agents={agents}
-          />
-          <Card>
-            <CardContent>
+          {covered.proposals ? null : (
+            <ProposalsCard
+              issueId={issue.id}
+              proposals={detail.proposals}
+              agents={agents}
+            />
+          )}
+          {/* Optional blocks take no room while empty (docs/design/ui-design.md §8.2): sub-issues fold into one
+              row, pull requests and blockers appear from the "添加" chips or once they have content. */}
+          {showPrs ? (
+            <div className='rounded-lg border bg-card p-4 text-card-foreground'>
               <PullRequestsSection
                 issueId={issue.id}
                 pullRequests={detail.pullRequests}
+                initialLinking={
+                  revealed.has('prs') && detail.pullRequests.length === 0
+                }
               />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent>
+            </div>
+          ) : null}
+          {detail.subtasks.length > 0 ? (
+            <div className='rounded-lg border bg-card p-4 text-card-foreground'>
               <SubtasksSection
                 issueId={issue.id}
                 subtasks={detail.subtasks}
                 catalog={detail.statusCatalog}
               />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent>
+            </div>
+          ) : (
+            <SubtasksSection
+              issueId={issue.id}
+              subtasks={detail.subtasks}
+              catalog={detail.statusCatalog}
+            />
+          )}
+          {showDependencies ? (
+            <div className='rounded-lg border bg-card p-4 text-card-foreground'>
               <DependenciesSection detail={detail} />
-            </CardContent>
-          </Card>
+            </div>
+          ) : null}
+          {!showPrs || !showDependencies ? (
+            <div className='flex flex-wrap items-center gap-2 text-sm text-muted-foreground'>
+              <span>{t('np.issueAdd.label')}</span>
+              {!showDependencies ? (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='rounded-full'
+                  onClick={() => reveal('dependencies')}
+                >
+                  <PlusIcon data-icon='inline-start' />
+                  {t('np.issueAdd.dependency')}
+                </Button>
+              ) : null}
+              {!showPrs ? (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='rounded-full'
+                  onClick={() => reveal('prs')}
+                >
+                  <PlusIcon data-icon='inline-start' />
+                  {t('np.issueAdd.pullRequest')}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <section className='space-y-4' aria-labelledby='np-activity-heading'>
             <div className='flex items-center justify-between gap-2'>
               <h2
                 id='np-activity-heading'
-                className='font-heading text-base font-semibold'
+                className='font-heading text-sm font-semibold'
               >
                 {t('np.activity.title')}
               </h2>
@@ -181,7 +296,7 @@ export function IssueMain({
           </section>
         </div>
       </div>
-      <div className='sticky bottom-0 border-t bg-background'>
+      <div className='sticky bottom-0 border-t bg-background/95 backdrop-blur-md'>
         <div className='w-full px-6 py-3 md:px-8'>
           <CommentComposer
             issueId={issue.id}

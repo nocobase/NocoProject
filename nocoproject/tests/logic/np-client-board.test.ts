@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { normalizeBoardBody } from '../../client/pages/np/api.js';
 import {
@@ -17,6 +17,9 @@ import {
   hasIssueFilters,
   readIssueFilters,
   readIssueView,
+  readStoredIssueView,
+  resolveIssueView,
+  storeIssueView,
   withIssueFilter,
   withIssueView,
   withoutIssueFilters,
@@ -257,6 +260,48 @@ describe('board move', () => {
   });
 });
 
+describe('issue view preference', () => {
+  it('prefers the URL, then the remembered choice, then the board', () => {
+    expect(resolveIssueView(new URLSearchParams('view=list'), 'board')).toBe(
+      'list',
+    );
+    expect(resolveIssueView(new URLSearchParams(''), 'list')).toBe('list');
+    expect(resolveIssueView(new URLSearchParams(''), null)).toBe('board');
+    expect(resolveIssueView(new URLSearchParams('view=odd'), null)).toBe(
+      'board',
+    );
+  });
+
+  it('remembers the choice per page and survives missing or blocked storage', () => {
+    // No window at all (this file runs in node): nothing is remembered and nothing throws.
+    expect(readStoredIssueView('issues')).toBeNull();
+    expect(() => storeIssueView('issues', 'list')).not.toThrow();
+    const values = new Map<string, string>();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+      },
+    });
+    storeIssueView('issues', 'list');
+    expect(readStoredIssueView('issues')).toBe('list');
+    expect(readStoredIssueView('my-issues')).toBeNull();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: () => {
+          throw new Error('blocked');
+        },
+        setItem: () => {
+          throw new Error('blocked');
+        },
+      },
+    });
+    expect(readStoredIssueView('issues')).toBeNull();
+    expect(() => storeIssueView('issues', 'board')).not.toThrow();
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('issue filters in the query string', () => {
   it('reads the view and filters, dropping unknown statuses and the status filter on the board', () => {
     const list = new URLSearchParams(
@@ -288,7 +333,10 @@ describe('issue filters in the query string', () => {
     params = withIssueFilter(params, 'labelId', undefined);
     expect(params.toString()).toBe('view=board&project=p1');
     expect(withoutIssueFilters(params).toString()).toBe('view=board');
-    expect(withIssueView(params, 'list').toString()).toBe('project=p1');
+    // The view is always written out: without it the page falls back to the remembered choice (board by default).
+    expect(withIssueView(params, 'list').toString()).toBe(
+      'view=list&project=p1',
+    );
     expect(hasIssueFilters(readIssueFilters(params, KNOWN))).toBe(true);
     expect(
       hasIssueFilters(readIssueFilters(new URLSearchParams(), KNOWN)),

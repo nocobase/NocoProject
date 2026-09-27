@@ -12,14 +12,13 @@ import { PanelLeft, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LayoutHeader } from './components/layout-header.js';
 import { LayoutSidebar } from './components/layout-sidebar.js';
-import { NavigationTree } from './components/navigation-tree.js';
+import { NavigationSections } from './components/navigation-sections.js';
 import { AppBrand } from './components/app-brand.js';
 import { HeaderActions } from './components/header-actions.js';
 import { SidebarFooter } from './components/sidebar-footer.js';
 import {
   useRouteNavigation,
   selectedNavigationId,
-  routeKey,
   navigationPages,
 } from '../routing/route-navigation.js';
 
@@ -82,17 +81,16 @@ export function AppLayout({
             aria-label={t('navigation.label', {
               defaultValue: 'Application navigation',
             })}
-            className={`flex-1 min-h-0 space-y-1 overflow-x-hidden overflow-y-auto py-3 ${desktopSidebarCollapsed ? 'px-3 md:px-2' : 'px-3'}`}
+            data-collapsed={desktopSidebarCollapsed ? 'true' : undefined}
+            className={`group/nav flex-1 min-h-0 overflow-x-hidden overflow-y-auto py-3 ${desktopSidebarCollapsed ? 'px-3 md:px-2' : 'px-3'}`}
           >
-            {menuItems.map((item) => (
-              <NavigationTree
-                collapsed={desktopSidebarCollapsed}
-                item={item}
-                key={routeKey(item.route)}
-                onNavigate={() => setMobileSidebarOpen(false)}
-                selectedKey={selectedKey}
-              />
-            ))}
+            {/* NocoProject: top-level groups render as flat, always-open sections (navigation-sections.tsx). */}
+            <NavigationSections
+              collapsed={desktopSidebarCollapsed}
+              items={menuItems}
+              onNavigate={() => setMobileSidebarOpen(false)}
+              selectedKey={selectedKey}
+            />
           </nav>
           <SidebarFooter collapsed={desktopSidebarCollapsed} />
         </LayoutSidebar>

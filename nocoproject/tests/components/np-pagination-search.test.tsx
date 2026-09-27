@@ -50,7 +50,7 @@ describe('issue list pages (§D)', () => {
       );
     });
     await renderNpRoutes(<Route path='/issues' element={<IssuesPage />} />, {
-      url: '/issues',
+      url: '/issues?view=list',
     });
 
     expect(await screen.findByText('Issue number 2')).toBeVisible();
@@ -176,7 +176,7 @@ describe('long issue tables (§H 8)', () => {
           </VirtuosoMockContext.Provider>
         }
       />,
-      { url: '/issues' },
+      { url: '/issues?view=list' },
     );
     expect(await screen.findByText('Showing 250')).toBeVisible();
     expect(container.querySelector('[data-virtualized]')).not.toBeNull();

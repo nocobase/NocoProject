@@ -65,7 +65,7 @@ export function ActivityTimeline({
   );
 }
 
-function ActivityRow({
+export function ActivityRow({
   activity,
   statusCatalog,
   agentName,

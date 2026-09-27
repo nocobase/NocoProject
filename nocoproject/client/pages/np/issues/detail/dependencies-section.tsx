@@ -123,7 +123,7 @@ export function DependenciesSection({
     <section className='space-y-3' aria-labelledby='np-dependencies-heading'>
       <h2
         id='np-dependencies-heading'
-        className='font-heading text-base font-semibold'
+        className='font-heading text-sm font-semibold'
       >
         {t('np.dependencies.title')}
       </h2>

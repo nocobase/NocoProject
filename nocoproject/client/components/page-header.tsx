@@ -7,20 +7,24 @@ export interface PageHeaderProps {
   readonly actions?: ReactNode;
 }
 
-/** The heading of a page: its only `h1`, an optional description, and the actions that apply to the whole page. */
+/**
+ * The heading of a page: its only `h1`, an optional description, and the actions that apply to the whole page.
+ * NocoProject sizes it for a work tool (docs/design/ui-design.md §1.3): a 2xl title, a one-line description, the
+ * actions vertically centred on the right with the one primary action last.
+ */
 export function PageHeader({
   actions,
   description,
   title,
 }: PageHeaderProps): ReactElement {
   return (
-    <header className='flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between'>
+    <header className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
       <div className='min-w-0'>
-        <h1 className='font-heading text-3xl font-semibold tracking-[-0.035em]'>
+        <h1 className='font-heading text-2xl font-semibold tracking-tight'>
           {title}
         </h1>
         {description ? (
-          <p className='mt-2 max-w-2xl text-sm leading-6 text-muted-foreground'>
+          <p className='mt-1.5 max-w-3xl text-sm text-muted-foreground'>
             {description}
           </p>
         ) : null}

@@ -3,12 +3,15 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertCircleIcon,
+  CalendarIcon,
+  ListIcon,
   ListPlusIcon,
   LockIcon,
   PlusIcon,
+  WorkflowIcon,
 } from 'lucide-react';
 import type { ReactElement } from 'react';
-import { Link, Outlet, useParams } from 'react-router';
+import { Link, Outlet, useParams, useSearchParams } from 'react-router';
 
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { RouteChildPage } from '@/components/route-child-page';
@@ -19,15 +22,17 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { NpDetailLayout } from '@/components/np-detail-layout';
+import { NpActorAvatar } from '@/components/np-actor-avatar';
+import { NpProgressRing } from '@/components/np-live';
+import { NpTabBar } from '@/components/np-route-tabs';
 import { NpDetailSkeleton } from '@/components/np-states';
-import { PageHeader } from '@/components/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { fetchMembers } from '../../api-collab.js';
 import { fetchProject } from '../../api-projects.js';
 import { fetchMe } from '../../api.js';
 import { catalogFromWorkflow, npKeys } from '../../constants.js';
+import { useNpFormatters } from '../../format.js';
 import { type BoardColumnMore, IssueBoard } from '../../issues/board/board.js';
 import { useBoardPages } from '../../issues/use-issue-pages.js';
 import {
@@ -38,15 +43,17 @@ import {
 import type { BoardGroup, Member, ProjectDetail } from '../../types.js';
 import { ProjectStatusBadge } from '../project-badges.js';
 import { progressFromCounts, progressFromGroups } from '../progress.js';
+import { ProjectKnowledge } from './knowledge-tab.js';
+import { ProjectOverview } from './overview.js';
 import { ProjectActions } from './project-actions.js';
-import { ProjectSidePanel } from './side-panel.js';
 
 /**
- * Route `/projects/:projectId` (§J 4): a covering child page over the project list. The project's issues fill a
- * board whose columns are its workflow's statuses (drag to change status, as on `/issues?view=board`); the
- * right-hand panel (fixed `w-80`, §H 3) holds status, priority, lead, dates, progress, description, repositories and
- * members. The `resources/new` dialog and the batch entry drawer (`intake`, the project preselected) render in the
- * outlet beside the layer.
+ * Route `/projects/:projectId` (§J 4, docs/design/ui-design.md §8.3): a covering child page over the project list.
+ * The header carries the progress ring, name, status, lead, dates and workflow; three tabs (`?tab=`, because the
+ * page's child routes are its dialogs) hold 概览 (numbers, status distribution, description, properties,
+ * repositories, members), 任务 (the board, columns in workflow order, drag to change status) and 知识库 (documents
+ * and pending agent proposals). The `resources/new` dialog and the batch entry drawer (`intake`, the project
+ * preselected) render in the outlet beside the layer.
  */
 export default function ProjectDetailPage(): ReactElement {
   const { projectId = '' } = useParams();
@@ -88,7 +95,7 @@ function ProjectDetailView({
         ? project.error.status
         : undefined;
     return (
-      <div className='space-y-4 p-6 md:p-8'>
+      <div className='space-y-4 px-6 py-6 md:px-8'>
         <Breadcrumbs />
         <Alert variant='destructive'>
           <AlertCircleIcon />
@@ -140,6 +147,12 @@ function ProjectDetailView({
   );
 }
 
+type ProjectTab = 'overview' | 'issues' | 'knowledge';
+
+function readProjectTab(value: string | null): ProjectTab {
+  return value === 'issues' || value === 'knowledge' ? value : 'overview';
+}
+
 function ProjectLayout({
   project,
   groups,
@@ -156,30 +169,97 @@ function ProjectLayout({
   readonly canDelete: boolean;
 }): ReactElement {
   const { t } = useTranslation();
+  const format = useNpFormatters();
+  const [params, setParams] = useSearchParams();
+  const tab = readProjectTab(params.get('tab'));
   const catalog = catalogFromWorkflow(project.workflow);
   const progress = project.issueCounts
     ? progressFromCounts(project.issueCounts)
     : progressFromGroups(groups ?? [], catalog);
+  const total = project.issueCounts?.total;
 
-  const main = (
-    <div className='space-y-6 p-6 md:p-8'>
-      <Breadcrumbs />
-      <PageHeader
-        title={
-          <span className='inline-flex min-w-0 items-center gap-2'>
-            <span className='truncate'>{project.name}</span>
-            {project.visibility === 'members' ? (
-              <LockIcon
-                className='size-4 shrink-0 text-muted-foreground'
-                aria-label={t('np.projects.visibility.members')}
-              />
-            ) : null}
-            <ProjectStatusBadge status={project.status} />
-          </span>
-        }
-        description={project.description ?? undefined}
-        actions={
-          <>
+  function setTab(next: ProjectTab): void {
+    const search = new URLSearchParams(params);
+    if (next === 'overview') search.delete('tab');
+    else search.set('tab', next);
+    setParams(search, { replace: true });
+  }
+
+  const meta: ReactElement[] = [];
+  meta.push(
+    <span key='lead' className='inline-flex items-center gap-1.5'>
+      {t('np.projects.columns.lead')}
+      {project.leadName ? (
+        <NpActorAvatar
+          type='user'
+          name={project.leadName}
+          size='xs'
+          showName
+          className='text-foreground'
+        />
+      ) : (
+        <span>
+          —<span className='sr-only'>{t('np.projects.noLead')}</span>
+        </span>
+      )}
+    </span>,
+  );
+  if (project.startDate || project.dueDate) {
+    meta.push(
+      <span key='dates' className='inline-flex items-center gap-1.5'>
+        <CalendarIcon className='size-3.5' aria-hidden='true' />
+        {format.date(project.startDate)} → {format.date(project.dueDate)}
+      </span>,
+    );
+  }
+  if (project.workflow?.name) {
+    meta.push(
+      <span key='workflow' className='inline-flex items-center gap-1.5'>
+        <WorkflowIcon className='size-3.5' aria-hidden='true' />
+        {project.workflow.name}
+      </span>,
+    );
+  }
+  meta.push(
+    <span key='progress' className='tabular-nums'>
+      {t('np.projects.progressLabel', {
+        done: progress.done,
+        total: progress.total,
+      })}
+    </span>,
+  );
+
+  return (
+    <div className='w-full space-y-6 px-6 py-6 md:px-8'>
+      <div className='space-y-4'>
+        <Breadcrumbs />
+        <header className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+          <div className='flex min-w-0 items-start gap-4'>
+            <NpProgressRing
+              percent={progress.percent}
+              size={48}
+              label={t('np.projects.progressLabel', {
+                done: progress.done,
+                total: progress.total,
+              })}
+            />
+            <div className='min-w-0 space-y-1.5'>
+              <h1 className='flex min-w-0 items-center gap-2 font-heading text-2xl font-semibold tracking-tight'>
+                <span className='truncate'>{project.name}</span>
+                {project.visibility === 'members' ? (
+                  <LockIcon
+                    className='size-4 shrink-0 text-muted-foreground'
+                    aria-label={t('np.projects.visibility.members')}
+                  />
+                ) : null}
+                <ProjectStatusBadge status={project.status} />
+              </h1>
+              <p className='flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground'>
+                {meta}
+              </p>
+            </div>
+          </div>
+          <div className='flex shrink-0 items-center gap-2'>
             <Button
               variant='outline'
               nativeButton={false}
@@ -203,43 +283,82 @@ function ProjectLayout({
               {t('np.issues.new')}
             </Button>
             <ProjectActions project={project} canDelete={canDelete} />
-          </>
-        }
+          </div>
+        </header>
+      </div>
+      <NpTabBar
+        idPrefix='np-project'
+        label={t('np.projectPage.tabs.label')}
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { value: 'overview', label: t('np.projectPage.tabs.overview') },
+          {
+            value: 'issues',
+            label: t('np.projectPage.tabs.issues'),
+            count: total,
+          },
+          { value: 'knowledge', label: t('np.projectPage.tabs.knowledge') },
+        ]}
       />
-      {groups ? (
-        <IssueBoard
-          groups={groups}
-          columnMore={columnMore}
-          catalog={catalog}
-          issueLink={(issue) => `/issues/${encodeURIComponent(issue.id)}`}
-        />
-      ) : (
-        <div
-          role='status'
-          aria-label={t('status.loading')}
-          className='flex gap-3'
-        >
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className='h-64 w-72 shrink-0 rounded-lg' />
-          ))}
-        </div>
-      )}
+      <div
+        role='tabpanel'
+        id={`np-project-panel-${tab}`}
+        aria-labelledby={`np-project-tab-${tab}`}
+      >
+        {tab === 'overview' ? (
+          <ProjectOverview
+            project={project}
+            catalog={catalog}
+            workspaceMembers={workspaceMembers}
+            canEdit={canEdit}
+          />
+        ) : tab === 'issues' ? (
+          <div className='space-y-3'>
+            <div className='flex justify-end'>
+              <Button
+                variant='ghost'
+                size='sm'
+                nativeButton={false}
+                render={
+                  <Link
+                    to={{
+                      pathname: '/issues',
+                      search: `?project=${encodeURIComponent(project.id)}`,
+                    }}
+                  />
+                }
+              >
+                <ListIcon data-icon='inline-start' />
+                {t('np.projectPage.openInList')}
+              </Button>
+            </div>
+            {groups ? (
+              <IssueBoard
+                groups={groups}
+                columnMore={columnMore}
+                catalog={catalog}
+                issueLink={(issue) => `/issues/${encodeURIComponent(issue.id)}`}
+              />
+            ) : (
+              <div
+                role='status'
+                aria-label={t('status.loading')}
+                className='flex gap-3'
+              >
+                {Array.from({ length: 4 }, (_, index) => (
+                  <Skeleton
+                    key={index}
+                    className='h-64 w-[18rem] shrink-0 rounded-xl'
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <ProjectKnowledge projectId={project.id} />
+        )}
+      </div>
     </div>
-  );
-  const panel = (
-    <ProjectSidePanel
-      project={project}
-      progress={progress}
-      workspaceMembers={workspaceMembers}
-      canEdit={canEdit}
-    />
-  );
-
-  return (
-    <NpDetailLayout
-      main={main}
-      aside={panel}
-      asideLabel={t('np.projects.sidePanel')}
-    />
   );
 }

@@ -2,7 +2,7 @@ import { useTranslation } from '@nocobase/i18n/client';
 import type { ReactElement } from 'react';
 
 import { NpMarkdown } from '@/components/np-markdown';
-import { Badge } from '@/components/ui/badge';
+import { NpTag } from '@/components/np-tag';
 import { cn } from '@/lib/utils';
 
 import { useNpFormatters } from '../../format.js';
@@ -62,13 +62,11 @@ export function TranscriptEvent({
   let body: ReactElement | null;
   switch (event.type) {
     case 'text':
-      label = <Badge>{t('np.transcript.kinds.text')}</Badge>;
+      label = <NpTag tone='blue'>{t('np.transcript.kinds.text')}</NpTag>;
       body = <NpMarkdown content={event.content ?? ''} />;
       break;
     case 'thinking':
-      label = (
-        <Badge variant='outline'>{t('np.transcript.kinds.thinking')}</Badge>
-      );
+      label = <NpTag tone='grey'>{t('np.transcript.kinds.thinking')}</NpTag>;
       body = (
         <p className='text-sm whitespace-pre-wrap wrap-anywhere text-muted-foreground italic'>
           {event.content}
@@ -77,9 +75,9 @@ export function TranscriptEvent({
       break;
     case 'toolUse': {
       label = (
-        <Badge variant='secondary'>
+        <NpTag tone='violet'>
           {event.tool ?? t('np.transcript.kinds.toolUse')}
-        </Badge>
+        </NpTag>
       );
       // The command (or file, pattern…) is visible at once; the full input stays one click away.
       const summary = toolSummary(event.input ?? event.content);
@@ -97,16 +95,14 @@ export function TranscriptEvent({
     }
     case 'toolResult':
       label = (
-        <Badge variant='outline'>
+        <NpTag tone='grey'>
           {event.tool ?? t('np.transcript.kinds.toolResult')}
-        </Badge>
+        </NpTag>
       );
       body = <CodeBlock text={stringify(event.output ?? event.content)} />;
       break;
     case 'error':
-      label = (
-        <Badge variant='destructive'>{t('np.transcript.kinds.error')}</Badge>
-      );
+      label = <NpTag tone='red'>{t('np.transcript.kinds.error')}</NpTag>;
       body = (
         <p className='text-sm whitespace-pre-wrap wrap-anywhere text-destructive'>
           {event.content ?? event.output}
@@ -114,7 +110,7 @@ export function TranscriptEvent({
       );
       break;
     default:
-      label = <Badge variant='ghost'>{t('np.transcript.kinds.status')}</Badge>;
+      label = <NpTag tone='grey'>{t('np.transcript.kinds.status')}</NpTag>;
       body = <p className='text-xs text-muted-foreground'>{event.content}</p>;
   }
 

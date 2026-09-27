@@ -20,12 +20,15 @@ export interface NpActorAvatarProps {
    * as "name (kind)".
    */
   readonly decorative?: boolean;
+  /** A working agent: the avatar breathes with the primary color (docs/design/ui-design.md §6). */
+  readonly live?: boolean;
   readonly className?: string;
 }
 
 /**
- * The one avatar for people, agents and the system across NocoProject (§H 4). A person shows initials, an agent a
- * bot on the secondary surface, the system a cog; the kind is repeated as screen-reader text so it does not rest on
+ * The one avatar for people, agents and the system across NocoProject (§H 4, docs/design/ui-design.md §2.3). Shape
+ * and color both tell the kind apart: a person is a round avatar with initials, an agent a rounded square with a bot
+ * in the agent hue, the system a dashed round cog. The kind is repeated as screen-reader text so it does not rest on
  * the picture alone.
  */
 export function NpActorAvatar({
@@ -34,6 +37,7 @@ export function NpActorAvatar({
   size = 'sm',
   showName = false,
   decorative = true,
+  live = false,
   className,
 }: NpActorAvatarProps): ReactElement {
   const { t } = useTranslation();
@@ -43,11 +47,21 @@ export function NpActorAvatar({
       : type === 'system'
         ? t('np.actor.system')
         : t('np.actor.user');
+  const icon =
+    size === 'xs' ? 'size-2.5' : size === 'sm' ? 'size-3.5' : 'size-4';
   const avatar = (
     <Avatar
       size={size === 'default' ? 'default' : 'sm'}
       data-actor={type}
-      className={cn(size === 'xs' && 'size-4', !showName && className)}
+      data-live={live ? 'true' : undefined}
+      className={cn(
+        size === 'xs' && 'size-4',
+        type === 'agent' && 'rounded-md after:rounded-md',
+        type === 'system' &&
+          'after:border-dashed after:border-muted-foreground/50',
+        live && 'np-live-ring',
+        !showName && className,
+      )}
       {...(decorative || showName
         ? { 'aria-hidden': true }
         : { role: 'img', 'aria-label': `${name ?? '—'} (${label})` })}
@@ -55,20 +69,16 @@ export function NpActorAvatar({
     >
       <AvatarFallback
         className={cn(
+          'font-medium text-foreground/80',
           size === 'xs' && 'text-[0.5rem]',
-          type === 'agent' && 'bg-secondary text-secondary-foreground',
+          type === 'agent' && 'rounded-md bg-agent/15 text-agent',
+          type === 'system' && 'bg-transparent text-muted-foreground',
         )}
       >
         {type === 'agent' ? (
-          <BotIcon
-            className={size === 'xs' ? 'size-2.5' : 'size-3.5'}
-            aria-hidden='true'
-          />
+          <BotIcon className={icon} aria-hidden='true' />
         ) : type === 'system' ? (
-          <CogIcon
-            className={size === 'xs' ? 'size-2.5' : 'size-3.5'}
-            aria-hidden='true'
-          />
+          <CogIcon className={icon} aria-hidden='true' />
         ) : (
           <span aria-hidden='true'>{initials(name ?? '?')}</span>
         )}

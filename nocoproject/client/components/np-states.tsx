@@ -39,10 +39,10 @@ export function NpListSkeleton({
     <div
       role='status'
       aria-label={t('status.loading')}
-      className={cn('space-y-2 rounded-lg border p-4', className)}
+      className={cn('space-y-2 rounded-lg border bg-card p-3', className)}
     >
       {Array.from({ length: rows }, (_, index) => (
-        <Skeleton key={index} className='h-8 w-full' />
+        <Skeleton key={index} className='h-7 w-full' />
       ))}
     </div>
   );
@@ -55,7 +55,7 @@ export function NpDetailSkeleton(): ReactElement {
     <div
       role='status'
       aria-label={t('status.loading')}
-      className='space-y-4 p-6 md:p-8'
+      className='space-y-4 px-6 py-6 md:px-8'
     >
       <Skeleton className='h-4 w-40' />
       <Skeleton className='h-8 w-1/2' />
@@ -122,7 +122,7 @@ export function NpEmpty({
   readonly className?: string;
 }): ReactElement {
   return (
-    <Empty className={cn('border', className)}>
+    <Empty className={cn('border border-dashed bg-card/40', className)}>
       <EmptyHeader>
         <EmptyMedia variant='icon'>{icon}</EmptyMedia>
         <EmptyTitle>{title}</EmptyTitle>

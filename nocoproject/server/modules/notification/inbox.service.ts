@@ -29,6 +29,8 @@ export interface InboxQuery {
   readonly kind?: string | null;
   readonly archived?: string | null;
   readonly resolved?: string | null;
+  /** Only the items about one issue (docs/design/ui-design.md §8.2: the issue page's "等你决定" section). */
+  readonly issueId?: string | null;
   readonly cursor?: string | null;
 }
 
@@ -114,6 +116,7 @@ export function createInboxService(deps: {
       if (kind) select = select.where('kind', '=', kind);
       if (resolved !== null)
         select = select.where('resolvedAt', resolved ? 'is not' : 'is', null);
+      if (query.issueId) select = select.where('issueId', '=', query.issueId);
       if (query.cursor) {
         const cursor = decodeCursor(query.cursor);
         select = select.where((eb) =>

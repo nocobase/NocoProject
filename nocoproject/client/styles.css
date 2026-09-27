@@ -4,6 +4,7 @@
 @import 'shadcn/tailwind.css';
 @import './theme/themes/default.css';
 @import './theme/themes/compact.css';
+@import './np-tones.css';
 @source "./components/ui";
 
 @custom-variant dark (&:is(.dark *));
@@ -52,6 +53,27 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  /* NocoProject semantic colours, defined in np-tones.css (docs/design/ui-design.md §2). */
+  --color-agent: var(--agent);
+  --color-attention: var(--attention);
+  --color-attention-foreground: var(--attention-foreground);
+  --color-success: var(--success);
+  --color-np-tint-grey: var(--np-tint-grey);
+  --color-np-ink-grey: var(--np-ink-grey);
+  --color-np-tint-blue: var(--np-tint-blue);
+  --color-np-ink-blue: var(--np-ink-blue);
+  --color-np-tint-violet: var(--np-tint-violet);
+  --color-np-ink-violet: var(--np-ink-violet);
+  --color-np-tint-amber: var(--np-tint-amber);
+  --color-np-ink-amber: var(--np-ink-amber);
+  --color-np-tint-green: var(--np-tint-green);
+  --color-np-ink-green: var(--np-ink-green);
+  --color-np-tint-slate: var(--np-tint-slate);
+  --color-np-ink-slate: var(--np-ink-slate);
+  --color-np-tint-red: var(--np-tint-red);
+  --color-np-ink-red: var(--np-ink-red);
+  --color-np-tint-orange: var(--np-tint-orange);
+  --color-np-ink-orange: var(--np-ink-orange);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -119,4 +141,26 @@
    any layer so it outranks the component's z-50 utility. */
 [data-slot='toast-viewport'] {
   z-index: 100;
+}
+
+/* The breathing ring around a working agent's avatar (docs/design/ui-design.md §6). The ring is drawn with the
+   primary color, which is the "something is happening" signal; users who ask for reduced motion get a static ring. */
+@keyframes np-live-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 0%, transparent);
+  }
+}
+
+@utility np-live-ring {
+  animation: np-live-ring 1.6s ease-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 45%, transparent);
+  }
 }

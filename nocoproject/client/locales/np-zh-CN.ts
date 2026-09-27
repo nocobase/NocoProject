@@ -54,7 +54,7 @@ const npCollabZhCN: NpCollabResource = {
     createFailed: '无法创建标签。',
   },
   subscribers: {
-    title: '订阅者',
+    title: '参与者与关注者',
     label: '{{count}} 位订阅者',
     none: '还没有人订阅。',
     subscribe: '订阅',

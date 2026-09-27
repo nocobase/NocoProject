@@ -73,3 +73,29 @@ export function progressFromGroups(
   }
   return progressOf(done, total);
 }
+
+export interface ProjectNumbers {
+  readonly total: number;
+  readonly started: number;
+  readonly review: number;
+  readonly done: number;
+}
+
+/** The key numbers of a project from its per-status counts (the detail's `issueCounts.byStatus`). */
+export function projectNumbers(
+  byStatus: Readonly<Record<string, number>>,
+  catalog: readonly StatusCatalogEntry[],
+): ProjectNumbers {
+  let total = 0;
+  let started = 0;
+  let review = 0;
+  let done = 0;
+  for (const [key, count] of Object.entries(byStatus)) {
+    total += count;
+    const category = statusCategory(key, catalog);
+    if (key === 'in_review') review += count;
+    else if (category === 'started') started += count;
+    if (category === 'done') done += count;
+  }
+  return { total, started, review, done };
+}

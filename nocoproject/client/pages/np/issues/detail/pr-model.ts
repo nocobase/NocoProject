@@ -1,4 +1,4 @@
-import type { BadgeVariant } from '../../constants.js';
+import type { NpTone } from '@/components/np-tones';
 import type {
   CiState,
   PullRequest,
@@ -19,13 +19,12 @@ export function prBadgeState(
   return pr.draft ? 'draft' : 'open';
 }
 
-export const PR_BADGE_VARIANT: Readonly<
-  Record<PullRequestBadgeState, BadgeVariant>
-> = {
-  open: 'secondary',
-  draft: 'outline',
-  merged: 'default',
-  closed: 'outline',
+/** PR state tones (docs/design/ui-design.md §2.4): open green, draft grey, merged violet, closed slate. */
+export const PR_TONE: Readonly<Record<PullRequestBadgeState, NpTone>> = {
+  open: 'green',
+  draft: 'grey',
+  merged: 'violet',
+  closed: 'slate',
 };
 
 export type CiReading = CiState | 'none';

@@ -3,6 +3,7 @@ import type { LocaleResource } from '@nocobase/i18n';
 import npCollabEnUS from './np-en-US.js';
 import npIter2EnUS from './np-iter2-en-US.js';
 import npIter3EnUS from './np-iter3-en-US.js';
+import npDesignEnUS from './np-design-en-US.js';
 
 const enUS = {
   'auth.welcome': 'Welcome back',
@@ -176,6 +177,7 @@ const enUS = {
     ...npCollabEnUS,
     ...npIter2EnUS,
     ...npIter3EnUS,
+    ...npDesignEnUS,
     common: {
       online: 'Online',
       offline: 'Offline',
@@ -355,8 +357,7 @@ const enUS = {
     },
     comment: {
       label: 'Comment',
-      placeholder:
-        'Leave a comment… Type @ to mention an agent, or start with /note to not trigger anyone.',
+      placeholder: 'Write a comment…',
       send: 'Comment',
       sendReply: 'Reply',
       reply: 'Reply',

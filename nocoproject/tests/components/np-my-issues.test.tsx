@@ -70,7 +70,7 @@ describe('my issues (§G)', () => {
         <Route path='owned' element={<MyOwnedIssues />} />
         <Route path='executing' element={<MyExecutingIssues />} />
       </Route>,
-      { url: '/my-issues' },
+      { url: '/my-issues?view=list' },
     );
 
     expect(await screen.findByText('Review the release notes')).toBeVisible();

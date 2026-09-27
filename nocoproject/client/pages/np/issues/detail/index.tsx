@@ -25,7 +25,7 @@ import { PropertiesPanel } from './properties-panel.js';
 
 /**
  * Route `/issues/:issueId`: a covering child page over the issue list, so the list keeps its filters and scroll.
- * Main column (title, description, activity, composer) beside a fixed `w-80` properties column with the execution
+ * Main column (title, description, activity, composer) beside a fixed 20rem properties column with the execution
  * log (§H 3), stacked on narrow screens. The transcript dialog (`runs/:runId`) renders in the outlet beside the layer.
  *
  * The detail refreshes through the `np:issues` subscription owned by the list page underneath.

@@ -28,6 +28,15 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
+declare module '@tanstack/react-table' {
+  // Column sizing without a second table API (docs/design/ui-design.md §1.5): a column may give its header and cells
+  // a class, such as a fixed width or a capped, truncating title.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData, TValue> {
+    readonly className?: string;
+  }
+}
+
 export interface DataTableProps<TData, TValue = unknown> {
   readonly columns: ColumnDef<TData, TValue>[];
   readonly data: TData[];
@@ -56,6 +65,11 @@ export interface DataTableProps<TData, TValue = unknown> {
    * rows on screen. NocoProject's issue list sets 200 (§H 8).
    */
   readonly virtualizeAfter?: number;
+  /**
+   * Fill the parent's height (a flex column): the body scrolls inside the frame under a sticky header row, so the
+   * page itself does not scroll (docs/design/ui-design.md §1.5). The parent must give the table a bounded height.
+   */
+  readonly fillHeight?: boolean;
 }
 
 /**
@@ -81,6 +95,7 @@ export function DataTable<TData, TValue = unknown>({
   getRowId,
   onRowClick,
   virtualizeAfter,
+  fillHeight = false,
 }: DataTableProps<TData, TValue>): ReactElement {
   const { t } = useTranslation();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -115,22 +130,56 @@ export function DataTable<TData, TValue = unknown>({
     rows.length > virtualizeAfter;
 
   return (
-    <div className={cn('flex flex-col gap-4', className)}>
+    <div
+      className={cn(
+        'flex flex-col gap-4',
+        fillHeight && 'min-h-0 flex-1',
+        className,
+      )}
+    >
       {toolbar ? (
         <div className='flex items-center gap-2'>{toolbar(table)}</div>
       ) : null}
       {virtualized ? (
-        <div className='rounded-lg border'>
+        <div
+          className={cn(
+            'rounded-lg border bg-card',
+            fillHeight && 'min-h-0 flex-1 overflow-auto',
+          )}
+        >
           <DataTableVirtual table={table} onRowClick={onRowClick} />
         </div>
       ) : (
-        <div className='overflow-hidden rounded-lg border'>
+        // One table density for the whole application (docs/design/ui-design.md §1.5): a card-coloured frame, a quiet
+        // 36px header row and 40px body rows.
+        <div
+          className={cn(
+            'overflow-hidden rounded-lg border bg-card',
+            // The primitive's own overflow container becomes the scroller, so the sticky header stays in view.
+            fillHeight &&
+              'min-h-0 flex-1 [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto',
+          )}
+        >
           <Table>
-            <TableHeader>
+            <TableHeader
+              className={
+                fillHeight ? 'sticky top-0 z-10 bg-muted shadow-2xs' : undefined
+              }
+            >
               {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
+                <TableRow
+                  key={headerGroup.id}
+                  className='bg-muted/40 hover:bg-muted/40'
+                >
                   {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} colSpan={header.colSpan}>
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      className={cn(
+                        'px-3 text-muted-foreground',
+                        header.column.columnDef.meta?.className,
+                      )}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -152,7 +201,13 @@ export function DataTable<TData, TValue = unknown>({
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
+                      <TableCell
+                        key={cell.id}
+                        className={cn(
+                          'px-3',
+                          cell.column.columnDef.meta?.className,
+                        )}
+                      >
                         {flexRender(
                           cell.column.columnDef.cell,
                           cell.getContext(),

@@ -19,13 +19,13 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { type ReactElement, useMemo, useState } from 'react';
 
 import { NpStartDialog } from '@/components/np-start-dialog';
-import { NpStatusBadge } from '@/components/np-badges';
 import { NpVirtualList } from '@/components/np-virtual-list';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { NP_TONE_DOT_CLASS } from '@/components/np-tones';
 import { cn } from '@/lib/utils';
 
-import { statusLabelKey } from '../../constants.js';
+import { statusLabelKey, statusTone } from '../../constants.js';
 import type {
   BoardGroup,
   IssueListItem,
@@ -52,11 +52,13 @@ function Column({
   catalog,
   issueLink,
   more,
+  fill = false,
 }: {
   readonly column: BoardColumn;
   readonly catalog: readonly StatusCatalogEntry[];
   readonly issueLink?: IssueLink;
   readonly more?: BoardColumnMore;
+  readonly fill?: boolean;
 }): ReactElement {
   const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({
@@ -67,7 +69,8 @@ function Column({
     <section
       aria-labelledby={headingId}
       className={cn(
-        'flex w-72 shrink-0 flex-col rounded-lg bg-muted/50 transition-colors',
+        'flex w-[18rem] shrink-0 flex-col rounded-xl bg-muted/40 transition-colors',
+        fill && 'h-full',
         isOver && 'bg-muted ring-2 ring-ring/40',
       )}
     >
@@ -75,7 +78,18 @@ function Column({
         id={headingId}
         className='flex items-center gap-2 px-3 pt-3 pb-2 text-sm font-medium'
       >
-        <NpStatusBadge statusKey={column.statusKey} catalog={catalog} />
+        <span
+          aria-hidden='true'
+          className={cn(
+            'size-2 shrink-0 rounded-full',
+            NP_TONE_DOT_CLASS[statusTone(column.statusKey, catalog)],
+          )}
+        />
+        <span>
+          {t(statusLabelKey(column.statusKey), {
+            defaultValue: column.statusKey,
+          })}
+        </span>
         <span className='text-xs text-muted-foreground tabular-nums'>
           {more?.hasMore
             ? t('np.pagination.countMore', { count: column.issues.length })
@@ -134,6 +148,7 @@ export function IssueBoard({
   catalog,
   issueLink,
   columnMore,
+  fill = false,
 }: {
   readonly groups: readonly BoardGroup[];
   readonly catalog: readonly StatusCatalogEntry[];
@@ -141,6 +156,11 @@ export function IssueBoard({
   readonly issueLink?: IssueLink;
   /** Per status key; a column without an entry has no "load more". */
   readonly columnMore?: Readonly<Record<string, BoardColumnMore>>;
+  /**
+   * Fill the parent's height (docs/design/ui-design.md §8.4): the page does not scroll, each column scrolls on its
+   * own and the columns scroll sideways. The parent must bound the height.
+   */
+  readonly fill?: boolean;
 }): ReactElement {
   const { t } = useTranslation();
   const move = useBoardMove(catalog);
@@ -210,7 +230,10 @@ export function IssueBoard({
         onDragCancel={() => setActive(null)}
       >
         <div
-          className='-mx-1 flex min-h-96 gap-3 overflow-x-auto px-1 pb-2'
+          className={cn(
+            '-mx-1 flex gap-3 overflow-x-auto px-1 pb-2',
+            fill ? 'h-full min-h-0' : 'min-h-96',
+          )}
           aria-label={t('np.board.label')}
           role='region'
         >
@@ -221,6 +244,7 @@ export function IssueBoard({
               catalog={catalog}
               issueLink={issueLink}
               more={columnMore?.[column.statusKey]}
+              fill={fill}
             />
           ))}
         </div>

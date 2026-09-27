@@ -22,7 +22,14 @@ export interface InboxPage {
 
 export async function fetchInbox(
   api: ApiClient,
-  filters: { readonly kind: InboxKind; readonly archived: boolean },
+  filters: {
+    readonly kind: InboxKind;
+    readonly archived: boolean;
+    /** `false` for what still waits (the issue page's decisions); omitted for both. */
+    readonly resolved?: boolean;
+    /** Only the items about one issue (`GET /np/inbox?issueId=`, docs/design/ui-design.md §8.2). */
+    readonly issueId?: string;
+  },
   signal?: AbortSignal,
   cursor?: string | null,
 ): Promise<InboxPage> {
@@ -31,6 +38,9 @@ export async function fetchInbox(
     query: {
       kind: filters.kind,
       archived: String(filters.archived),
+      resolved:
+        filters.resolved === undefined ? undefined : String(filters.resolved),
+      issueId: filters.issueId,
       cursor: cursor ?? undefined,
     },
     signal,
