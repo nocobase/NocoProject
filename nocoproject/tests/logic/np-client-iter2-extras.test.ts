@@ -91,9 +91,10 @@ describe('session mode', () => {
         },
       ],
     });
+    // Replies are part of the conversation (the agent answers in the question's thread); system rows are not.
     expect(
       sessionMessages(detail.threads).map((message) => message.id),
-    ).toEqual(['c1']);
+    ).toEqual(['c1', 'c2']);
   });
 });
 

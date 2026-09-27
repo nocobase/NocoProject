@@ -14,9 +14,12 @@ import type {
 export function sessionMessages(
   threads: readonly CommentThread[],
 ): IssueComment[] {
+  // A conversation is flat: an agent answers a message as a threaded reply, so replies are messages too, in the
+  // order they were written.
   return threads
-    .map((thread) => thread.root)
-    .filter((comment) => comment.kind !== 'system');
+    .flatMap((thread) => [thread.root, ...thread.replies])
+    .filter((comment) => comment.kind !== 'system')
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 /** The run the conversation is in: the newest run that has not finished. */
