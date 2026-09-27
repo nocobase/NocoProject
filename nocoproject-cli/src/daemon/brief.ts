@@ -1,0 +1,129 @@
+/**
+ * Runtime brief (CLAUDE.md / AGENTS.md marker block) and per-turn prompt (protocol §7).
+ * Pure string builders plus one small file writer.
+ */
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { ClaimedRun } from '../protocol.js';
+
+export const BRIEF_BEGIN = '<!-- BEGIN NOCOPROJECT-RUNTIME (auto-managed; do not edit) -->';
+export const BRIEF_END = '<!-- END NOCOPROJECT-RUNTIME -->';
+
+export type BriefInput = Pick<ClaimedRun, 'agent' | 'issue' | 'agentTransitions' | 'statusCatalog'>;
+
+function statusRules(input: BriefInput): string[] {
+  if (input.agentTransitions.length === 0) return ['You may not change the issue status in this workspace.'];
+  const lines = ['You may only make these status transitions (the server rejects anything else):', ''];
+  for (const t of input.agentTransitions) lines.push(`- \`${t.from}\` → \`${t.to}\``);
+  lines.push('', 'Every other status change (for example to `done`) is made by a human.');
+  return lines;
+}
+
+export function buildBrief(input: BriefInput): string {
+  const key = input.issue.identifier;
+  const instructions = input.agent.instructions.trim() || '(no additional instructions)';
+  return [
+    BRIEF_BEGIN,
+    '# NocoProject Agent Runtime',
+    '',
+    '## Background Task Safety',
+    '',
+    'This run ends the moment your turn ends: anything still running in the background is killed and its result is lost.',
+    '- Do all work in foreground commands that finish before you reply. Never start background jobs, daemons or watchers and then yield.',
+    '- Do not wait on CI or external systems; report what you did and what is pending instead.',
+    '- Never stop, restart or kill the `nocoproject` daemon or its processes.',
+    '',
+    '## Agent Identity',
+    '',
+    `You are **${input.agent.name}** (agent id \`${input.agent.id}\`), an AI agent working in NocoProject.`,
+    '',
+    'Instructions from your owner:',
+    '',
+    instructions,
+    '',
+    '## Available Commands',
+    '',
+    'The `nocoproject` CLI is already authenticated for this run (do not print or log `NOCOPROJECT_TOKEN`).',
+    '',
+    `- \`nocoproject issue get ${key} --json\` — read the issue (title, description, status, owner)`,
+    `- \`nocoproject issue comment list ${key} --json\` — read the comments (\`--thread <rootId>\`, \`--tail <n>\`, \`--since <iso>\`)`,
+    `- \`nocoproject issue comment add ${key} --content-file ./reply.md [--parent <rootId>]\` — post a comment`,
+    `- \`nocoproject issue status ${key} <statusKey>\` — change the issue status`,
+    '',
+    '## Workflow',
+    '',
+    '1. Read the issue first.',
+    '2. Catch up on the comments, especially the thread you were asked in.',
+    '3. As soon as you start producing work, set the status to `in_progress`.',
+    '4. Deliver your result as a comment with `comment add`, replying to the triggering thread with `--parent <rootId>`.',
+    '5. After delivering, set the status to `in_review`. If you are stuck, set `blocked` and leave a comment explaining what you need.',
+    '6. If you were only asked a question, answer it with a comment and do not change the status.',
+    '',
+    '## Status Rules',
+    '',
+    ...statusRules(input),
+    '',
+    '## Output',
+    '',
+    'Always write comment bodies to a Markdown file inside the working directory and pass it with `--content-file`; never inline long content on the command line.',
+    'Your final message in this turn is only a log; the comment you post is what humans read.',
+    BRIEF_END,
+  ].join('\n');
+}
+
+/** Replaces the marker block in `existing` (or appends it). Content outside the markers is untouched. */
+export function applyBriefBlock(existing: string | null, block: string): string {
+  if (!existing) return `${block}\n`;
+  const start = existing.indexOf(BRIEF_BEGIN);
+  const end = start >= 0 ? existing.indexOf(BRIEF_END, start) : -1;
+  if (start >= 0 && end >= 0) return existing.slice(0, start) + block + existing.slice(end + BRIEF_END.length);
+  const sep = existing.endsWith('\n\n') ? '' : existing.endsWith('\n') ? '\n' : '\n\n';
+  return `${existing}${sep}${block}\n`;
+}
+
+export function writeBrief(workDir: string, fileName: string, block: string): string {
+  const path = join(workDir, fileName);
+  const existing = existsSync(path) ? readFileSync(path, 'utf8') : null;
+  writeFileSync(path, applyBriefBlock(existing, block));
+  return path;
+}
+
+export type PromptInput = Pick<ClaimedRun, 'run' | 'issue' | 'triggers'>;
+
+function quote(text: string): string {
+  return text
+    .trim()
+    .split('\n')
+    .map((l) => `> ${l}`)
+    .join('\n');
+}
+
+const TRIGGER_NOTES: Record<string, string> = {
+  assign: 'You were assigned to this issue.',
+  statusChange: 'The issue was moved out of backlog and is ready to be worked on.',
+  retry: 'This is a retry of a previous run that failed.',
+};
+
+/** The per-turn user message (§7). */
+export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: boolean }): string {
+  const key = input.issue.identifier;
+  const lines = [
+    `You are working on issue ${key} "${input.issue.title}".`,
+    `Run: ${input.run.id}. Read the issue first: \`nocoproject issue get ${key} --json\``,
+    `Then catch up on comments: \`nocoproject issue comment list ${key} --json\``,
+  ];
+  let rootId: string | undefined;
+  for (const trigger of input.triggers) {
+    if (trigger.comment) {
+      rootId = trigger.comment.rootId;
+      lines.push(`[NEW COMMENT] from ${trigger.comment.authorName} (reply with --parent ${trigger.comment.rootId}):`);
+      lines.push(quote(trigger.comment.content));
+    } else if (TRIGGER_NOTES[trigger.type]) {
+      lines.push(TRIGGER_NOTES[trigger.type] as string);
+    }
+  }
+  lines.push(`Session: ${opts.resumed ? 'resumed' : 'fresh'}.`);
+  const parent = rootId ? ` --parent ${rootId}` : '';
+  lines.push(`When done, deliver via \`nocoproject issue comment add ${key} --content-file ./reply.md${parent}\`.`);
+  return lines.join('\n');
+}

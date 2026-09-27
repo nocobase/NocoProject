@@ -1,0 +1,192 @@
+/**
+ * Typed HTTP client for the NocoProject daemon API (§4, `x-api-key`) and the agent
+ * write-back API (§5, `Authorization: Bearer npr_...`). Credentials never appear in errors.
+ */
+import type {
+  AgentContextResponse,
+  CommentForAgent,
+  DaemonClaimRequest,
+  DaemonClaimResponse,
+  DaemonCompleteRequest,
+  DaemonEventsRequest,
+  DaemonFailRequest,
+  DaemonHeartbeatRequest,
+  DaemonRegisterRequest,
+  DaemonRegisterResponse,
+  DaemonRunStatusResponse,
+  DaemonStartRequest,
+  IssueForAgent,
+} from '../protocol.js';
+import { redactText } from '../util/redact.js';
+
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly method: string,
+    readonly path: string,
+  ) {
+    super(`${method} ${path} → ${status} ${code}: ${message}`);
+    this.name = 'HttpError';
+  }
+}
+
+export class NetworkError extends Error {
+  constructor(
+    message: string,
+    readonly method: string,
+    readonly path: string,
+  ) {
+    super(`${method} ${path} failed: ${message}`);
+    this.name = 'NetworkError';
+  }
+}
+
+/** Retry-worthy: network failures, 408, 429 and 5xx. */
+export function isTransient(error: unknown): boolean {
+  if (error instanceof NetworkError) return true;
+  if (error instanceof HttpError) return error.status === 408 || error.status === 429 || error.status >= 500;
+  return false;
+}
+
+export type Credentials = { readonly kind: 'apiKey'; readonly apiKey: string } | { readonly kind: 'runToken'; readonly token: string };
+
+export interface RequestOptions {
+  readonly body?: unknown;
+  readonly query?: Record<string, string | number | boolean | undefined>;
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+export class HttpClient {
+  private readonly apiBase: string;
+
+  constructor(
+    serverUrl: string,
+    private readonly credentials: Credentials,
+    private readonly defaultTimeoutMs = 30_000,
+  ) {
+    this.apiBase = `${serverUrl.replace(/\/+$/, '')}/api`;
+  }
+
+  /** Performs a request and returns the parsed JSON envelope. */
+  async raw<T = unknown>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+    const url = new URL(`${this.apiBase}${path}`);
+    for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
+    const headers: Record<string, string> = { accept: 'application/json' };
+    if (this.credentials.kind === 'apiKey') headers['x-api-key'] = this.credentials.apiKey;
+    else headers.authorization = `Bearer ${this.credentials.token}`;
+    if (opts.body !== undefined) headers['content-type'] = 'application/json';
+    const timeout = AbortSignal.timeout(opts.timeoutMs ?? this.defaultTimeoutMs);
+    const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        signal,
+      });
+    } catch (error) {
+      const cause = (error as { cause?: { code?: string; message?: string } }).cause;
+      const detail = cause?.code ?? cause?.message ?? (error as Error).message;
+      throw new NetworkError(redactText(String(detail)), method, path);
+    }
+    const text = await response.text();
+    let json: unknown = undefined;
+    if (text) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = undefined;
+      }
+    }
+    if (!response.ok) {
+      const body = (json ?? {}) as { code?: unknown; message?: unknown; error?: unknown };
+      const code = typeof body.code === 'string' ? body.code : `HTTP_${response.status}`;
+      const message =
+        typeof body.message === 'string' ? body.message : typeof body.error === 'string' ? body.error : text.slice(0, 300);
+      throw new HttpError(response.status, code, redactText(message || response.statusText), method, path);
+    }
+    return json as T;
+  }
+
+  async data<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+    const envelope = await this.raw<{ data?: T }>(method, path, opts);
+    return (envelope && typeof envelope === 'object' && 'data' in envelope ? envelope.data : envelope) as T;
+  }
+}
+
+const enc = encodeURIComponent;
+
+export class DaemonApi {
+  readonly http: HttpClient;
+  constructor(serverUrl: string, apiKey: string, timeoutMs?: number) {
+    this.http = new HttpClient(serverUrl, { kind: 'apiKey', apiKey }, timeoutMs);
+  }
+  register(body: DaemonRegisterRequest): Promise<DaemonRegisterResponse> {
+    return this.http.data('POST', '/np/daemon/register', { body });
+  }
+  heartbeat(body: DaemonHeartbeatRequest): Promise<{ ok: boolean }> {
+    return this.http.data('POST', '/np/daemon/heartbeat', { body });
+  }
+  deregister(daemonId: string): Promise<unknown> {
+    return this.http.data('POST', '/np/daemon/deregister', { body: { daemonId }, timeoutMs: 5000 });
+  }
+  claim(body: DaemonClaimRequest): Promise<DaemonClaimResponse> {
+    return this.http.data('POST', '/np/daemon/runs/claim', { body });
+  }
+  lease(runId: string): Promise<unknown> {
+    return this.http.data('POST', `/np/daemon/runs/${enc(runId)}/lease`, { body: {} });
+  }
+  start(runId: string, body: DaemonStartRequest): Promise<unknown> {
+    return this.http.data('POST', `/np/daemon/runs/${enc(runId)}/start`, { body });
+  }
+  events(runId: string, body: DaemonEventsRequest): Promise<unknown> {
+    return this.http.data('POST', `/np/daemon/runs/${enc(runId)}/events`, { body });
+  }
+  status(runId: string): Promise<DaemonRunStatusResponse> {
+    return this.http.data('GET', `/np/daemon/runs/${enc(runId)}/status`);
+  }
+  complete(runId: string, body: DaemonCompleteRequest): Promise<unknown> {
+    return this.http.data('POST', `/np/daemon/runs/${enc(runId)}/complete`, { body });
+  }
+  fail(runId: string, body: DaemonFailRequest): Promise<unknown> {
+    return this.http.data('POST', `/np/daemon/runs/${enc(runId)}/fail`, { body });
+  }
+  cancelAck(runId: string): Promise<unknown> {
+    return this.http.data('POST', `/np/daemon/runs/${enc(runId)}/cancel-ack`, { body: {} });
+  }
+}
+
+export interface CommentListQuery {
+  readonly since?: string;
+  readonly rootsOnly?: boolean;
+  readonly thread?: string;
+  readonly tail?: number;
+}
+
+export class AgentApi {
+  readonly http: HttpClient;
+  constructor(serverUrl: string, token: string, timeoutMs?: number) {
+    this.http = new HttpClient(serverUrl, { kind: 'runToken', token }, timeoutMs);
+  }
+  context(): Promise<AgentContextResponse> {
+    return this.http.data('GET', '/np/agent/context');
+  }
+  issue(id: string): Promise<IssueForAgent> {
+    return this.http.data('GET', `/np/agent/issues/${enc(id)}`);
+  }
+  comments(id: string, q: CommentListQuery = {}): Promise<CommentForAgent[]> {
+    return this.http.data('GET', `/np/agent/issues/${enc(id)}/comments`, {
+      query: { since: q.since, rootsOnly: q.rootsOnly ? 'true' : undefined, thread: q.thread, tail: q.tail },
+    });
+  }
+  addComment(id: string, content: string, parentId?: string): Promise<unknown> {
+    return this.http.data('POST', `/np/agent/issues/${enc(id)}/comments`, { body: { content, parentId } });
+  }
+  setStatus(id: string, statusKey: string): Promise<unknown> {
+    return this.http.data('POST', `/np/agent/issues/${enc(id)}/status`, { body: { statusKey } });
+  }
+}

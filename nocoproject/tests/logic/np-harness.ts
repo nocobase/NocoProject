@@ -1,0 +1,236 @@
+/**
+ * Real-PostgreSQL harness for the NocoProject integration tests (`np-*.test.ts`).
+ *
+ * Each test file gets its own schema in the disposable database named by NP_TEST_DATABASE_URL, so files can run in
+ * parallel. The schema is dropped and rebuilt from the application's real migration (and seed) sources, then the
+ * services are built exactly as the provider builds them. A `user` fixture table stands in for the authentication
+ * plugin's table, which the services only read names from.
+ *
+ * When the database is unreachable the harness reports why, and the calling file skips instead of failing.
+ */
+import path from 'node:path';
+
+import {
+  createDatabaseManager,
+  createMigrator,
+  createSeeder,
+  type DatabaseManager,
+} from '@nocobase/db';
+import postgres from '@nocobase/db-postgres';
+import { SnowflakeIdGenerator } from '@nocobase/snowflake';
+import type { Knex } from 'knex';
+
+import {
+  createNpServices,
+  type NpServices,
+} from '../../server/modules/services.ts';
+import type { Actor } from '../../server/modules/shared/activity.ts';
+import {
+  createDomainEventBus,
+  type DomainEvent,
+} from '../../server/modules/shared/events.ts';
+
+export const NP_TEST_DATABASE_URL =
+  process.env.NP_TEST_DATABASE_URL ??
+  'postgres://demo:demo123456@127.0.0.1:5432/nocoproject_test';
+
+const ROOT = path.resolve(import.meta.dirname, '../..');
+export const MIGRATIONS_DIR = path.join(ROOT, 'database/main/migrations');
+export const SEEDS_DIR = path.join(ROOT, 'database/main/seeds');
+
+export const ALICE: Actor = { type: 'user', id: 'u-alice' };
+export const BOB: Actor = { type: 'user', id: 'u-bob' };
+
+/** Every table the migration creates, for truncation between tests. */
+export const NP_TABLES = [
+  'run_tokens',
+  'run_usage',
+  'run_events',
+  'run_sessions',
+  'run_triggers',
+  'runs',
+  'agents',
+  'runtimes',
+  'activities',
+  'comments',
+  'issues',
+  'projects',
+  'system_settings',
+] as const;
+
+export interface NpTestDatabase {
+  readonly database: DatabaseManager;
+  readonly knex: Knex;
+  readonly schema: string;
+  close(): Promise<void>;
+}
+
+export interface NpTestServices {
+  readonly services: NpServices;
+  readonly events: DomainEvent[];
+}
+
+let workerId = 1;
+
+function connectionConfig(schema: string) {
+  const url = new URL(NP_TEST_DATABASE_URL);
+  return postgres({
+    host: url.hostname,
+    port: Number(url.port || 5432),
+    database: url.pathname.replace(/^\//u, ''),
+    username: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    schema,
+    schemaManagement: 'managed',
+    pool: { min: 0, max: 20 },
+  });
+}
+
+/**
+ * Opens (and resets) the file's schema, or returns the reason it cannot. `migrate: false` leaves the schema empty
+ * for tests that run the migrator themselves.
+ */
+export async function openNpTestDatabase(
+  schema: string,
+  options: { migrate?: boolean } = {},
+): Promise<NpTestDatabase | { skip: string }> {
+  const database = createDatabaseManager({
+    default: 'main',
+    connections: { main: connectionConfig(schema) },
+  });
+  let knex: Knex;
+  try {
+    knex = await database.connection().client<Knex>();
+    await knex.raw('select 1');
+  } catch (error) {
+    await database.destroy().catch(() => undefined);
+    return {
+      skip: `NocoProject integration database unreachable at ${NP_TEST_DATABASE_URL}: ${String(error)}`,
+    };
+  }
+  await knex.raw(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+  await knex.raw(`CREATE SCHEMA "${schema}"`);
+  database.collections().invalidate();
+  await knex.raw(
+    `CREATE TABLE "${schema}"."user" (id varchar(64) PRIMARY KEY, name varchar(255), username varchar(255))`,
+  );
+  await knex.raw(
+    `INSERT INTO "${schema}"."user" (id, name, username) VALUES (?, ?, ?), (?, ?, ?)`,
+    [ALICE.id, 'Alice', 'alice', BOB.id, 'Bob', 'bob'],
+  );
+  if (options.migrate !== false) {
+    await createMigrator({
+      database,
+      directory: MIGRATIONS_DIR,
+      packageName: 'nocoproject',
+    }).latest();
+    await createSeeder({
+      database,
+      directory: SEEDS_DIR,
+      packageName: 'nocoproject',
+    }).run();
+  }
+  return {
+    database,
+    knex,
+    schema,
+    async close() {
+      await database.destroy();
+    },
+  };
+}
+
+export function buildServices(database: DatabaseManager): NpTestServices {
+  const events: DomainEvent[] = [];
+  const bus = createDomainEventBus((error) => {
+    throw error;
+  });
+  bus.subscribe((event) => events.push(event));
+  workerId = (workerId % 31) + 1;
+  const services = createNpServices({
+    database,
+    idGenerator: new SnowflakeIdGenerator({ workerId }),
+    bus,
+  });
+  return { services, events };
+}
+
+/** Empties every NocoProject table and restores the settings row. */
+export async function resetData(db: NpTestDatabase): Promise<void> {
+  await db.knex.raw(
+    `TRUNCATE ${NP_TABLES.map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
+  );
+  await db.knex.raw(
+    `INSERT INTO "${db.schema}".system_settings (id, issue_prefix, issue_counter) VALUES ('default', 'NP', 0)`,
+  );
+}
+
+export interface Fixture {
+  readonly runtimeId: string;
+  readonly daemonId: string;
+}
+
+/** Registers a daemon runtime owned by `owner` (online now). */
+export async function registerRuntime(
+  services: NpServices,
+  owner: Actor,
+  daemonId = 'daemon-1',
+  provider: 'echo' | 'claude' | 'opencode' = 'echo',
+): Promise<Fixture> {
+  const response = await services.runtimes.register(owner.id as string, {
+    daemonId,
+    deviceName: 'test-device',
+    version: '0.0.0',
+    protocolVersion: 1,
+    runtimes: [
+      {
+        provider,
+        version: '1.0.0',
+        capabilities: { resume: true, steering: false },
+      },
+    ],
+  });
+  return { runtimeId: response.runtimes[0]!.id, daemonId };
+}
+
+export async function createAgent(
+  services: NpServices,
+  owner: Actor,
+  runtimeId: string,
+  name: string,
+  maxConcurrentRuns = 6,
+): Promise<string> {
+  const agent = await services.agents.create(owner, {
+    name,
+    instructions: `You are ${name}.`,
+    runtimeId,
+    provider: 'echo',
+    maxConcurrentRuns,
+  });
+  return agent.id;
+}
+
+export function mention(agentId: string, name = 'Agent'): string {
+  return `[@${name}](mention://agent/${agentId})`;
+}
+
+export async function runRows(
+  db: NpTestDatabase,
+  where = 'true',
+): Promise<Record<string, unknown>[]> {
+  const result = await db.knex.raw(
+    `SELECT * FROM "${db.schema}".runs WHERE ${where} ORDER BY created_at, id`,
+  );
+  return (result as { rows: Record<string, unknown>[] }).rows;
+}
+
+export async function triggerRows(
+  db: NpTestDatabase,
+  runId: string,
+): Promise<Record<string, unknown>[]> {
+  const result = await db.knex.raw(
+    `SELECT * FROM "${db.schema}".run_triggers WHERE run_id = ? ORDER BY created_at, id`,
+    [runId],
+  );
+  return (result as { rows: Record<string, unknown>[] }).rows;
+}

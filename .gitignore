@@ -1,0 +1,4 @@
+.DS_Store
+node_modules/
+# 网页由 scripts/build-doc.mjs 从 Markdown 生成；发布用的片段不入库，本地完整网页入库便于直接打开
+/dist/
