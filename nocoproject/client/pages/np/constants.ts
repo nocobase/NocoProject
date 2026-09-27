@@ -285,3 +285,10 @@ export const LABEL_DOT_CLASS: Readonly<Record<LabelColor, string>> = {
   blue: 'bg-np-ink-blue',
   purple: 'bg-np-ink-violet',
 };
+
+/**
+ * How to install the daemon/CLI on another computer. `nocoproject-cli` is not published to npm yet, so the install
+ * pulls the tarball attached to the GitHub release (`gh` must be signed in to the repository).
+ */
+export const CLI_INSTALL_COMMAND =
+  "gh release download cli-v0.1.0 --repo zhouyanliang/NocoProject --pattern '*.tgz' && npm i -g ./nocoproject-cli-0.1.0.tgz";
