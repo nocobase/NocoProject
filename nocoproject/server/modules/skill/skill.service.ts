@@ -306,12 +306,14 @@ export function createSkillService(deps: SkillDeps): SkillService {
     async list(actor) {
       const conn = deps.tx.read();
       const viewer = await viewerOf(conn, actor);
-      const rows = await conn.query
-        .selectFrom('skills')
-        .selectAll()
-        .orderBy('name', 'asc')
-        .orderBy('slug', 'asc')
-        .execute();
+      const rows = await conn.query.selectFrom('skills').selectAll().execute();
+      // Sorted here, not in SQL: the database collation differs between machines (macOS vs the CI container), which
+      // put equal or case-different names in different orders. `localeCompare` is the same everywhere Node runs.
+      rows.sort(
+        (a, b) =>
+          String(a.name).localeCompare(String(b.name), 'en') ||
+          String(a.slug).localeCompare(String(b.slug), 'en'),
+      );
       return decorate(deps, conn, viewer, rows);
     },
     get,
