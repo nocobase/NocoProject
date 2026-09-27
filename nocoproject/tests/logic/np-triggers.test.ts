@@ -417,3 +417,69 @@ describe.skipIf(!db)('failures and retries (PostgreSQL)', () => {
     expect((await services.runs.cancelAck(runId)).status).toBe('cancelled');
   });
 });
+
+describe.skipIf(!db)(
+  'queued runs and new blockers (iteration 2 §K, PostgreSQL)',
+  () => {
+    it('withdraws queued runs when a blocking dependency is added, and leaves dispatched runs alone', async () => {
+      const blocker = await services.issues.create(ALICE, { title: 'Blocker' });
+      const queued = await services.issues.create(ALICE, {
+        title: 'Queued',
+        executor: { type: 'agent', id: alpha },
+      });
+      const [run] = await runRows(db!, `subject_id = '${queued.id}'`);
+      expect(run?.status).toBe('queued');
+      await services.dependencies.add(ALICE, queued.id, {
+        dependsOnIssueId: blocker.id,
+      });
+      const [withdrawn] = await runRows(db!, `subject_id = '${queued.id}'`);
+      expect(withdrawn).toMatchObject({
+        status: 'cancelled',
+        failure_reason: 'blocked',
+      });
+      const detail = await services.issueQueries.detail(ALICE, queued.id);
+      const deferred = detail.activities.find(
+        (item) => item.action === 'run_deferred_blocked',
+      );
+      expect(deferred?.details).toMatchObject({
+        runId: run?.id,
+        withdrawn: true,
+        triggerType: 'assign',
+        blockers: [expect.objectContaining({ issueId: blocker.id })],
+      });
+
+      const busy = await services.issues.create(ALICE, {
+        title: 'Busy',
+        executor: { type: 'agent', id: beta },
+      });
+      await claimAndStart();
+      await services.dependencies.add(ALICE, busy.id, {
+        dependsOnIssueId: blocker.id,
+      });
+      const [running] = await runRows(db!, `subject_id = '${busy.id}'`);
+      expect(running?.status).toBe('running');
+    });
+
+    it('keeps queued runs when the new dependency is already finished or only related', async () => {
+      const finished = await services.issues.create(ALICE, { title: 'Done' });
+      await services.issues.update(ALICE, finished.id, {
+        statusKey: 'done',
+        revision: finished.revision,
+      });
+      const queued = await services.issues.create(ALICE, {
+        title: 'Queued',
+        executor: { type: 'agent', id: alpha },
+      });
+      await services.dependencies.add(ALICE, queued.id, {
+        dependsOnIssueId: finished.id,
+      });
+      const other = await services.issues.create(ALICE, { title: 'Other' });
+      await services.dependencies.add(ALICE, queued.id, {
+        dependsOnIssueId: other.id,
+        type: 'relatedTo',
+      });
+      const [run] = await runRows(db!, `subject_id = '${queued.id}'`);
+      expect(run?.status).toBe('queued');
+    });
+  },
+);

@@ -1,6 +1,8 @@
 /**
  * Read models over runs for the browser API.
  */
+import type { Actor } from '../shared/activity.js';
+import { canSeeIssue, viewerOf } from '../shared/authz.js';
 import type { Conn, TxRunner } from '../shared/db.js';
 import { fromJson, iso, num, str, unique } from '../shared/db.js';
 import { notFound } from '../shared/errors.js';
@@ -10,10 +12,13 @@ import type {
   RunTriggerItem,
   RunTriggerType,
 } from '../shared/protocol.js';
+import { findIssue } from '../issue/issue.records.js';
 import { EXECUTING_STATUSES, findRun, mapRun } from './run.records.js';
 
 export interface RunQueries {
   detail(runId: string): Promise<RunDetail>;
+  /** 404 unless the run exists and the caller can see its issue (iteration 2 §K). */
+  assertVisible(actor: Actor, runId: string): Promise<void>;
 }
 
 /** Number of dispatched | running runs per value of `column` (`subjectId` or `agentId`). */
@@ -116,6 +121,16 @@ function mapTrigger(row: Record<string, unknown>): RunTriggerItem {
 
 export function createRunQueries(deps: { tx: TxRunner }): RunQueries {
   return {
+    async assertVisible(actor, runId) {
+      const conn = deps.tx.read();
+      const run = await findRun(conn, runId);
+      const issue = run ? await findIssue(conn, run.subjectId) : null;
+      if (
+        !issue ||
+        !(await canSeeIssue(conn, await viewerOf(conn, actor), issue))
+      )
+        throw notFound('Run');
+    },
     async detail(runId) {
       const conn = deps.tx.read();
       const run = await findRun(conn, runId);

@@ -22,11 +22,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { fetchMembers } from '../../api-collab.js';
 import { fetchAgents, fetchMe, fetchRuntimes } from '../../api.js';
 import { isRuntimeOnline, npKeys } from '../../constants.js';
-import { canEditAgent, viewerFrom } from '../../permissions.js';
+import {
+  canEditAgent,
+  isWorkspaceAdmin,
+  viewerFrom,
+} from '../../permissions.js';
+import { AgentEnvSection } from './agent-env.js';
 import { AgentForm } from './agent-form.js';
+import { AgentSkillsSection } from './agent-skills.js';
 
 /**
- * Route `/agents/:agentId` (§J 5): a covering child page over the agent list with the agent's editable settings.
+ * Route `/agents/:agentId` (§J 5): a covering child page over the agent list with the agent's editable settings,
+ * its mounted skills and its environment variables (iteration 2 §G, §H).
  * The agent comes from `GET /np/agents` (the contract has no single-agent read), so an id that list does not hold is
  * reported as not found.
  */
@@ -114,6 +121,7 @@ function AgentDetailView({
   }
 
   const viewer = viewerFrom(me.data?.userId, members.data);
+  const canEdit = agent.canEdit ?? canEditAgent(viewer, agent);
   return (
     <PageContainer>
       <div className='space-y-2'>
@@ -134,7 +142,17 @@ function AgentDetailView({
         runtimes={runtimes.data ?? []}
         agents={agents.data ?? []}
         members={members.data ?? []}
-        canEdit={agent.canEdit ?? canEditAgent(viewer, agent)}
+        canEdit={canEdit}
+      />
+      <AgentSkillsSection
+        key={`skills:${agent.updatedAt ?? agent.id}`}
+        agent={agent}
+        canEdit={canEdit}
+      />
+      <AgentEnvSection
+        agentId={agent.id}
+        canEdit={canEdit}
+        isAdmin={isWorkspaceAdmin(viewer)}
       />
     </PageContainer>
   );

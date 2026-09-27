@@ -1,4 +1,4 @@
-import { BotIcon } from 'lucide-react';
+import { BotIcon, UserIcon } from 'lucide-react';
 import type { ComponentProps, ReactElement } from 'react';
 import Markdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,11 +10,13 @@ export interface NpMarkdownProps {
   readonly className?: string;
 }
 
-// `mention://agent/<id>` is the NocoProject mention link (protocol §2). react-markdown's default transform drops
-// unknown schemes, so mentions are let through here and rendered as chips; every other URL keeps the default
-// sanitisation.
+// `mention://agent/<id>` and `mention://user/<id>` are the NocoProject mention links (protocol §2, iteration 2
+// "富文本"). react-markdown's default transform drops unknown schemes, so mentions are let through here and rendered as
+// chips; every other URL keeps the default sanitisation.
+const MENTION_HREF = /^mention:\/\/(agent|user)\//u;
+
 function urlTransform(url: string): string {
-  return url.startsWith('mention://agent/') ? url : defaultUrlTransform(url);
+  return MENTION_HREF.test(url) ? url : defaultUrlTransform(url);
 }
 
 function MentionOrLink({
@@ -23,10 +25,15 @@ function MentionOrLink({
   node: _node,
   ...props
 }: ComponentProps<'a'> & { readonly node?: unknown }): ReactElement {
-  if (href?.startsWith('mention://agent/')) {
+  const mention = href ? MENTION_HREF.exec(href) : null;
+  if (mention) {
+    const Icon = mention[1] === 'agent' ? BotIcon : UserIcon;
     return (
-      <span className='inline-flex items-center gap-0.5 rounded-md bg-secondary px-1 py-px align-baseline font-medium text-secondary-foreground'>
-        <BotIcon className='size-3' aria-hidden='true' />
+      <span
+        data-mention={mention[1]}
+        className='inline-flex items-center gap-0.5 rounded-md bg-secondary px-1 py-px align-baseline font-medium text-secondary-foreground'
+      >
+        <Icon className='size-3' aria-hidden='true' />
         {children}
       </span>
     );
@@ -101,7 +108,7 @@ const components: Components = {
   hr: ({ node: _node, ...props }) => <hr className='my-3' {...props} />,
 };
 
-/** Markdown for issue descriptions and comments, with agent mentions shown as chips. */
+/** Markdown for issue descriptions and comments, with agent and member mentions shown as chips. */
 export function NpMarkdown({
   content,
   className,

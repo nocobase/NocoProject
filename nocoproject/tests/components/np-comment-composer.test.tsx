@@ -1,11 +1,14 @@
+import './np-editor-dom.js';
+
 import { I18nRuntime } from '@nocobase/i18n';
 import { I18nProvider } from '@nocobase/i18n/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { NpRichTextHandle } from '../../client/components/np-rich-text-editor.js';
 import locales from '../../client/locales/index.js';
 import { CommentComposer } from '../../client/pages/np/issues/detail/comment-composer.js';
 import type {
@@ -38,8 +41,27 @@ const AGENTS: AgentListItem[] = [
   },
 ];
 
+const MEMBERS = [
+  { userId: '42', name: 'Zhou', email: null, role: 'owner' as const },
+];
+
 const agentName = (id: string | null | undefined): string | null =>
   AGENTS.find((agent) => agent.id === id)?.name ?? null;
+
+function routeRequests(
+  onComment: (json: unknown) => unknown = () => ({
+    data: { comment: { id: 'c9' }, triggered: [] },
+  }),
+): void {
+  api.request.mockImplementation(
+    (request: { path: string; json?: unknown }) => {
+      if (request.path === 'np/members') {
+        return Promise.resolve({ data: MEMBERS });
+      }
+      return Promise.resolve(onComment(request.json));
+    },
+  );
+}
 
 async function renderComposer({
   executor = { type: 'none', id: null },
@@ -56,7 +78,7 @@ async function renderComposer({
   runtime.registerApplicationNamespace('test-app', locales);
   await runtime.init('en-US');
   const queryClient = new QueryClient();
-  const textareaRef = createRef<HTMLTextAreaElement>();
+  const editorRef = createRef<NpRichTextHandle>();
   render(
     <I18nProvider runtime={runtime}>
       <QueryClientProvider client={queryClient}>
@@ -68,85 +90,120 @@ async function renderComposer({
           replyTo={replyTo}
           replyToName={replyTo ? 'Claude Coder' : null}
           onCancelReply={() => {}}
-          textareaRef={textareaRef}
+          editorRef={editorRef}
         />
       </QueryClientProvider>
     </I18nProvider>,
   );
-  return screen.getByRole('combobox', { name: 'Comment' });
+  const textbox = await screen.findByRole('textbox', { name: 'Comment' });
+  return { textbox, editorRef };
 }
 
 afterEach(() => {
   api.request.mockReset();
 });
 
-describe('comment composer', () => {
-  it('inserts a mention link when an agent is picked from the @ list', async () => {
+describe('comment composer (rich text)', () => {
+  it('inserts a mention chip that is stored as the mention link', async () => {
+    routeRequests();
     const user = userEvent.setup();
-    const textarea = await renderComposer();
+    const { textbox, editorRef } = await renderComposer();
 
-    await user.type(textarea, 'Please @Cla');
-    const listbox = screen.getByRole('listbox', { name: 'Agents' });
+    await user.click(textbox);
+    await user.keyboard('Please @Cla');
+    const listbox = await screen.findByRole('listbox', {
+      name: 'People and agents',
+    });
     expect(listbox).toBeVisible();
     expect(screen.queryByRole('option', { name: /Open Reviewer/ })).toBeNull();
 
     await user.click(screen.getByRole('option', { name: /Claude Coder/ }));
 
-    expect(textarea).toHaveValue(
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(editorRef.current?.getMarkdown()).toBe(
       'Please [@Claude Coder](mention://agent/9001) ',
     );
-    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(textbox.querySelector('[data-np-mention]')).toHaveTextContent(
+      '@Claude Coder',
+    );
     expect(screen.getByTestId('np-trigger-preview')).toHaveTextContent(
       'Will trigger Claude Coder.',
     );
   });
 
-  it('picks the highlighted agent with the keyboard', async () => {
+  it('offers members too, and picks the highlighted entry with the keyboard', async () => {
+    routeRequests();
     const user = userEvent.setup();
-    const textarea = await renderComposer();
+    const { textbox, editorRef } = await renderComposer();
+    await screen.findByRole('textbox', { name: 'Comment' });
+    await waitFor(() =>
+      expect(api.request).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'np/members' }),
+      ),
+    );
 
-    await user.type(textarea, '@');
-    await user.keyboard('{ArrowDown}{Enter}');
+    await user.click(textbox);
+    await user.keyboard('@');
+    expect(
+      await screen.findByRole('option', { name: /Zhou/ }),
+    ).toBeInTheDocument();
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
 
-    expect(textarea).toHaveValue('[@Open Reviewer](mention://agent/9002) ');
+    expect(editorRef.current?.getMarkdown()).toBe(
+      '[@Zhou](mention://user/42) ',
+    );
+    // A person's mention triggers no agent.
+    expect(screen.getByTestId('np-trigger-preview')).toHaveTextContent(
+      'Will not trigger any agent.',
+    );
   });
 
   it('closes the list on Escape without inserting anything', async () => {
+    routeRequests();
     const user = userEvent.setup();
-    const textarea = await renderComposer();
+    const { textbox, editorRef } = await renderComposer();
 
-    await user.type(textarea, '@Cl');
+    await user.click(textbox);
+    await user.keyboard('@Cl');
+    expect(await screen.findByRole('listbox')).toBeVisible();
     await user.keyboard('{Escape}');
 
     expect(screen.queryByRole('listbox')).toBeNull();
-    expect(textarea).toHaveValue('@Cl');
+    expect(editorRef.current?.getMarkdown()).toBe('@Cl');
   });
 
   it('previews the executor for a top-level comment and nothing for /note', async () => {
+    routeRequests();
     const user = userEvent.setup();
-    const textarea = await renderComposer({
+    const { textbox, editorRef } = await renderComposer({
       executor: { type: 'agent', id: '9002' },
     });
     const preview = screen.getByTestId('np-trigger-preview');
 
-    await user.type(textarea, 'Go ahead');
+    await user.click(textbox);
+    await user.keyboard('Go ahead');
     expect(preview).toHaveTextContent(
       'Will trigger Open Reviewer (the executor).',
     );
 
-    await user.clear(textarea);
-    await user.type(textarea, '/note just for the record');
-    expect(preview).toHaveTextContent(
-      'Note — this comment will not trigger any agent.',
+    act(() => editorRef.current?.clear());
+    await user.click(textbox);
+    await user.keyboard('/note just for the record');
+    await waitFor(() =>
+      expect(preview).toHaveTextContent(
+        'Note — this comment will not trigger any agent.',
+      ),
     );
   });
 
-  it('previews the replied agent and posts the reply with its parent id', async () => {
-    const user = userEvent.setup();
-    api.request.mockResolvedValue({
-      data: { comment: { id: 'c9' }, triggered: [] },
+  it('posts Markdown with the parent id and clears the editor', async () => {
+    const posted: unknown[] = [];
+    routeRequests((json) => {
+      posted.push(json);
+      return { data: { comment: { id: 'c9' }, triggered: [] } };
     });
-    const textarea = await renderComposer({
+    const user = userEvent.setup();
+    const { textbox, editorRef } = await renderComposer({
       executor: { type: 'agent', id: '9002' },
       replyTo: {
         id: 'c1',
@@ -158,21 +215,16 @@ describe('comment composer', () => {
       },
     });
 
-    await user.type(textarea, 'Thanks');
+    await user.click(textbox);
+    await user.keyboard('Thanks');
     expect(screen.getByTestId('np-trigger-preview')).toHaveTextContent(
       'Will trigger Claude Coder (reply to its comment).',
     );
 
     await user.click(screen.getByRole('button', { name: /Reply/ }));
     await waitFor(() =>
-      expect(api.request).toHaveBeenCalledWith(
-        expect.objectContaining({
-          path: 'np/issues/101/comments',
-          method: 'POST',
-          json: { content: 'Thanks', parentId: 'c1' },
-        }),
-      ),
+      expect(posted).toEqual([{ content: 'Thanks', parentId: 'c1' }]),
     );
-    await waitFor(() => expect(textarea).toHaveValue(''));
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe(''));
   });
 });

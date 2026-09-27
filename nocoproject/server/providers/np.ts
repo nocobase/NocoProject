@@ -1,10 +1,23 @@
 /**
  * NocoProject provider: binds every module service to its token, connects domain events to realtime topics, registers
- * the `np-members` settings item with the authorization plugin, and runs the run sweeper every 30 seconds.
+ * the `np-members`, `np-settings` and `np-github` settings items with the authorization plugin (titles are
+ * i18n keys in the application namespace), and runs the run sweeper every 30 seconds (which also purges old webhook
+ * delivery records).
  *
- * Page grants for the NocoProject pages (and `read` on `np-members`) are given to the default `member` permission set
- * once, by the seed `2026092800003_np_member_page_grants`, so administrators can still edit them.
+ * Iteration 2: the secret key for stored secrets comes from the `nocoproject` configuration section
+ * (`NOCOPROJECT_SECRET_KEY`), falling back to a key derived from `auth.secret` with a warning; the AI intake parser is
+ * built from the AI employee plugin's agent factory when that plugin is registered.
+ *
+ * Page grants for the NocoProject pages (and `read` on the settings items) are given to the default `member`
+ * permission set once, by the seeds `2026092800003_np_member_page_grants`, `2026092900003_np_iter2_page_grants` and
+ * `2026092900004_np_github_settings_grant`, so administrators can still edit them.
  */
+import {
+  agentServiceFactoryToken,
+  aiConversationsManagerToken,
+  type AIApplicationConfig,
+} from '@nocobase/app-plugin-ai-employee/server';
+import type { AuthConfig } from '@nocobase/app-plugin-authentication/server';
 import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
 import type { Application } from '@nocobase/app-server/application';
 import { idGeneratorToken } from '@nocobase/app-server/id-generator';
@@ -12,13 +25,34 @@ import { loggingToken } from '@nocobase/app-server/logging';
 import { realtimeServiceToken } from '@nocobase/app-server/realtime';
 import { createCronJobManager, type CronJobManager } from '@nocobase/cron';
 import { databaseManagerToken } from '@nocobase/db';
+import { APP_NS } from '@nocobase/i18n';
 import {
   createServiceToken,
   ServiceProvider,
   type ServiceToken,
 } from '@nocobase/service-provider';
 
+import type { NocoProjectConfig } from '../config/nocoproject.js';
 import type { AgentService } from '../modules/agent/agent.service.js';
+import type { AgentEnvService } from '../modules/agent/env.service.js';
+import type { ReactionService } from '../modules/collaboration/reaction.service.js';
+import type { GitConnectionService } from '../modules/git/connection.service.js';
+import type { PullRequestService } from '../modules/git/pull-request.service.js';
+import type { WebhookService } from '../modules/git/webhook.service.js';
+import {
+  createAiIntakeParser,
+  type AiIntakeParser,
+} from '../modules/intake/ai-parser.js';
+import type { IntakeService } from '../modules/intake/intake.service.js';
+import type { ApprovalGateway } from '../modules/shared/approval.js';
+import {
+  createSecretBox,
+  resolveSecretKey,
+  type SecretBox,
+} from '../modules/shared/crypto.js';
+import type { SkillService } from '../modules/skill/skill.service.js';
+import type { WorkspaceSettingsService } from '../modules/system/settings.admin.js';
+import type { UsageService } from '../modules/usage/usage.service.js';
 import type { CommentService } from '../modules/collaboration/comment.service.js';
 import type { IssueQueries } from '../modules/issue/issue.queries.js';
 import type { IssueService } from '../modules/issue/issue.service.js';
@@ -93,9 +127,42 @@ export const npAgentIssueServiceToken: ServiceToken<AgentIssueService> =
   createServiceToken<AgentIssueService>('nocoproject/agent-issue-service');
 export const npInboxServiceToken: ServiceToken<InboxService> =
   createServiceToken<InboxService>('nocoproject/inbox-service');
+export const npApprovalGatewayToken: ServiceToken<ApprovalGateway> =
+  createServiceToken<ApprovalGateway>('nocoproject/approval-gateway');
+export const npGitConnectionServiceToken: ServiceToken<GitConnectionService> =
+  createServiceToken<GitConnectionService>(
+    'nocoproject/git-connection-service',
+  );
+export const npPullRequestServiceToken: ServiceToken<PullRequestService> =
+  createServiceToken<PullRequestService>('nocoproject/pull-request-service');
+export const npWebhookServiceToken: ServiceToken<WebhookService> =
+  createServiceToken<WebhookService>('nocoproject/webhook-service');
+export const npIntakeServiceToken: ServiceToken<IntakeService> =
+  createServiceToken<IntakeService>('nocoproject/intake-service');
+export const npReactionServiceToken: ServiceToken<ReactionService> =
+  createServiceToken<ReactionService>('nocoproject/reaction-service');
+export const npAgentEnvServiceToken: ServiceToken<AgentEnvService> =
+  createServiceToken<AgentEnvService>('nocoproject/agent-env-service');
+export const npSkillServiceToken: ServiceToken<SkillService> =
+  createServiceToken<SkillService>('nocoproject/skill-service');
+export const npUsageServiceToken: ServiceToken<UsageService> =
+  createServiceToken<UsageService>('nocoproject/usage-service');
+export const npWorkspaceSettingsServiceToken: ServiceToken<WorkspaceSettingsService> =
+  createServiceToken<WorkspaceSettingsService>(
+    'nocoproject/workspace-settings-service',
+  );
 
 /** The settings item the members settings page declares (`settings:np-members`). */
 export const NP_MEMBERS_SETTINGS_ID = 'np-members';
+/** Iteration 2: workspace settings (`/settings/nocoproject`) and the GitHub connection page. */
+export const NP_SETTINGS_SETTINGS_ID = 'np-settings';
+export const NP_GITHUB_SETTINGS_ID = 'np-github';
+
+/**
+ * Titles are keys in the application's locale (`client/locales/en-US.ts` `navigation.*`, the same keys the settings
+ * routes use), translated where they are shown (iteration 2 §K).
+ */
+const title = (key: string) => ({ key, ns: APP_NS });
 
 /** Binds a module token to the member of `NpServices` it exposes. */
 function bindModule<K extends keyof NpServices>(
@@ -125,6 +192,11 @@ export default class NpProvider extends ServiceProvider<Application> {
         bus: createDomainEventBus((error) =>
           this.logError(error, 'NocoProject domain event listener failed.'),
         ),
+        secrets: this.secretBox(),
+        aiIntake: this.aiIntakeParser(),
+        aiConfigured: () =>
+          (this.app.config.get<AIApplicationConfig>('ai')?.llmServices
+            ?.length ?? 0) > 0,
       }),
     );
     bindModule(container, npProjectServiceToken, 'projects');
@@ -148,6 +220,68 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npProposalServiceToken, 'proposals');
     bindModule(container, npAgentIssueServiceToken, 'agentIssues');
     bindModule(container, npInboxServiceToken, 'inbox');
+    bindModule(container, npApprovalGatewayToken, 'approvals');
+    bindModule(container, npGitConnectionServiceToken, 'gitConnections');
+    bindModule(container, npPullRequestServiceToken, 'pullRequests');
+    bindModule(container, npWebhookServiceToken, 'webhooks');
+    bindModule(container, npIntakeServiceToken, 'intake');
+    bindModule(container, npReactionServiceToken, 'reactions');
+    bindModule(container, npAgentEnvServiceToken, 'agentEnv');
+    bindModule(container, npSkillServiceToken, 'skills');
+    bindModule(container, npUsageServiceToken, 'usage');
+    bindModule(container, npWorkspaceSettingsServiceToken, 'workspaceSettings');
+  }
+
+  /** The key for stored secrets (see `shared/crypto.ts`); warns once when it is derived from `auth.secret`. */
+  private secretBox(): SecretBox {
+    const config = this.app.config;
+    return createSecretBox(
+      resolveSecretKey(
+        {
+          secretKey: config.get<NocoProjectConfig>('nocoproject')?.secretKey,
+          authSecret: config.get<AuthConfig>('auth')?.secret,
+        },
+        (message) => this.logWarning(message),
+      ),
+    );
+  }
+
+  /**
+   * The AI intake parser over the AI employee plugin: a conversation owned by the member, then a fixed agent with no
+   * tools, run as that member (no roles, not root). Null when the plugin is not registered.
+   */
+  private aiIntakeParser(): AiIntakeParser | null {
+    const { container } = this.app;
+    if (
+      !container.has(agentServiceFactoryToken) ||
+      !container.has(aiConversationsManagerToken)
+    )
+      return null;
+    const logger = container.has(loggingToken)
+      ? container.resolve(loggingToken).getLogger('nocoproject')
+      : undefined;
+    return createAiIntakeParser({
+      createSession: async (userId, sessionTitle) =>
+        (
+          await container
+            .resolve(aiConversationsManagerToken)
+            .create({ userId, title: sessionTitle })
+        ).sessionId,
+      createAgent: async ({ sessionId, userId, systemPrompt }) => {
+        const agent = await container
+          .resolve(agentServiceFactoryToken)
+          .createAgent({
+            sessionId,
+            systemPrompt,
+            tools: [],
+            actor: { id: userId, roles: [], isRoot: false },
+            runtime: { logger: logger as never },
+          });
+        return {
+          invoke: async (request) => await agent.invoke(request),
+        };
+      },
+    });
   }
 
   public override async boot(): Promise<void> {
@@ -171,18 +305,25 @@ export default class NpProvider extends ServiceProvider<Application> {
     if (!authz.ui.sections.has('nocoproject'))
       authz.ui.sections.add({
         name: 'nocoproject',
-        title: 'NocoProject',
+        title: title('navigation.nocoproject'),
         parent: 'administration',
       });
-    authz.settings.add({
-      id: NP_MEMBERS_SETTINGS_ID,
-      title: 'Members',
-      actions: [{ name: 'read', title: 'Open' }],
-    });
-    authz.ui.place(
-      { type: 'settings', id: NP_MEMBERS_SETTINGS_ID },
-      { section: 'nocoproject' },
-    );
+    const items = [
+      { id: NP_MEMBERS_SETTINGS_ID, key: 'navigation.members' },
+      { id: NP_SETTINGS_SETTINGS_ID, key: 'navigation.nocoproject' },
+      { id: NP_GITHUB_SETTINGS_ID, key: 'navigation.github' },
+    ];
+    for (const item of items) {
+      authz.settings.add({
+        id: item.id,
+        title: title(item.key),
+        actions: [{ name: 'read', title: 'Open' }],
+      });
+      authz.ui.place(
+        { type: 'settings', id: item.id },
+        { section: 'nocoproject' },
+      );
+    }
   }
 
   public override async start(): Promise<void> {
@@ -206,12 +347,23 @@ export default class NpProvider extends ServiceProvider<Application> {
     if (this.sweeping) return;
     this.sweeping = true;
     try {
-      await this.app.container.resolve(npSweeperServiceToken).sweep(new Date());
+      const now = new Date();
+      await this.app.container.resolve(npSweeperServiceToken).sweep(now);
+      await this.app.container.resolve(npWebhookServiceToken).purge(now);
     } catch (error) {
       this.logError(error, 'NocoProject sweeper pass failed.');
     } finally {
       this.sweeping = false;
     }
+  }
+
+  private logWarning(message: string): void {
+    const { container } = this.app;
+    if (container.has(loggingToken)) {
+      container.resolve(loggingToken).getLogger('nocoproject').warn(message);
+      return;
+    }
+    console.warn(message);
   }
 
   private logError(error: unknown, message: string): void {

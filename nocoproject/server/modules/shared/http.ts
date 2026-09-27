@@ -19,6 +19,7 @@ const STATUS_BY_KIND: Readonly<Record<NpErrorKind, ContentfulStatusCode>> = {
   notFound: 404,
   conflict: 409,
   upgradeRequired: 426,
+  upstream: 502,
 };
 
 export function errorBody(code: string, message: string): ApiErrorBody {

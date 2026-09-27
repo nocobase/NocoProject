@@ -138,6 +138,7 @@ const npCollabZhCN: NpCollabResource = {
     emptyDescription: '验收请求、Agent 受阻和执行者建议会出现在这里。',
     unread: '未读',
     unreadCount: '{{count}} 条未读',
+    unreadDecisions: '{{count}} 条未读的待决定事项',
     count: '×{{count}}',
     resolved: '已处理',
     actionsFor: '{{title}} 的操作',
@@ -161,6 +162,10 @@ const npCollabZhCN: NpCollabResource = {
       mentioned: '提到了你',
       commented: '新评论',
       status_changed: '状态变化',
+      approval_pending: '待审批',
+      approval_decided: '审批结果',
+      pr_review: 'PR 待合并',
+      pr_merged: 'PR 已合并',
     },
   },
   projects: {
@@ -292,6 +297,7 @@ const npCollabZhCN: NpCollabResource = {
     cancelled: '已停止',
     timeout: '超时',
     agentBlocked: 'Agent 报告受阻',
+    blocked: '因新增阻塞而撤回',
     apiInvalidRequest: '模型服务拒绝了请求',
     agentError: {
       providerAuth: '模型服务登录失败',
@@ -309,6 +315,21 @@ const npCollabZhCN: NpCollabResource = {
       agentTimeout: 'Agent 超时',
       unknown: '未知的 Agent 错误',
     },
+  },
+  connect: {
+    title: '添加电脑',
+    description: '在装有编码工具的电脑上运行以下命令。',
+    install: '安装 CLI',
+    login: '登录到本应用',
+    start: '启动守护进程',
+    apiKeyPlaceholder: 'API 密钥',
+    apiKeyHint: '在“设置 → API 密钥”中创建一个 API 密钥。',
+    after:
+      '几秒钟内这台电脑就会出现在列表中，每个检测到的编码工具对应一个运行时。',
+    copy: '复制命令',
+    copied: '已复制',
+    copyFailed: '无法复制，请手动选中命令复制。',
+    done: '完成',
   },
 };
 

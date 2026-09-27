@@ -1,9 +1,11 @@
 /**
- * Phase 1 sections of the runtime brief (contract §I): Project Context, Repositories,
- * Sub-issues and Parent coordination. Pure string builders.
+ * Phase 1 sections of the runtime brief: Project Context, Repositories (with pull requests),
+ * Sub-issues and Parent coordination (iteration 1 §I), plus Conversation Mode, Skills and the
+ * mode-dependent Workflow (iteration 2 §C, §H, §J). Pure string builders.
  */
-import type { ClaimedRunV1 } from '../run-context.js';
+import { type ClaimedRunV1, executionModeOf } from '../run-context.js';
 import { branchNameFor } from '../repo/naming.js';
+import { validSkills } from './skills.js';
 
 export type Phase1BriefInput = Pick<ClaimedRunV1, 'agent' | 'issue' | 'project' | 'session'>;
 
@@ -14,6 +16,8 @@ export function phase1Commands(key: string): string[] {
     '- `nocoproject issue dependency add|remove <issue> --blocked-by <other> --json` — manage blocked-by dependencies',
     '- `nocoproject project get --json` — the project and its repositories',
     '- `nocoproject repo checkout <url> [--ref <ref>] [--fresh] --json` — check out a project repository (see Repositories)',
+    `- \`nocoproject pr link <url> [--issue ${key}] --json\` — link a pull request you opened to ${key}`,
+    `- \`nocoproject pr list [--issue ${key}] --json\` — list the pull requests linked to ${key}`,
   ];
 }
 
@@ -34,13 +38,21 @@ export function projectSection(input: Phase1BriefInput): string[] {
   return lines;
 }
 
+function linkedPullRequests(input: Phase1BriefInput): string[] {
+  const prs = input.issue.pullRequests ?? [];
+  if (prs.length === 0) return [];
+  const lines = ['', `Pull requests already linked to ${input.issue.identifier} (push to their branch to update one instead of opening another):`, ''];
+  for (const pr of prs) lines.push(`- #${pr.number} (${pr.state}) ${pr.url}`);
+  return lines;
+}
+
 export function repositoriesSection(input: Phase1BriefInput): string[] {
   const key = input.issue.identifier;
   const resources = input.project?.resources ?? [];
   const lines = ['## Repositories', ''];
   if (resources.length === 0) {
     lines.push('No repositories are attached to this issue’s project, so `repo checkout` is not available.');
-    return lines;
+    return [...lines, ...linkedPullRequests(input)];
   }
   lines.push('Project repositories (only these can be checked out):', '');
   for (const r of resources) lines.push(`- \`${r.url}\`${r.defaultRef ? ` (default ref \`${r.defaultRef}\`)` : ''}`);
@@ -51,12 +63,71 @@ export function repositoriesSection(input: Phase1BriefInput): string[] {
     '',
     '- Work and commit only inside that worktree, on that branch. Do not switch branches there and do not touch the shared clone cache under `~/.nocoproject/repos`.',
     '- When the work is ready for review, push with `git push -u origin HEAD`.',
-    `- Open a pull request with \`gh pr create\`; the title must contain ${key} (for example \`${key}: <summary>\`). Link the PR in your delivery comment.`,
+    `- Then open a pull request with \`gh pr create --title "${key}: <summary>"\` and link it with \`nocoproject pr link <url>\` (the URL \`gh pr create\` prints). The branch name already contains ${key}, so the server also links it automatically. Mention the PR in your delivery comment.`,
   );
   const previous = input.session.branchName;
   if (previous) {
     lines.push(`- The previous run of ${key} worked on branch \`${previous}\`${input.session.repoUrl ? ` of \`${input.session.repoUrl}\`` : ''}; \`repo checkout\` resumes it.`);
   }
+  return [...lines, ...linkedPullRequests(input)];
+}
+
+/** `## Conversation Mode` (session mode only, §J): opens the brief. Empty in task mode. */
+export function conversationModeSection(input: Phase1BriefInput): string[] {
+  if (executionModeOf(input) !== 'session') return [];
+  return [
+    '## Conversation Mode',
+    '',
+    'This issue is in session mode: you are in a live conversation with its owner, and each new comment arrives as your next turn.',
+    '',
+    '- Reply briefly and conversationally, like a chat message. Answer what was just said; do not write a summary report every turn.',
+    '- Your working directory and your session carry over from turn to turn, so continue where you left off instead of starting over.',
+    '- Comments posted while you are working are delivered to you as the next turn.',
+    '- You do not need to move the issue to `in_review` when you finish a turn; the owner changes the status.',
+    '',
+  ];
+}
+
+/** `## Workflow`: the task-mode delivery loop, or the conversational loop in session mode. */
+export function workflowSection(input: Phase1BriefInput): string[] {
+  if (executionModeOf(input) === 'session') {
+    return [
+      '## Workflow',
+      '',
+      '1. Read the new comment(s) quoted in this turn’s prompt. Read the issue and earlier comments only when you need more context.',
+      '2. If the issue is still `todo`, set it to `in_progress` once you start producing work.',
+      '3. Reply with a short comment using `comment add`, in the triggering thread (`--parent <rootId>`).',
+      '4. Leave the status alone after replying; the owner decides when the issue is done. If you are stuck, say what you need in your reply.',
+    ];
+  }
+  return [
+    '## Workflow',
+    '',
+    '1. Read the issue first.',
+    '2. Catch up on the comments, especially the thread you were asked in.',
+    '3. As soon as you start producing work, set the status to `in_progress`.',
+    '4. Deliver your result as a comment with `comment add`, replying to the triggering thread with `--parent <rootId>`.',
+    '5. After delivering, set the status to `in_review`. If you are stuck, set `blocked` and leave a comment explaining what you need.',
+    '6. If you were only asked a question, answer it with a comment and do not change the status.',
+  ];
+}
+
+/** `## Skills` (§H): name, description and path of every attached skill. Empty when there are none. */
+export function skillsSection(input: Phase1BriefInput): string[] {
+  const skills = validSkills(input.agent.skills);
+  if (skills.length === 0) return [];
+  const lines = [
+    '## Skills',
+    '',
+    'Your owner attached these skills. Each one is a folder with a `SKILL.md` (instructions) and optional supporting files, rebuilt for every run. When a task matches a skill’s description, read its `SKILL.md` first and follow it; skip skills that are not relevant.',
+    '',
+  ];
+  for (const s of skills) {
+    const description = s.description.replace(/\s+/g, ' ').trim() || '(no description)';
+    lines.push(`- **${s.name}** — ${description} \`${s.path}\``);
+  }
+  if (input.agent.provider === 'claude') lines.push('', 'Claude Code also discovers the same skills natively under `.claude/skills/`.');
+  lines.push('');
   return lines;
 }
 

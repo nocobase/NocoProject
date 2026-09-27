@@ -12,16 +12,17 @@ import type {
   FailureReason,
   RunEventInput,
 } from '../protocol.js';
-import { SESSION_POISONING_FAILURE_REASONS } from '../protocol.js';
+import { AGENT_ENV_REDACT_MIN_LENGTH, SESSION_POISONING_FAILURE_REASONS } from '../protocol.js';
 import { withRetry } from '../util/backoff.js';
 import type { Logger } from '../util/log.js';
 import { type ClaimedRunV1, readCheckoutRecord, writeRunContext } from '../run-context.js';
-import { forgetSecret, redactText, registerSecret } from '../util/redact.js';
+import { forgetSecret, redactKnownSecrets, redactText, registerSecret } from '../util/redact.js';
 import type { AgentAdapter, RunResult, RunSpec } from './adapters/types.js';
 import { nowIso } from './adapters/types.js';
 import { buildBrief, buildTurnPrompt, writeBrief } from './brief.js';
 import { classifyFailure } from './classify.js';
-import { buildAgentEnv, prepareRunEnvironment, type RunEnvironment } from './env.js';
+import { buildAgentEnv, filterAgentEnv, prepareRunEnvironment, type RunEnvironment } from './env.js';
+import { writeSkills } from './skills.js';
 import { EventStreamer } from './stream.js';
 import { CancelWatcher, IdleWatchdog, type StopReason } from './watchdog.js';
 
@@ -142,11 +143,19 @@ function decideFailure(attempt: AgentAttempt): FailureReason | null {
   });
 }
 
-async function prepare(deps: RunnerDeps, claimed: ClaimedRunV1): Promise<{ env: RunEnvironment; spec: RunSpec }> {
+interface Prepared {
+  readonly env: RunEnvironment;
+  readonly spec: RunSpec;
+  /** Status lines for the run's event stream (skipped env names, rejected skill paths). */
+  readonly notes: readonly string[];
+}
+
+async function prepare(deps: RunnerDeps, claimed: ClaimedRunV1): Promise<Prepared> {
   const caps = deps.adapter.capabilities();
   const env = prepareRunEnvironment(deps.workspacesRoot, claimed, caps.resume);
   writeRunContext(env.workDir, claimed);
-  writeBrief(env.workDir, caps.briefFile, buildBrief(claimed));
+  const skills = writeSkills(env.workDir, claimed.agent.skills, caps.nativeSkillsDir);
+  writeBrief(env.workDir, caps.briefFile, redactKnownSecrets(buildBrief(claimed)));
   const prompt = buildTurnPrompt(claimed, { resumed: Boolean(env.resumeSessionId) });
   const agentEnv = buildAgentEnv({ serverUrl: deps.serverUrl, token: claimed.token, claimed, binDir: deps.binDir, workDir: env.workDir, home: deps.home });
   const spec: RunSpec = {
@@ -158,7 +167,14 @@ async function prepare(deps: RunnerDeps, claimed: ClaimedRunV1): Promise<{ env: 
     model: claimed.agent.model ?? undefined,
     resumeSessionId: env.resumeSessionId,
   };
-  return { env, spec };
+  const skipped = filterAgentEnv(claimed.agent.env).skipped;
+  const notes = [...(skipped.length ? [`Skipped reserved or invalid environment variables: ${skipped.join(', ')}`] : []), ...skills.warnings];
+  return { env, spec, notes };
+}
+
+/** Agent env values (≥ 6 characters) join the redaction table for the run's lifetime (§G). */
+function agentSecrets(claimed: ClaimedRunV1): string[] {
+  return Object.values(filterAgentEnv(claimed.agent.env).vars).filter((v) => v.length >= AGENT_ENV_REDACT_MIN_LENGTH);
 }
 
 /** Executes a claimed run end to end. Never throws. */
@@ -166,9 +182,11 @@ export async function executeRun(claimed: ClaimedRunV1, deps: RunnerDeps): Promi
   const runId = claimed.run.id;
   const log = deps.logger.child(`run:${runId}`);
   registerSecret(claimed.token);
+  const secrets = agentSecrets(claimed);
+  for (const value of secrets) registerSecret(value, { minLength: AGENT_ENV_REDACT_MIN_LENGTH });
   const stopLease = startLeaseRenewal(deps, runId);
   try {
-    let prepared: { env: RunEnvironment; spec: RunSpec };
+    let prepared: Prepared;
     try {
       prepared = await prepare(deps, claimed);
     } catch (error) {
@@ -176,7 +194,8 @@ export async function executeRun(claimed: ClaimedRunV1, deps: RunnerDeps): Promi
       await report(deps, log, runId, 'fail', { reason: 'environmentPrepareFailed', detail: redactText((error as Error).message) });
       return { kind: 'failed', reason: 'environmentPrepareFailed' };
     }
-    const { env, spec } = prepared;
+    const { env, spec, notes } = prepared;
+    for (const note of notes) log.warn(note);
     try {
       await withRetry(() => deps.api.start(runId, { providerSessionId: spec.resumeSessionId, workDir: env.workDir }), reportRetry);
     } catch (error) {
@@ -185,17 +204,19 @@ export async function executeRun(claimed: ClaimedRunV1, deps: RunnerDeps): Promi
     }
     stopLease();
     log.info('agent starting', { provider: deps.adapter.provider, workDir: env.workDir, resume: spec.resumeSessionId ?? 'fresh' });
-    return await runAndReport(deps, log, claimed, env, spec);
+    return await runAndReport(deps, log, claimed, env, spec, notes);
   } finally {
     stopLease();
     forgetSecret(claimed.token);
+    for (const value of secrets) forgetSecret(value);
   }
 }
 
-async function runAndReport(deps: RunnerDeps, log: Logger, claimed: ClaimedRunV1, env: RunEnvironment, spec: RunSpec): Promise<RunOutcome> {
+async function runAndReport(deps: RunnerDeps, log: Logger, claimed: ClaimedRunV1, env: RunEnvironment, spec: RunSpec, notes: readonly string[]): Promise<RunOutcome> {
   const runId = claimed.run.id;
   const streamer = new EventStreamer(deps.api, runId, { logger: log, flushIntervalMs: deps.flushIntervalMs });
   streamer.push({ type: 'status', content: `Starting ${deps.adapter.provider} in ${env.workDir}${spec.resumeSessionId ? ` (resuming ${spec.resumeSessionId})` : ''}`, at: nowIso() });
+  for (const note of notes) streamer.push({ type: 'status', content: note, at: nowIso() });
   let attempt = await runAgent(deps, spec, streamer);
   if (attempt.result.resumeRejected && !attempt.stopReason) {
     log.warn('provider rejected the session resume; retrying once with a fresh session');

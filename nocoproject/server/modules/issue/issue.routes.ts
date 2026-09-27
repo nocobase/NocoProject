@@ -3,8 +3,9 @@ import type { Context, Hono } from 'hono';
 
 import { npRouter, queryText, readJson, sessionActor } from '../shared/http.js';
 import type {
-  CreateIssueRequestV1,
-  UpdateIssueRequestV1,
+  CreateIssueRequestV2,
+  StatusChangePendingResponse,
+  UpdateIssueRequestV2,
 } from '../shared/protocol.js';
 import type { IssueListFilter, IssueQueries } from './issue.queries.js';
 import type { IssueService } from './issue.service.js';
@@ -23,7 +24,9 @@ function listFilter(context: Context): IssueListFilter {
 
 /**
  * `/np/issues` (browser). `:id` accepts an issue id or its identifier (`NP-12`). `GET /?view=board` answers
- * `{ data: { groups: [{ statusKey, issues }] } }`; an issue the caller cannot see is 404.
+ * `{ data: { groups: [{ statusKey, issues }] } }`; an issue the caller cannot see is 404. `PATCH` answers 202
+ * `{ data: { issue, pendingApproval } }` when the status change waits for approval (iteration 2 §D), and
+ * `GET /:id/runs` answers `{ data: RunSummary[], queuedRun }` (§J).
  */
 export function createIssueRoutes(deps: {
   issues: IssueService;
@@ -43,7 +46,7 @@ export function createIssueRoutes(deps: {
   routes.post('/', async (context) => {
     const issue = await deps.issues.create(
       sessionActor(context),
-      await readJson<CreateIssueRequestV1>(context),
+      await readJson<CreateIssueRequestV2>(context),
     );
     return context.json({ data: issue }, 201);
   });
@@ -56,12 +59,24 @@ export function createIssueRoutes(deps: {
     }),
   );
   routes.patch('/:id', async (context) => {
-    const issue = await deps.issues.update(
+    const result = await deps.issues.patch(
       sessionActor(context),
       context.req.param('id'),
-      await readJson<UpdateIssueRequestV1>(context),
+      await readJson<UpdateIssueRequestV2>(context),
     );
-    return context.json({ data: issue });
+    if (result.pendingApproval) {
+      const data: StatusChangePendingResponse = {
+        issue: result.issue,
+        pendingApproval: result.pendingApproval,
+      };
+      return context.json({ data }, 202);
+    }
+    return context.json({ data: result.issue });
   });
+  routes.get('/:id/runs', async (context) =>
+    context.json(
+      await deps.queries.runs(sessionActor(context), context.req.param('id')),
+    ),
+  );
   return routes;
 }

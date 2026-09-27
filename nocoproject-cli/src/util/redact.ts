@@ -26,22 +26,43 @@ const PATTERNS: readonly SecretPattern[] = [
   { re: /\b(https?:\/\/)[^/\s@'"]+@/gi, replacement: '$1[REDACTED]@' },
 ];
 
-/** Values registered at runtime (the daemon API key, issued run tokens) are always masked. */
-const knownSecrets = new Set<string>();
+/**
+ * Values registered at runtime (the daemon API key, issued run tokens, agent env values) are
+ * always masked. Registrations are reference-counted: two concurrent runs of the same agent
+ * register the same env values, and one finishing must not unmask them for the other.
+ */
+const knownSecrets = new Map<string, number>();
 
-export function registerSecret(value: string | undefined | null): void {
-  if (value && value.length >= 8) knownSecrets.add(value);
+export interface SecretOptions {
+  /** Values shorter than this are ignored (default 8; agent env values use 6). */
+  readonly minLength?: number;
+}
+
+export function registerSecret(value: string | undefined | null, opts: SecretOptions = {}): void {
+  if (!value || value.length < (opts.minLength ?? 8)) return;
+  knownSecrets.set(value, (knownSecrets.get(value) ?? 0) + 1);
 }
 
 export function forgetSecret(value: string | undefined | null): void {
-  if (value) knownSecrets.delete(value);
+  if (!value) return;
+  const n = knownSecrets.get(value);
+  if (n === undefined) return;
+  if (n <= 1) knownSecrets.delete(value);
+  else knownSecrets.set(value, n - 1);
+}
+
+/** Masks only the registered secrets (no pattern rules); used for files the agent reads, like the brief. */
+export function redactKnownSecrets(input: string): string {
+  let out = input;
+  // Longest first, so a secret that contains another one is masked as a whole.
+  for (const secret of [...knownSecrets.keys()].sort((a, b) => b.length - a.length)) {
+    if (out.includes(secret)) out = out.split(secret).join('[REDACTED]');
+  }
+  return out;
 }
 
 export function redactText(input: string): string {
-  let out = input;
-  for (const secret of knownSecrets) {
-    if (out.includes(secret)) out = out.split(secret).join('[REDACTED]');
-  }
+  let out = redactKnownSecrets(input);
   for (const p of PATTERNS) out = out.replace(p.re, p.replacement);
   return out;
 }

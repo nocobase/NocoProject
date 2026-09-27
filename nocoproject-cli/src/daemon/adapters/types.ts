@@ -50,6 +50,8 @@ export interface AdapterCapabilities {
   readonly resume: boolean;
   readonly steering: boolean;
   readonly briefFile: 'CLAUDE.md' | 'AGENTS.md';
+  /** Workdir-relative directory the tool discovers skills in (Claude Code: `.claude/skills`). */
+  readonly nativeSkillsDir?: string;
 }
 
 export interface AgentAdapter {

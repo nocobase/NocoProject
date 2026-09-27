@@ -13,6 +13,14 @@
  */
 
 import type {
+  ApprovalRequest,
+  CommentReaction,
+  ExecutionMode,
+  IssuePullRequestView,
+  QueuedRun,
+  UsageRow,
+} from './types-iter2.js';
+import type {
   AgentAccessLevel,
   ExecutorProposal,
   IssueDependency,
@@ -23,6 +31,7 @@ import type {
 } from './types-collab.js';
 
 export type * from './types-collab.js';
+export type * from './types-iter2.js';
 
 // ---------- copied from server/modules/shared/protocol.ts ----------
 
@@ -123,6 +132,10 @@ export interface IssueListItem {
   readonly subtaskCount?: number;
   /** Open `blockedBy` blockers plus unfinished siblings in lower stages (§D). */
   readonly blockedCount?: number;
+  // Phase 1 iteration 2 (§A, §J)
+  readonly executionMode?: ExecutionMode;
+  readonly originType?: 'manual' | 'intake' | 'agent';
+  readonly originId?: string | null;
 }
 
 /** The issue record inside `GET /np/issues/:id`. */
@@ -148,6 +161,11 @@ export interface IssueComment {
   /** Present when the server returns the tree nested; flat lists are nested by `normalizeComments`. */
   readonly replies?: readonly IssueComment[];
   readonly children?: readonly IssueComment[];
+  // Phase 1 iteration 2 (§F): reactions, and the thread resolution on a root comment.
+  readonly reactions?: readonly CommentReaction[];
+  readonly resolvedAt?: string | null;
+  readonly resolvedById?: string | null;
+  readonly resolvedByName?: string | null;
 }
 
 /** A top-level comment with every descendant flattened into chronological replies. */
@@ -213,6 +231,12 @@ export interface IssueDetail {
   readonly labels: readonly Label[];
   readonly parent: IssueRef | null;
   readonly project: { readonly id: string; readonly name: string } | null;
+  // Phase 1 iteration 2 (§C, §D, §I, §J): always present after normalization.
+  readonly pullRequests: readonly IssuePullRequestView[];
+  readonly approvals: readonly ApprovalRequest[];
+  readonly queuedRun: QueuedRun | null;
+  /** The issue's usage when the detail carries it; the panel otherwise asks `GET /np/usage`. */
+  readonly usage: UsageRow | null;
 }
 
 export interface AgentListItem {
@@ -242,6 +266,8 @@ export interface AgentListItem {
     readonly name: string;
   }[];
   readonly accessUserIds?: readonly string[];
+  // Phase 1 iteration 2 (§H)
+  readonly skillIds?: readonly string[];
   readonly archivedAt?: string | null;
   readonly createdAt?: string;
   readonly updatedAt?: string;
@@ -299,6 +325,7 @@ export interface CreateIssueInput {
   readonly dueDate?: string | null;
   readonly autoExecuteSubtasks?: boolean;
   readonly start?: boolean;
+  readonly executionMode?: ExecutionMode;
 }
 
 export interface UpdateIssueInput {
@@ -318,6 +345,7 @@ export interface UpdateIssueInput {
   readonly projectId?: string | null;
   /** `false` changes the fields without queueing a run ("don't start now"); the server defaults to `true`. */
   readonly start?: boolean;
+  readonly executionMode?: ExecutionMode;
 }
 
 export interface CreateCommentResult {
@@ -351,5 +379,6 @@ export interface UpdateAgentInput {
   readonly access?: AgentAccessLevel;
   readonly accessUserIds?: readonly string[];
   readonly delegationTargetIds?: readonly string[];
+  readonly skillIds?: readonly string[];
   readonly archived?: boolean;
 }

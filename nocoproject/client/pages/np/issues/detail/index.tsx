@@ -146,7 +146,7 @@ function IssueLayout({
   readonly me: Me | undefined;
   readonly isMobile: boolean;
 }): ReactElement {
-  const main = <IssueMain detail={detail} agents={agents} />;
+  const main = <IssueMain detail={detail} agents={agents} me={me} />;
   const panel = <PropertiesPanel detail={detail} agents={agents} me={me} />;
 
   if (isMobile) {

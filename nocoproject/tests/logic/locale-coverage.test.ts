@@ -138,3 +138,69 @@ describe('reference page translations', () => {
     expect(missingFamilies(chinese)).toEqual([]);
   });
 });
+
+/**
+ * The NocoProject pages read the application locale (`client/locales/`), whose Chinese side is typed against the
+ * English one — but a key a page asks for and neither side defines is not a type error, it renders the key path. This
+ * scans the NocoProject sources the same way the reference-page check does and requires every dotted key to exist in
+ * both languages, and every runtime-completed family to have at least one member.
+ */
+describe('NocoProject translations', async () => {
+  const applicationEnglish = (await import('../../client/locales/en-US.ts'))
+    .default as Record<string, unknown>;
+  const applicationChinese = (await import('../../client/locales/zh-CN.ts'))
+    .default as unknown as Record<string, unknown>;
+  const roots = new Set(['np', 'navigation', 'actions', 'status']);
+  const npFiles = [
+    ...sourceFiles(path.join(clientDirectory, 'pages', 'np')),
+    ...fs
+      .readdirSync(path.join(clientDirectory, 'components'))
+      .filter((name) => /^np-.*\.tsx?$/u.test(name))
+      .map((name) => path.join(clientDirectory, 'components', name)),
+    path.join(clientDirectory, 'routes.ts'),
+  ];
+  const keys = new Set<string>();
+  const prefixes = new Set<string>();
+  const anyInterpolation = /\x60([a-zA-Z]+(?:\.[a-zA-Z0-9_]+)+\.)\x24\{/gu;
+  for (const file of npFiles) {
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      if (/^\s*(\/\/|\*)/u.test(line)) continue;
+      for (const match of line.matchAll(quotedKey)) {
+        if (roots.has(match[1].split('.')[0])) keys.add(match[1]);
+      }
+      for (const match of line.matchAll(anyInterpolation)) {
+        if (roots.has(match[1].split('.')[0])) prefixes.add(match[1]);
+      }
+    }
+  }
+  const english = new Set(translationKeys(applicationEnglish));
+  const chinese = new Set(translationKeys(applicationChinese));
+  // A key may name a group whose leaves the page picks at runtime, so a group counts as present too.
+  const has = (written: ReadonlySet<string>, key: string): boolean =>
+    written.has(key) || [...written].some((leaf) => leaf.startsWith(key + '.'));
+
+  it('reads the keys of the NocoProject pages', () => {
+    expect(keys.size).toBeGreaterThan(400);
+    expect(prefixes.size).toBeGreaterThan(10);
+  });
+
+  it('translates every NocoProject key into English and Chinese', () => {
+    expect([...keys].filter((key) => !has(english, key)).sort()).toEqual([]);
+    expect([...keys].filter((key) => !has(chinese, key)).sort()).toEqual([]);
+  });
+
+  it('translates the NocoProject key families completed at runtime', () => {
+    const missing = (written: ReadonlySet<string>): string[] =>
+      [...prefixes]
+        .filter((prefix) => ![...written].some((key) => key.startsWith(prefix)))
+        .sort();
+    expect(missing(english)).toEqual([]);
+    expect(missing(chinese)).toEqual([]);
+  });
+
+  it('keeps the Chinese NocoProject wording aligned with English', () => {
+    const npOnly = (written: ReadonlySet<string>): string[] =>
+      [...written].filter((key) => key.startsWith('np.')).sort();
+    expect(npOnly(chinese)).toEqual(npOnly(english));
+  });
+});

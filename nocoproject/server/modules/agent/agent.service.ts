@@ -8,7 +8,8 @@
  *
  * An agent may bind only to a runtime the caller owns or a public runtime. Only the owner or an owner/admin may edit
  * an agent, its access list and its delegation list (`agentDelegationGrants`: agents it may hand sub-issues to
- * without a proposal). Setting a delegation target requires access to that target.
+ * without a proposal). Setting a delegation target requires access to that target. Iteration 2: `skillIds` mounts
+ * skills (`agentSkills`, whole-set replace); rows carry `skillIds` and `skills`.
  */
 import type { Actor } from '../shared/activity.js';
 import {
@@ -26,28 +27,32 @@ import { invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
   AgentAccessLevel,
-  AgentListItemV1,
+  AgentListItemV2,
   AgentProvider,
   AgentV1,
-  CreateAgentRequestV1,
-  UpdateAgentRequestV1,
+  CreateAgentRequestV2,
+  UpdateAgentRequestV2,
 } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
 import { optionalText, requiredName, stringList } from '../shared/validate.js';
 import { activeRunCounts } from '../run/run.queries.js';
 import { isAgentProvider, isOnline } from '../runtime/runtime.records.js';
+import {
+  replaceAgentSkills,
+  skillRefsForAgents,
+} from '../skill/skill.service.js';
 
 export const DEFAULT_MAX_CONCURRENT_RUNS = 6;
 
 export interface AgentService {
-  list(actor: Actor): Promise<AgentListItemV1[]>;
-  get(actor: Actor, id: string): Promise<AgentListItemV1>;
-  create(actor: Actor, input: CreateAgentRequestV1): Promise<AgentListItemV1>;
+  list(actor: Actor): Promise<AgentListItemV2[]>;
+  get(actor: Actor, id: string): Promise<AgentListItemV2>;
+  create(actor: Actor, input: CreateAgentRequestV2): Promise<AgentListItemV2>;
   update(
     actor: Actor,
     id: string,
-    patch: UpdateAgentRequestV1,
-  ): Promise<AgentListItemV1>;
+    patch: UpdateAgentRequestV2,
+  ): Promise<AgentListItemV2>;
 }
 
 export interface AgentDeps {
@@ -210,7 +215,7 @@ async function decorate(
   conn: Conn,
   viewer: Viewer,
   agents: readonly AgentV1[],
-): Promise<AgentListItemV1[]> {
+): Promise<AgentListItemV2[]> {
   const agentIds = agents.map((agent) => agent.id);
   const runtimeIds = unique(agents.map((agent) => agent.runtimeId));
   const runtimes = runtimeIds.length
@@ -226,6 +231,7 @@ async function decorate(
     agents.map((agent) => agent.ownerUserId),
   );
   const invokable = await invokableAgentIds(conn, viewer.userId, agents);
+  const skills = await skillRefsForAgents(conn, agentIds);
   const grants = agentIds.length
     ? await conn.query
         .selectFrom('agentAccessGrants')
@@ -272,6 +278,8 @@ async function decorate(
           const id = str(row.targetAgentId) ?? '';
           return { id, name: targetNames.get(id) ?? id };
         }),
+      skillIds: (skills.get(agent.id) ?? []).map((skill) => skill.id),
+      skills: skills.get(agent.id) ?? [],
     };
   });
 }
@@ -290,7 +298,7 @@ async function getAgent(
   deps: AgentDeps,
   actor: Actor,
   id: string,
-): Promise<AgentListItemV1> {
+): Promise<AgentListItemV2> {
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
   const [item] = await decorate(deps, conn, viewer, [
@@ -302,8 +310,8 @@ async function getAgent(
 async function createAgent(
   deps: AgentDeps,
   actor: Actor,
-  input: CreateAgentRequestV1,
-): Promise<AgentListItemV1> {
+  input: CreateAgentRequestV2,
+): Promise<AgentListItemV2> {
   const name = requiredName(input?.name);
   if (!isAgentProvider(input.provider))
     throw invalid('INVALID_PROVIDER', 'provider is not supported.');
@@ -359,6 +367,13 @@ async function createAgent(
         id,
         stringList(input.delegationTargetIds, 'delegationTargetIds'),
       );
+    if (input.skillIds !== undefined)
+      await replaceAgentSkills(
+        tx,
+        deps.ids,
+        id,
+        stringList(input.skillIds, 'skillIds'),
+      );
     tx.emit({ type: 'agents.changed' });
   });
   return getAgent(deps, actor, id);
@@ -368,7 +383,7 @@ async function patchValues(
   tx: Tx,
   viewer: Viewer,
   current: AgentV1,
-  patch: UpdateAgentRequestV1,
+  patch: UpdateAgentRequestV2,
 ): Promise<Record<string, unknown>> {
   const values: Record<string, unknown> = {};
   if (patch.name !== undefined) values.name = requiredName(patch.name);
@@ -415,8 +430,8 @@ async function updateAgent(
   deps: AgentDeps,
   actor: Actor,
   id: string,
-  patch: UpdateAgentRequestV1,
-): Promise<AgentListItemV1> {
+  patch: UpdateAgentRequestV2,
+): Promise<AgentListItemV2> {
   await deps.tx.run(async (tx) => {
     const viewer = await viewerOf(tx.conn, actor);
     const current = await findAgent(tx.conn, id);
@@ -444,6 +459,13 @@ async function updateAgent(
         viewer,
         id,
         stringList(patch.delegationTargetIds, 'delegationTargetIds'),
+      );
+    if (patch.skillIds !== undefined)
+      await replaceAgentSkills(
+        tx,
+        deps.ids,
+        id,
+        stringList(patch.skillIds, 'skillIds'),
       );
     tx.emit({ type: 'agents.changed' });
   });

@@ -1,9 +1,11 @@
 /**
- * Batch claim for a daemon (protocol.md §4 `runs/claim`).
+ * Batch claim for a daemon (protocol.md §4 `runs/claim`). Iteration 2 adds `agent.env` (decrypted — this payload only
+ * travels on the daemon route), `agent.skills`, `issue.executionMode` and `issue.pullRequests`.
  *
  * Each claimed run is its own short transaction: runtime advisory lock → claim SQL → run token insert. The payload
  * for the daemon is assembled after commit; if that fails the run stays `dispatched` and the lease rule re-queues it.
  */
+import type { SecretBox } from '../shared/crypto.js';
 import type { Conn, Tx, TxRunner } from '../shared/db.js';
 import {
   isArrayValue,
@@ -22,13 +24,17 @@ import {
   type AgentProvider,
   type ClaimedRun,
   type ClaimedRunPhase1Extras,
+  type ClaimedRunPhase2Extras,
   type ClaimedTriggerComment,
   type DaemonClaimRequest,
   type DaemonClaimResponse,
   type RunTriggerType,
 } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
+import { claimEnv } from '../agent/env.service.js';
+import { claimedPullRequests } from '../git/git.records.js';
 import { findIssue, issueRef } from '../issue/issue.records.js';
+import { claimSkills } from '../skill/skill.service.js';
 import { claimedProject } from '../project/project.records.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 import {
@@ -60,10 +66,13 @@ export interface ClaimDeps {
   readonly ids: IdSource;
   readonly users: UserDirectory;
   readonly workflows: WorkflowService;
+  readonly secrets: SecretBox;
 }
 
 /** A claim payload with the iteration-1 extras merged in (contract §I). */
 export type ClaimedRunV1 = ClaimedRun & ClaimedRunPhase1Extras;
+/** ...and the iteration-2 extras (iteration-2 contract §L). */
+export type ClaimedRunV2 = ClaimedRunV1 & ClaimedRunPhase2Extras;
 
 async function delegationTargets(
   conn: Conn,
@@ -200,7 +209,7 @@ async function buildClaimedRun(
   runId: string,
   token: string,
   serverUrl: string,
-): Promise<ClaimedRunV1 | null> {
+): Promise<ClaimedRunV2 | null> {
   const conn = deps.tx.read();
   const run = await findRun(conn, runId);
   if (!run || !run.runtimeId) return null;
@@ -251,6 +260,8 @@ async function buildClaimedRun(
       provider: (str(agent.provider) ?? 'echo') as AgentProvider,
       model: str(agent.model),
       delegationTargets: await delegationTargets(conn, run.agentId),
+      env: await claimEnv(conn, deps.secrets, run.agentId),
+      skills: await claimSkills(conn, run.agentId),
     },
     issue: {
       id: issue.id,
@@ -262,6 +273,8 @@ async function buildClaimedRun(
       stage: issue.stage,
       autoExecuteSubtasks: issue.autoExecuteSubtasks,
       projectId: issue.projectId,
+      executionMode: issue.executionMode,
+      pullRequests: await claimedPullRequests(conn, issue.id),
     },
     project: await claimedProject(conn, issue.projectId),
     statusCatalog: view.catalog,
@@ -321,7 +334,7 @@ export function createClaimService(deps: ClaimDeps): ClaimService {
           claimed.push(result);
         }
       }
-      const runs: ClaimedRunV1[] = [];
+      const runs: ClaimedRunV2[] = [];
       for (const { runId, token } of claimed) {
         const payload = await buildClaimedRun(deps, runId, token, serverUrl);
         if (payload) runs.push(payload);

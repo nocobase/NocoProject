@@ -1,5 +1,6 @@
 import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
+import { useQuery } from '@tanstack/react-query';
 import { PencilIcon } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
@@ -8,8 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 
+import { fetchWorkflows } from '../../api-collab.js';
 import { updateProject } from '../../api-projects.js';
-import { ISSUE_PRIORITIES } from '../../constants.js';
+import { ISSUE_PRIORITIES, npKeys } from '../../constants.js';
 import {
   DateField,
   PropertyRow,
@@ -112,6 +114,10 @@ export function ProjectSidePanel({
     updateProject(api, project.id, changes),
   );
   const disabled = !canEdit || update.isPending;
+  const workflows = useQuery({
+    queryKey: npKeys.workflows,
+    queryFn: () => fetchWorkflows(api),
+  });
 
   return (
     <div className='space-y-6 p-4 md:p-6'>
@@ -174,6 +180,28 @@ export function ProjectSidePanel({
             noneLabel={t('np.projects.noLead')}
             disabled={disabled}
             onChange={(value) => update.mutate({ leadUserId: value })}
+          />
+        </PropertyRow>
+        <PropertyRow
+          label={t('np.projectMore.workflow')}
+          htmlFor='np-project-workflow'
+        >
+          <PropertySelect
+            id='np-project-workflow'
+            options={(workflows.data ?? []).map((workflow) => ({
+              value: workflow.id,
+              label: workflow.name,
+            }))}
+            value={
+              project.workflowId ??
+              project.workflow?.id ??
+              workflows.data?.find((workflow) => workflow.isDefault)?.id ??
+              null
+            }
+            disabled={disabled || !workflows.data}
+            onChange={(value) => {
+              if (value) update.mutate({ workflowId: value });
+            }}
           />
         </PropertyRow>
         <PropertyRow label={t('np.dates.start')} htmlFor='np-project-start'>

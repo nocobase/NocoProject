@@ -112,3 +112,33 @@ export async function removeProjectResource(
     method: 'DELETE',
   });
 }
+
+export async function deleteProject(
+  api: ApiClient,
+  projectId: string,
+): Promise<void> {
+  await api.request<unknown>({
+    path: `np/projects/${id(projectId)}`,
+    method: 'DELETE',
+  });
+}
+
+export interface UpdateResourceInput {
+  readonly url?: string;
+  readonly defaultRef?: string | null;
+  readonly label?: string | null;
+  readonly position?: number;
+}
+
+export async function updateProjectResource(
+  api: ApiClient,
+  projectId: string,
+  resourceId: string,
+  changes: UpdateResourceInput,
+): Promise<void> {
+  await api.request<unknown, UpdateResourceInput>({
+    path: `np/projects/${id(projectId)}/resources/${id(resourceId)}`,
+    method: 'PATCH',
+    json: changes,
+  });
+}

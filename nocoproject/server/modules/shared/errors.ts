@@ -10,7 +10,9 @@ export type NpErrorKind =
   | 'forbidden'
   | 'conflict'
   | 'unauthorized'
-  | 'upgradeRequired';
+  | 'upgradeRequired'
+  /** An upstream service (GitHub) failed: 502. */
+  | 'upstream';
 
 export class NpError extends Error {
   public readonly kind: NpErrorKind;

@@ -82,6 +82,7 @@ async function releaseCandidates(tx: Tx, issue: IssueV1): Promise<IssueV1[]> {
       .select('id')
       .where('parentIssueId', '=', issue.parentIssueId)
       .where('stage', '>', issue.stage)
+      .where('deletedAt', 'is', null)
       .execute();
     const siblings = await issuesByIds(
       tx.conn,

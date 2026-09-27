@@ -212,6 +212,7 @@ async function decorate(
       .selectFrom('issues')
       .select((eb) => ['projectId', 'statusKey', eb.fn.countAll().as('count')])
       .where('projectId', 'in', ids)
+      .where('deletedAt', 'is', null)
       .groupBy(['projectId', 'statusKey'])
       .execute();
     for (const row of rows) {
@@ -363,6 +364,12 @@ async function projectUpdate(
   await managed(deps, actor, id, async (tx) => {
     const values = await projectValues(tx.conn, deps.users, patch ?? {});
     if (Object.keys(values).length === 0) return;
+    if (values.workflowId !== undefined)
+      await deps.workflows.assertProjectCompatible(
+        tx.conn,
+        id,
+        values.workflowId as string | null,
+      );
     await tx.conn.query
       .updateTable('projects')
       .set({ ...values, updatedAt: now() })

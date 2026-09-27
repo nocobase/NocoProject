@@ -25,7 +25,8 @@ function printComments(comments: readonly CommentForAgent[]): void {
   if (comments.length === 0) return printLine('(no comments)');
   for (const c of comments) {
     const reply = c.parentId ? ` ↳ reply in thread ${c.rootId}` : ` (thread root)`;
-    printLine(`--- [${c.id}] ${c.authorName} (${c.authorType}) ${c.createdAt}${reply}`);
+    const resolved = (c as CommentForAgent & { resolved?: boolean }).resolved ? ' [resolved]' : '';
+    printLine(`--- [${c.id}] ${c.authorName} (${c.authorType}) ${c.createdAt}${reply}${resolved}`);
     printLine(c.content);
   }
 }
@@ -104,15 +105,21 @@ export function registerIssueCommands(program: Command): void {
 
   issue
     .command('status <issueOrStatus> [statusKey]')
-    .description('Change the status: `status <statusKey>` (run’s issue) or `status <issue> <statusKey>`')
+    .description('Change the status: `status <statusKey>` (run’s issue) or `status <issue> <statusKey>`; an approval gate answers "approval pending" (exit 0)')
     .option('--json', 'JSON output')
     .action(
       action(async (first: string, second: string | undefined, opts: JsonOpt) => {
         const ctx = runTokenContext();
         const [arg, key] = second === undefined ? [undefined, first] : [first, second];
         const statusKey = z.string().regex(/^[a-z][a-z0-9_]*$/, 'invalid status key').parse(key);
-        const data = await ctx.api.setStatus(await resolveIssueId(arg, ctx), statusKey);
-        if (opts.json) printJson(data ?? { ok: true, statusKey });
+        const result = await ctx.api.setStatus(await resolveIssueId(arg, ctx), statusKey);
+        if (result.kind === 'pending') {
+          // 202: an approval gate holds the change (iteration 2 §D). Not an error: exit 0.
+          if (opts.json) printJson(result.data);
+          else printLine(`approval pending (request ${result.data?.pendingApproval?.id ?? 'unknown'})`);
+          return;
+        }
+        if (opts.json) printJson(result.data ?? { ok: true, statusKey });
         else printLine(`status set to ${statusKey}`);
       }),
     );

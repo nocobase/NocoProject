@@ -1,5 +1,6 @@
 import type { AppResource } from './en-US.js';
 import npCollabZhCN from './np-zh-CN.js';
+import npIter2ZhCN from './np-iter2-zh-CN.js';
 
 const zhCN: AppResource = {
   'auth.welcome': '欢迎回来',
@@ -128,6 +129,11 @@ const zhCN: AppResource = {
     agents: 'Agent',
     runtimes: '运行时',
     members: '成员',
+    intake: '批量录入',
+    skills: '技能',
+    usage: '用量统计',
+    github: 'GitHub',
+    nocoproject: 'NocoProject',
     open: '打开导航',
     close: '关闭导航',
     expand: '展开导航',
@@ -156,6 +162,7 @@ const zhCN: AppResource = {
   },
   np: {
     ...npCollabZhCN,
+    ...npIter2ZhCN,
     common: {
       online: '在线',
       offline: '离线',
@@ -297,6 +304,21 @@ const zhCN: AppResource = {
         parentChanged: '修改了父任务',
         stageChanged: '修改了阶段',
         datesChanged: '修改了日期',
+        prLinked: '关联了 PR',
+        prUnlinked: '解除了 PR 关联',
+        prMerged: '关联的 PR 已合并',
+        approvalRequested: '申请审批状态变更',
+        approvalApproved: '批准了状态变更',
+        approvalRejected: '驳回了状态变更',
+        approvalSelf: '以审批人身份变更了状态',
+        approvalNoApprover: '变更了状态（没有可请求的审批人）',
+        threadResolved: '将线程标记为已解决',
+        threadUnresolved: '重新打开了线程',
+        executionModeChanged: '切换了执行模式',
+        envChanged: '修改了环境变量',
+        skillsChanged: '修改了技能',
+        intakeConfirmed: '从批量录入创建了任务',
+        intakeReverted: '撤回了批量录入',
         updated: '更新了任务',
       },
       run: {
@@ -434,21 +456,6 @@ const zhCN: AppResource = {
         personal: '个人',
         server: '服务器',
       },
-    },
-    connect: {
-      title: '添加电脑',
-      description: '在装有编码工具的电脑上运行以下命令。',
-      install: '安装 CLI',
-      login: '登录到本应用',
-      start: '启动守护进程',
-      apiKeyPlaceholder: 'API 密钥',
-      apiKeyHint: '在“设置 → API 密钥”中创建一个 API 密钥。',
-      after:
-        '几秒钟内这台电脑就会出现在列表中，每个检测到的编码工具对应一个运行时。',
-      copy: '复制命令',
-      copied: '已复制',
-      copyFailed: '无法复制，请手动选中命令复制。',
-      done: '完成',
     },
   },
 };

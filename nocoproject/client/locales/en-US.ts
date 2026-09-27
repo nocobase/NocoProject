@@ -1,6 +1,7 @@
 import type { LocaleResource } from '@nocobase/i18n';
 
 import npCollabEnUS from './np-en-US.js';
+import npIter2EnUS from './np-iter2-en-US.js';
 
 const enUS = {
   'auth.welcome': 'Welcome back',
@@ -138,6 +139,11 @@ const enUS = {
     agents: 'Agents',
     runtimes: 'Runtimes',
     members: 'Members',
+    intake: 'Batch entry',
+    skills: 'Skills',
+    usage: 'Usage',
+    github: 'GitHub',
+    nocoproject: 'NocoProject',
     open: 'Open navigation',
     close: 'Close navigation',
     expand: 'Expand navigation',
@@ -166,6 +172,7 @@ const enUS = {
   },
   np: {
     ...npCollabEnUS,
+    ...npIter2EnUS,
     common: {
       online: 'Online',
       offline: 'Offline',
@@ -310,6 +317,21 @@ const enUS = {
         parentChanged: 'changed the parent issue',
         stageChanged: 'changed the stage',
         datesChanged: 'changed the dates',
+        prLinked: 'linked a pull request',
+        prUnlinked: 'unlinked a pull request',
+        prMerged: 'saw a linked pull request merged',
+        approvalRequested: 'requested approval for a status change',
+        approvalApproved: 'approved the status change',
+        approvalRejected: 'rejected the status change',
+        approvalSelf: 'changed the status as an approver',
+        approvalNoApprover: 'changed the status (no approver to ask)',
+        threadResolved: 'resolved a thread',
+        threadUnresolved: 'reopened a thread',
+        executionModeChanged: 'changed the execution mode',
+        envChanged: 'changed environment variables',
+        skillsChanged: 'changed the skills',
+        intakeConfirmed: 'created issues from a batch',
+        intakeReverted: 'reverted a batch',
         updated: 'updated the issue',
       },
       run: {
@@ -450,22 +472,6 @@ const enUS = {
         personal: 'Personal',
         server: 'Server',
       },
-    },
-    connect: {
-      title: 'Add a computer',
-      description:
-        'Run these commands on the computer where your coding tools are installed.',
-      install: 'Install the CLI',
-      login: 'Sign in to this application',
-      start: 'Start the daemon',
-      apiKeyPlaceholder: 'API key',
-      apiKeyHint: 'Create an API key in Settings → API Keys.',
-      after:
-        'The computer appears in this list within a few seconds, with one runtime per detected coding tool.',
-      copy: 'Copy command',
-      copied: 'Copied',
-      copyFailed: 'Unable to copy. Select the command and copy it manually.',
-      done: 'Done',
     },
   },
 };

@@ -193,7 +193,7 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   capabilities(): AdapterCapabilities {
-    return { resume: true, steering: false, briefFile: 'CLAUDE.md' };
+    return { resume: true, steering: false, briefFile: 'CLAUDE.md', nativeSkillsDir: '.claude/skills' };
   }
 
   async start(spec: RunSpec): Promise<RunHandle> {

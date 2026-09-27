@@ -1,14 +1,19 @@
+import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
+import { useQuery } from '@tanstack/react-query';
 import { PencilIcon } from 'lucide-react';
 import { type ReactElement, useRef, useState } from 'react';
 
 import { NpMarkdown } from '@/components/np-markdown';
+import { NpRichTextEditor } from '@/components/np-rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { Textarea } from '@/components/ui/textarea';
 
-import type { Issue } from '../../types.js';
+import { fetchMembers } from '../../api-collab.js';
+import { npKeys } from '../../constants.js';
+import type { AgentListItem, Issue } from '../../types.js';
+import { useMentionCandidates } from './mention-candidates.js';
 import { useIssueUpdate } from './use-issue-update.js';
 
 /** The issue title as the page heading; click (or the edit button) to rename, Enter saves, Escape cancels. */
@@ -83,32 +88,52 @@ export function IssueTitle({ issue }: { readonly issue: Issue }): ReactElement {
   );
 }
 
-/** The description rendered as markdown, edited as plain markdown in a textarea with Save and Cancel. */
+/**
+ * The description rendered as Markdown, edited in the rich text editor with Save and Cancel (iteration 2 "富文本").
+ * The editor reads and writes Markdown, so the stored description stays Markdown. A save that loses the revision race
+ * reports the conflict and reloads (`useIssueUpdate`); the draft stays open so nothing typed is lost.
+ */
 export function IssueDescription({
   issue,
+  agents = [],
 }: {
   readonly issue: Issue;
+  readonly agents?: readonly AgentListItem[];
 }): ReactElement {
   const { t } = useTranslation();
+  const api = useApiClient();
   const update = useIssueUpdate(issue);
   const [draft, setDraft] = useState<string | null>(null);
   const description = issue.description ?? '';
+  const members = useQuery({
+    queryKey: npKeys.members,
+    queryFn: () => fetchMembers(api),
+    enabled: draft !== null,
+  });
+  const candidates = useMentionCandidates(agents, members.data);
 
   if (draft !== null) {
     return (
       <div className='space-y-2'>
-        <Textarea
+        <NpRichTextEditor
           value={draft}
           autoFocus
-          rows={8}
           aria-label={t('np.issueForm.descriptionLabel')}
           placeholder={t('np.issueForm.descriptionPlaceholder')}
           disabled={update.isPending}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && !update.isPending) {
-              event.preventDefault();
-              setDraft(null);
+          mentionCandidates={candidates}
+          mentionPlacement='below'
+          contentClassName='min-h-40'
+          onChange={setDraft}
+          onEscape={() => {
+            if (!update.isPending) setDraft(null);
+          }}
+          onSubmit={() => {
+            if (draft !== description) {
+              update.mutate(
+                { description: draft },
+                { onSuccess: () => setDraft(null) },
+              );
             }
           }}
         />

@@ -1,7 +1,12 @@
 import { ApiClientError, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircleIcon, LockIcon, PlusIcon } from 'lucide-react';
+import {
+  AlertCircleIcon,
+  ListPlusIcon,
+  LockIcon,
+  PlusIcon,
+} from 'lucide-react';
 import type { ReactElement } from 'react';
 import { Link, Outlet, useParams } from 'react-router';
 
@@ -27,10 +32,15 @@ import { fetchProject } from '../../api-projects.js';
 import { fetchBoard, fetchMe } from '../../api.js';
 import { catalogFromWorkflow, npKeys } from '../../constants.js';
 import { IssueBoard } from '../../issues/board/board.js';
-import { canEditProject, viewerFrom } from '../../permissions.js';
+import {
+  canDeleteProject,
+  canEditProject,
+  viewerFrom,
+} from '../../permissions.js';
 import type { BoardGroup, Member, ProjectDetail } from '../../types.js';
 import { ProjectStatusBadge } from '../project-badges.js';
 import { progressFromCounts, progressFromGroups } from '../progress.js';
+import { ProjectActions } from './project-actions.js';
 import { ProjectSidePanel } from './side-panel.js';
 
 /**
@@ -141,6 +151,7 @@ function ProjectDetailView({
       groups={board.data}
       workspaceMembers={members.data ?? []}
       canEdit={canEditProject(viewer, project.data)}
+      canDelete={canDeleteProject(viewer)}
       isMobile={isMobile}
     />
   );
@@ -151,12 +162,14 @@ function ProjectLayout({
   groups,
   workspaceMembers,
   canEdit,
+  canDelete,
   isMobile,
 }: {
   readonly project: ProjectDetail;
   readonly groups: readonly BoardGroup[] | undefined;
   readonly workspaceMembers: readonly Member[];
   readonly canEdit: boolean;
+  readonly canDelete: boolean;
   readonly isMobile: boolean;
 }): ReactElement {
   const { t } = useTranslation();
@@ -181,21 +194,40 @@ function ProjectLayout({
           ) : null}
           <ProjectStatusBadge status={project.status} />
         </div>
-        <Button
-          size='sm'
-          nativeButton={false}
-          render={
-            <Link
-              to={{
-                pathname: '/issues/new',
-                search: `?project=${encodeURIComponent(project.id)}`,
-              }}
-            />
-          }
-        >
-          <PlusIcon data-icon='inline-start' />
-          {t('np.issues.new')}
-        </Button>
+        <div className='flex items-center gap-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            nativeButton={false}
+            render={
+              <Link
+                to={{
+                  pathname: '/intake',
+                  search: `?project=${encodeURIComponent(project.id)}`,
+                }}
+              />
+            }
+          >
+            <ListPlusIcon data-icon='inline-start' />
+            {t('np.projectMore.batchAdd')}
+          </Button>
+          <Button
+            size='sm'
+            nativeButton={false}
+            render={
+              <Link
+                to={{
+                  pathname: '/issues/new',
+                  search: `?project=${encodeURIComponent(project.id)}`,
+                }}
+              />
+            }
+          >
+            <PlusIcon data-icon='inline-start' />
+            {t('np.issues.new')}
+          </Button>
+          <ProjectActions project={project} canDelete={canDelete} />
+        </div>
       </div>
       {groups ? (
         <IssueBoard

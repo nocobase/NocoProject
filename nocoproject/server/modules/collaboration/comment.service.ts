@@ -1,6 +1,7 @@
 /**
  * Comments on issues: human comments from the browser (which may trigger agents) and agent comments written back
- * through a run token (which never trigger anything).
+ * through a run token (which never trigger anything). Iteration 2: rows carry their reactions and, on thread roots,
+ * whether the thread is resolved (`reaction.service.ts` writes both).
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import {
@@ -9,16 +10,18 @@ import {
   viewerOf,
 } from '../shared/authz.js';
 import type { Conn, TxRunner } from '../shared/db.js';
-import { iso, now, str, toDate } from '../shared/db.js';
+import { iso, isoOrNull, now, str, toDate, unique } from '../shared/db.js';
 import { invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
   ActorType,
-  Comment,
-  CommentForAgent,
+  CommentForAgentV2,
+  CommentReaction,
+  CommentV2,
   CreateCommentRequest,
   CreateCommentResponse,
 } from '../shared/protocol.js';
+import { REACTION_EMOJIS } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
 import { findIssue } from '../issue/issue.records.js';
 import { agentNames } from '../run/run.queries.js';
@@ -35,6 +38,8 @@ export interface AgentCommentQuery {
   readonly thread?: string | null;
   /** Only the last n comments of the result. */
   readonly tail?: number | null;
+  /** Leave out resolved threads (except the `thread` asked for). */
+  readonly excludeResolved?: boolean;
 }
 
 export interface CommentService {
@@ -44,11 +49,11 @@ export interface CommentService {
     input: CreateCommentRequest,
   ): Promise<CreateCommentResponse>;
   /** Every comment of an issue, flat, oldest first. */
-  listForIssue(conn: Conn, issueId: string): Promise<Comment[]>;
+  listForIssue(conn: Conn, issueId: string): Promise<CommentV2[]>;
   listForAgent(
     issueIdOrKey: string,
     query: AgentCommentQuery,
-  ): Promise<CommentForAgent[]>;
+  ): Promise<CommentForAgentV2[]>;
 }
 
 export interface CommentDeps {
@@ -63,18 +68,59 @@ function isActorType(value: unknown): value is ActorType {
   return value === 'user' || value === 'agent' || value === 'system';
 }
 
+/** Reactions per comment, in the fixed emoji order. */
+export async function reactionsFor(
+  conn: Conn,
+  commentIds: readonly string[],
+): Promise<Map<string, CommentReaction[]>> {
+  const result = new Map<string, CommentReaction[]>();
+  const ids = unique(commentIds);
+  if (ids.length === 0) return result;
+  const rows = await conn.query
+    .selectFrom('commentReactions')
+    .select(['commentId', 'userId', 'emoji'])
+    .where('commentId', 'in', ids)
+    .orderBy('createdAt', 'asc')
+    .execute();
+  const grouped = new Map<string, Map<string, string[]>>();
+  for (const row of rows) {
+    const commentId = str(row.commentId) ?? '';
+    const byEmoji = grouped.get(commentId) ?? new Map<string, string[]>();
+    grouped.set(commentId, byEmoji);
+    const emoji = str(row.emoji) ?? '';
+    byEmoji.set(emoji, [...(byEmoji.get(emoji) ?? []), str(row.userId) ?? '']);
+  }
+  for (const [commentId, byEmoji] of grouped) {
+    result.set(
+      commentId,
+      REACTION_EMOJIS.filter((emoji) => byEmoji.has(emoji)).map((emoji) => {
+        const userIds = byEmoji.get(emoji) ?? [];
+        return { emoji: emoji, count: userIds.length, userIds };
+      }),
+    );
+  }
+  return result;
+}
+
 async function mapComments(
   conn: Conn,
   users: UserDirectory,
   rows: readonly Record<string, unknown>[],
-): Promise<Comment[]> {
+): Promise<CommentV2[]> {
   const userIds = rows
     .filter((row) => row.authorType === 'user')
     .map((row) => str(row.authorId));
   const agentIds = rows
     .filter((row) => row.authorType === 'agent')
     .map((row) => str(row.authorId));
-  const userNames = await users.names(conn, userIds);
+  const userNames = await users.names(conn, [
+    ...userIds,
+    ...rows.map((row) => str(row.resolvedById)),
+  ]);
+  const reactions = await reactionsFor(
+    conn,
+    rows.map((row) => str(row.id) ?? ''),
+  );
   const agents = await agentNames(conn, agentIds);
   return rows.map((row) => {
     const id = str(row.id) ?? '';
@@ -99,6 +145,12 @@ async function mapComments(
       sourceRunId: str(row.sourceRunId),
       createdAt: iso(row.createdAt),
       updatedAt: iso(row.updatedAt),
+      reactions: reactions.get(id) ?? [],
+      resolvedAt: isoOrNull(row.resolvedAt),
+      resolvedById: str(row.resolvedById),
+      resolvedByName: str(row.resolvedById)
+        ? (userNames.get(str(row.resolvedById) ?? '') ?? null)
+        : null,
     };
   });
 }
@@ -128,7 +180,7 @@ async function create(
       issue = await findIssue(tx.conn, issueIdOrKey);
     }
     if (!issue) throw notFound('Issue');
-    let parent: Comment | null = null;
+    let parent: CommentV2 | null = null;
     if (input.parentId) {
       const parentRow = await tx.conn.query
         .selectFrom('comments')
@@ -191,7 +243,7 @@ async function listForAgent(
   deps: CommentDeps,
   issueIdOrKey: string,
   query: AgentCommentQuery,
-): Promise<CommentForAgent[]> {
+): Promise<CommentForAgentV2[]> {
   const conn = deps.tx.read();
   const issue = await findIssue(conn, issueIdOrKey);
   if (!issue) throw notFound('Issue');
@@ -209,6 +261,15 @@ async function listForAgent(
     .orderBy('id', 'asc')
     .execute();
   let comments = await mapComments(conn, deps.users, rows);
+  const resolvedRoots = await resolvedThreadRoots(
+    conn,
+    comments.map((comment) => comment.rootId),
+  );
+  if (query.excludeResolved)
+    comments = comments.filter(
+      (comment) =>
+        !resolvedRoots.has(comment.rootId) || comment.rootId === query.thread,
+    );
   if (query.rootsOnly)
     comments = comments.filter((comment) => comment.parentId === null);
   if (query.tail && query.tail > 0) comments = comments.slice(-query.tail);
@@ -220,7 +281,24 @@ async function listForAgent(
     parentId: comment.parentId,
     rootId: comment.rootId,
     createdAt: comment.createdAt,
+    resolved: resolvedRoots.has(comment.rootId),
   }));
+}
+
+/** Thread roots among `rootIds` that are resolved. */
+export async function resolvedThreadRoots(
+  conn: Conn,
+  rootIds: readonly string[],
+): Promise<Set<string>> {
+  const ids = unique(rootIds);
+  if (ids.length === 0) return new Set();
+  const rows = await conn.query
+    .selectFrom('comments')
+    .select('id')
+    .where('id', 'in', ids)
+    .where('resolvedAt', 'is not', null)
+    .execute();
+  return new Set(rows.map((row) => str(row.id) ?? ''));
 }
 
 async function commentListForIssue(

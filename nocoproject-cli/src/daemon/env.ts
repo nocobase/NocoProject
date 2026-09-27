@@ -6,7 +6,8 @@
 import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import type { ClaimedRun } from '../protocol.js';
-import { RUN_ENV_PHASE1 as RUN_ENV } from '../protocol.js';
+import { AGENT_ENV_NAME_PATTERN, RESERVED_ENV_NAMES, RESERVED_ENV_PREFIX, RUN_ENV_PHASE1 as RUN_ENV } from '../protocol.js';
+import type { ClaimedRunV1 } from '../run-context.js';
 
 export interface RunEnvironment {
   readonly envDir: string;
@@ -62,10 +63,30 @@ export function ensureCliShim(home: string, cliPath: string): string {
   return binDir;
 }
 
+/** True for names the agent's env vars may not set: `NOCOPROJECT_*`, `PATH`, `HOME`, `SHELL`. */
+export function isReservedEnvName(name: string): boolean {
+  return name.startsWith(RESERVED_ENV_PREFIX) || RESERVED_ENV_NAMES.includes(name);
+}
+
+/**
+ * Filters the claim payload's `agent.env` (contract §G): reserved names and names that are not
+ * `^[A-Z_][A-Z0-9_]*$` are skipped (the server rejects both; this is defence in depth).
+ * Returns the names that were skipped, never their values.
+ */
+export function filterAgentEnv(env: Readonly<Record<string, string>> | null | undefined): { vars: Record<string, string>; skipped: string[] } {
+  const vars: Record<string, string> = {};
+  const skipped: string[] = [];
+  for (const [name, value] of Object.entries(env ?? {})) {
+    if (typeof value !== 'string' || !AGENT_ENV_NAME_PATTERN.test(name) || isReservedEnvName(name)) skipped.push(name);
+    else vars[name] = value;
+  }
+  return { vars, skipped };
+}
+
 export interface AgentEnvInput {
   readonly serverUrl: string;
   readonly token: string;
-  readonly claimed: Pick<ClaimedRun, 'run' | 'agent' | 'issue'>;
+  readonly claimed: Pick<ClaimedRunV1, 'run' | 'agent' | 'issue'>;
   readonly binDir?: string;
   /** The run's workDir → `NOCOPROJECT_WORKDIR` (contract §I). */
   readonly workDir?: string;
@@ -73,9 +94,13 @@ export interface AgentEnvInput {
   readonly home?: string;
 }
 
-/** Environment injected into the agent process (§7, plus NOCOPROJECT_WORKDIR from Phase 1 §I). */
+/**
+ * Environment injected into the agent process (§7, plus NOCOPROJECT_WORKDIR from Phase 1 §I and
+ * the agent's own env vars from iteration 2 §G, which can never override the run variables).
+ */
 export function buildAgentEnv(input: AgentEnvInput): Record<string, string> {
   const env: Record<string, string> = {
+    ...filterAgentEnv(input.claimed.agent.env).vars,
     [RUN_ENV.serverUrl]: input.serverUrl,
     [RUN_ENV.token]: input.token,
     [RUN_ENV.runId]: input.claimed.run.id,

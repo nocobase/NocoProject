@@ -18,6 +18,7 @@ import database from './database.js';
 import snowflake from './snowflake.js';
 import ai from './ai.js';
 import workflow from './workflow.js';
+import nocoproject from './nocoproject.js';
 
 const defaultConfigs: AppConfigFactory<{
   auth: ReturnType<typeof auth>;
@@ -36,6 +37,7 @@ const defaultConfigs: AppConfigFactory<{
   snowflake: ReturnType<typeof snowflake>;
   ai: ReturnType<typeof ai>;
   workflow: ReturnType<typeof workflow>;
+  nocoproject: ReturnType<typeof nocoproject>;
 }> = defaultAppConfigs({
   auth,
   authorization,
@@ -53,6 +55,8 @@ const defaultConfigs: AppConfigFactory<{
   snowflake,
   ai,
   workflow,
+  // NocoProject (iteration 2): the secret key for stored secrets, from NOCOPROJECT_SECRET_KEY.
+  nocoproject,
 });
 
 export default defaultConfigs;

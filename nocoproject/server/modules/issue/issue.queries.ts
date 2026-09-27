@@ -3,6 +3,7 @@
  * agent sees through its run token.
  */
 import type { Actor } from '../shared/activity.js';
+import type { ApprovalGateway } from '../shared/approval.js';
 import {
   hiddenProjectIds,
   requireVisibleIssue,
@@ -16,17 +17,20 @@ import type {
   ActorType,
   AgentContextResponseV1,
   IssueBoardResponse,
-  IssueDetailV1,
-  IssueForAgentV1,
-  IssueListItemV1,
+  IssueDetailV2,
+  IssueForAgentV2,
+  IssueListItemV2,
+  IssueRunsResponse,
   IssueSubscriber,
-  IssueV1,
+  IssueV2,
   SubscriptionReason,
   SubtaskSummary,
 } from '../shared/protocol.js';
+import type { SettingsService } from '../system/settings.service.js';
 import type { UserDirectory } from '../shared/users.js';
 import type { CommentService } from '../collaboration/comment.service.js';
 import { labelsForIssues } from '../label/label.service.js';
+import { claimedPullRequests } from '../git/git.records.js';
 import { claimedProject } from '../project/project.records.js';
 import {
   activeRunCounts,
@@ -38,6 +42,11 @@ import { blockedCounts, blockersOf, childrenOf } from '../subtask/blocking.js';
 import { dependenciesOf } from '../subtask/dependency.service.js';
 import { proposalsFor } from '../subtask/proposal.service.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
+import {
+  agentReadableIssue,
+  detailExtras,
+  queuedRunOf,
+} from './issue.extras.js';
 import { findIssue, issueRef, mapIssue } from './issue.records.js';
 
 export interface IssueListFilter {
@@ -52,10 +61,16 @@ export interface IssueListFilter {
 }
 
 export interface IssueQueries {
-  list(actor: Actor, filter: IssueListFilter): Promise<IssueListItemV1[]>;
+  list(actor: Actor, filter: IssueListFilter): Promise<IssueListItemV2[]>;
   board(actor: Actor, filter: IssueListFilter): Promise<IssueBoardResponse>;
-  detail(actor: Actor, idOrKey: string): Promise<IssueDetailV1>;
-  forAgent(idOrKey: string): Promise<IssueForAgentV1>;
+  detail(actor: Actor, idOrKey: string): Promise<IssueDetailV2>;
+  /** `GET /np/issues/:id/runs`: the issue's runs and the run queued behind the current turn. */
+  runs(actor: Actor, idOrKey: string): Promise<IssueRunsResponse>;
+  /** Any issue, unscoped (the caller already checked the run's scope). */
+  forAgent(idOrKey: string): Promise<IssueForAgentV2>;
+  /** An issue the run may read (iteration 2 §K: same project, or no project), else 404. */
+  forAgentScoped(auth: RunAuth, idOrKey: string): Promise<IssueForAgentV2>;
+  agentReadable(auth: RunAuth, idOrKey: string): Promise<IssueV2>;
   agentContext(auth: RunAuth): Promise<AgentContextResponseV1>;
   children(idOrKey: string): Promise<SubtaskSummary[]>;
 }
@@ -64,7 +79,9 @@ export interface IssueQueryDeps {
   readonly tx: TxRunner;
   readonly users: UserDirectory;
   readonly workflows: WorkflowService;
+  readonly settings: SettingsService;
   readonly comments: () => CommentService;
+  readonly approvals: () => ApprovalGateway;
 }
 
 const LIST_LIMIT = 500;
@@ -76,8 +93,8 @@ function escapeLike(value: string): string {
 async function withNames(
   deps: IssueQueryDeps,
   conn: Conn,
-  issues: readonly IssueV1[],
-): Promise<IssueListItemV1[]> {
+  issues: readonly IssueV2[],
+): Promise<IssueListItemV2[]> {
   const userNames = await deps.users.names(conn, [
     ...issues.map((issue) => issue.ownerUserId),
     ...issues
@@ -110,6 +127,7 @@ async function withNames(
         .selectFrom('issues')
         .select((eb) => ['parentIssueId', eb.fn.countAll().as('count')])
         .where('parentIssueId', 'in', ids)
+        .where('deletedAt', 'is', null)
         .groupBy('parentIssueId')
         .execute()
     : [];
@@ -210,7 +228,7 @@ async function subscribers(
 async function summaries(
   deps: IssueQueryDeps,
   conn: Conn,
-  issues: readonly IssueV1[],
+  issues: readonly IssueV2[],
 ): Promise<SubtaskSummary[]> {
   const items = await withNames(deps, conn, issues);
   return items.map((item) => ({
@@ -228,9 +246,12 @@ async function summaries(
 async function forAgent(
   deps: IssueQueryDeps,
   idOrKey: string,
-): Promise<IssueForAgentV1> {
+  auth?: RunAuth,
+): Promise<IssueForAgentV2> {
   const conn = deps.tx.read();
-  const issue = await findIssue(conn, idOrKey);
+  const issue = auth
+    ? await agentReadableIssue(conn, auth, idOrKey)
+    : await findIssue(conn, idOrKey);
   if (!issue) throw notFound('Issue');
   const [item] = await withNames(deps, conn, [issue]);
   const parent = issue.parentIssueId
@@ -256,6 +277,8 @@ async function forAgent(
     autoExecuteSubtasks: issue.autoExecuteSubtasks,
     labels: (item?.labels ?? []).map((label) => label.name),
     blockers: await blockersOf(conn, deps.workflows, issue),
+    executionMode: issue.executionMode,
+    pullRequests: await claimedPullRequests(conn, issue.id),
   };
 }
 
@@ -263,11 +286,14 @@ async function list(
   deps: IssueQueryDeps,
   actor: Actor,
   filter: IssueListFilter,
-): Promise<IssueListItemV1[]> {
+): Promise<IssueListItemV2[]> {
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
   const hidden = await hiddenProjectIds(conn, viewer);
-  let query = conn.query.selectFrom('issues').selectAll();
+  let query = conn.query
+    .selectFrom('issues')
+    .selectAll()
+    .where('deletedAt', 'is', null);
   if (hidden.length > 0)
     query = query.where((eb) =>
       eb.or([eb('projectId', 'is', null), eb('projectId', 'not in', hidden)]),
@@ -345,6 +371,7 @@ async function issueQueryDetail(
         .executeTakeFirst()
     : null;
   const deps2 = await dependenciesOf(conn, issue.id);
+  const extras = await detailExtras(deps, conn, issue);
   return {
     issue: item,
     comments: await deps.comments().listForIssue(conn, issue.id),
@@ -363,6 +390,23 @@ async function issueQueryDetail(
     project: project
       ? { id: str(project.id) ?? '', name: str(project.name) ?? '' }
       : null,
+    ...extras,
+  };
+}
+
+async function issueQueryRuns(
+  deps: IssueQueryDeps,
+  ...[actor, idOrKey]: Parameters<IssueQueries['runs']>
+) {
+  const conn = deps.tx.read();
+  const issue = await requireVisibleIssue(
+    conn,
+    await viewerOf(conn, actor),
+    idOrKey,
+  );
+  return {
+    data: await runSummariesForIssue(conn, issue.id),
+    queuedRun: await queuedRunOf(conn, issue.id),
   };
 }
 
@@ -397,8 +441,11 @@ async function issueQueryChildren(
 export function createIssueQueries(deps: IssueQueryDeps): IssueQueries {
   return {
     list: (...args: Parameters<IssueQueries['list']>) => list(deps, ...args),
-    forAgent: (...args: Parameters<IssueQueries['forAgent']>) =>
-      forAgent(deps, ...args),
+    forAgent: (idOrKey) => forAgent(deps, idOrKey),
+    forAgentScoped: (auth, idOrKey) => forAgent(deps, idOrKey, auth),
+    agentReadable: (auth, idOrKey) =>
+      agentReadableIssue(deps.tx.read(), auth, idOrKey),
+    runs: (...args) => issueQueryRuns(deps, ...args),
     board: (...args) => issueQueryBoard(deps, ...args),
     detail: (...args) => issueQueryDetail(deps, ...args),
     agentContext: (...args) => issueQueryAgentContext(deps, ...args),

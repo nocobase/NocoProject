@@ -41,3 +41,25 @@ export function phase1Run(overrides: Partial<ClaimedRunV1> = {}): ClaimedRunV1 {
     ...overrides,
   };
 }
+
+/** A claimed run carrying the iteration-2 extras (env, skills, execution mode, linked PRs). */
+export function iter2Run(overrides: Partial<ClaimedRunV1['issue']> = {}, agent: Partial<ClaimedRunV1['agent']> = {}): ClaimedRunV1 {
+  const base = phase1Run();
+  return {
+    ...base,
+    issue: {
+      ...base.issue,
+      executionMode: 'task',
+      pullRequests: [{ number: 42, url: 'https://github.com/nocobase/nocoproject/pull/42', state: 'open' }],
+      ...overrides,
+    },
+    agent: {
+      ...base.agent,
+      env: { DEPLOY_TOKEN: 'deploy-secret-value-123', PATH: '/evil', NOCOPROJECT_TOKEN: 'x' },
+      skills: [
+        { id: 's1', slug: 'deploy', name: 'Deploy', description: 'How to deploy\nthe app to staging.', content: '# Deploy\n\nRun `make deploy`.', files: [{ path: 'scripts/deploy.sh', content: 'echo deploy\n' }] },
+      ],
+      ...agent,
+    },
+  };
+}

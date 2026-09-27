@@ -4,8 +4,17 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ClaimedRunV1 } from '../run-context.js';
-import { parentCoordinationSection, phase1Commands, projectSection, repositoriesSection, subIssuesSection } from './brief-sections.js';
+import { type ClaimedRunV1, executionModeOf } from '../run-context.js';
+import {
+  conversationModeSection,
+  parentCoordinationSection,
+  phase1Commands,
+  projectSection,
+  repositoriesSection,
+  skillsSection,
+  subIssuesSection,
+  workflowSection,
+} from './brief-sections.js';
 
 export const BRIEF_BEGIN = '<!-- BEGIN NOCOPROJECT-RUNTIME (auto-managed; do not edit) -->';
 export const BRIEF_END = '<!-- END NOCOPROJECT-RUNTIME -->';
@@ -27,6 +36,7 @@ export function buildBrief(input: BriefInput): string {
     BRIEF_BEGIN,
     '# NocoProject Agent Runtime',
     '',
+    ...conversationModeSection(input),
     '## Background Task Safety',
     '',
     'This run ends the moment your turn ends: anything still running in the background is killed and its result is lost.',
@@ -56,14 +66,8 @@ export function buildBrief(input: BriefInput): string {
     '',
     ...repositoriesSection(input),
     '',
-    '## Workflow',
-    '',
-    '1. Read the issue first.',
-    '2. Catch up on the comments, especially the thread you were asked in.',
-    '3. As soon as you start producing work, set the status to `in_progress`.',
-    '4. Deliver your result as a comment with `comment add`, replying to the triggering thread with `--parent <rootId>`.',
-    '5. After delivering, set the status to `in_review`. If you are stuck, set `blocked` and leave a comment explaining what you need.',
-    '6. If you were only asked a question, answer it with a comment and do not change the status.',
+    ...skillsSection(input),
+    ...workflowSection(input),
     '',
     ...subIssuesSection(input),
     '',
@@ -125,15 +129,27 @@ function parentLine(input: PromptInput): string[] {
   return [`It is a sub-issue${stage} of ${parent.identifier} "${parent.title}".`];
 }
 
-/** The per-turn user message (§7). */
-export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: boolean }): string {
+function openingLines(input: PromptInput): string[] {
   const key = input.issue.identifier;
-  const lines = [
+  if (executionModeOf(input) === 'session') {
+    return [
+      `You are in a live conversation with the owner on issue ${key} "${input.issue.title}" (session mode).`,
+      ...parentLine(input),
+      `Run: ${input.run.id}. When you need more context, read the issue (\`nocoproject issue get ${key} --json\`) and earlier comments (\`nocoproject issue comment list ${key} --json\`).`,
+    ];
+  }
+  return [
     `You are working on issue ${key} "${input.issue.title}".`,
     ...parentLine(input),
     `Run: ${input.run.id}. Read the issue first: \`nocoproject issue get ${key} --json\``,
     `Then catch up on comments: \`nocoproject issue comment list ${key} --json\``,
   ];
+}
+
+/** The per-turn user message (§7); session mode (iteration 2 §J) opens conversationally. */
+export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: boolean }): string {
+  const key = input.issue.identifier;
+  const lines = openingLines(input);
   let rootId: string | undefined;
   for (const trigger of input.triggers) {
     if (trigger.comment) {
@@ -147,6 +163,10 @@ export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: bo
   }
   lines.push(`Session: ${opts.resumed ? 'resumed' : 'fresh'}.`);
   const parent = rootId ? ` --parent ${rootId}` : '';
-  lines.push(`When done, deliver via \`nocoproject issue comment add ${key} --content-file ./reply.md${parent}\`.`);
+  if (executionModeOf(input) === 'session') {
+    lines.push(`Reply briefly via \`nocoproject issue comment add ${key} --content-file ./reply.md${parent}\`; you do not need to set \`in_review\`.`);
+  } else {
+    lines.push(`When done, deliver via \`nocoproject issue comment add ${key} --content-file ./reply.md${parent}\`.`);
+  }
   return lines.join('\n');
 }

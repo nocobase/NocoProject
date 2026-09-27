@@ -19,6 +19,7 @@ import {
   npCommentServiceToken,
   npIssueQueriesToken,
   npIssueServiceToken,
+  npPullRequestServiceToken,
   npRunTokenServiceToken,
 } from '../providers/np.js';
 
@@ -35,6 +36,7 @@ export const npAgentRoutes: AppApiRouteContribution<Application> =
           queries: container.resolve(npIssueQueriesToken),
           comments: container.resolve(npCommentServiceToken),
           agentIssues: container.resolve(npAgentIssueServiceToken),
+          pullRequests: container.resolve(npPullRequestServiceToken),
         }),
       ),
     );

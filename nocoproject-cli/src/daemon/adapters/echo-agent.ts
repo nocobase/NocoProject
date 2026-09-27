@@ -14,9 +14,18 @@
  *                       turn the sub-issues already exist, so the agent does not split again: it writes
  *                       in_review once every child is done, otherwise it keeps waiting.
  *   [echo:checkout=<url>] run `repo checkout <url> --json`, write a file in the worktree and commit it
+ *   [echo:pr=<url>]     run `pr link <url> --json` (iteration 2 §C)
+ *   [echo:status=<key>] run `issue status <issue> <key>` instead of the usual in_review; a 202 "approval
+ *                       pending" answer counts as success (iteration 2 §D)
+ *   [echo:env=<NAME>]   write `NAME=<value>` of that environment variable into the reply and a text event,
+ *                       to check env injection and redaction (iteration 2 §G)
+ *   [echo:skill=<slug>] write the first body line of `.nocoproject/skills/<slug>/SKILL.md` (after the front
+ *                       matter) into the reply (iteration 2 §H)
+ *
+ * In session mode (`issue.executionMode` in context.json) the agent never moves the issue to in_review.
  */
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 let callSeq = 0;
@@ -102,6 +111,33 @@ function checkoutAndCommit(issueKey: string, url: string): string {
   return rec.branchName;
 }
 
+function workDir(): string {
+  return process.env.NOCOPROJECT_WORKDIR ?? process.cwd();
+}
+
+/** `issue.executionMode` from the daemon's context.json (`task` when missing). */
+function executionMode(): string {
+  try {
+    const ctx = JSON.parse(readFileSync(join(workDir(), '.nocoproject', 'context.json'), 'utf8')) as { issue?: { executionMode?: string } };
+    return ctx.issue?.executionMode ?? 'task';
+  } catch {
+    return 'task';
+  }
+}
+
+/** First non-empty line of a skill's SKILL.md body (front matter skipped). */
+function skillFirstLine(slug: string): string {
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(slug)) return '(invalid slug)';
+  const path = join(workDir(), '.nocoproject', 'skills', slug, 'SKILL.md');
+  if (!existsSync(path)) return '(not found)';
+  let lines = readFileSync(path, 'utf8').split(/\r?\n/);
+  if (lines[0] === '---') {
+    const end = lines.indexOf('---', 1);
+    lines = end > 0 ? lines.slice(end + 1) : lines;
+  }
+  return lines.find((l) => l.trim())?.trim() ?? '(empty)';
+}
+
 function directive(text: string, name: string): string | undefined {
   return text.match(new RegExp(`\\[echo:${name}=([^\\]]*)\\]`))?.[1];
 }
@@ -141,6 +177,27 @@ async function main(): Promise<void> {
   const extra: string[] = [];
   const checkoutUrl = directive(text, 'checkout');
   if (checkoutUrl) extra.push(`Committed on branch ${checkoutAndCommit(issueKey, checkoutUrl)}.`);
+  const envName = directive(text, 'env');
+  if (envName && /^[A-Z_][A-Z0-9_]*$/.test(envName)) {
+    const line = `Env ${envName}=${process.env[envName] ?? '(unset)'}`;
+    emit({ type: 'text', text: line });
+    extra.push(line);
+  }
+  const skillSlug = directive(text, 'skill');
+  if (skillSlug) extra.push(`Skill ${skillSlug}: ${skillFirstLine(skillSlug)}`);
+  const prUrl = directive(text, 'pr');
+  if (prUrl) {
+    const linked = cli(['pr', 'link', prUrl, '--json']);
+    if (!linked.ok) fail(`echo agent: pr link failed: ${linked.output}`);
+    extra.push(`Linked pull request ${prUrl}.`);
+  }
+  const statusKey = directive(text, 'status');
+  if (statusKey) {
+    const changed = cli(['issue', 'status', issueKey, statusKey]);
+    if (!changed.ok) fail(`echo agent: status ${statusKey} failed: ${changed.output}`);
+    if (changed.output.startsWith('status set to')) status = statusKey;
+    extra.push(`Status ${statusKey}: ${changed.output}.`);
+  }
   const subtaskCount = Number(directive(text, 'subtasks') ?? 0);
   let coordinating = false;
   if (subtaskCount > 0) {
@@ -172,7 +229,7 @@ async function main(): Promise<void> {
   const commented = cli(commentArgs);
   if (!commented.ok) fail(`echo agent: comment add failed: ${commented.output}`);
 
-  if (status === 'in_progress' && !coordinating) {
+  if (status === 'in_progress' && !coordinating && !statusKey && executionMode() !== 'session') {
     const reviewed = cli(['issue', 'status', issueKey, 'in_review', '--json']);
     if (!reviewed.ok) fail(`echo agent: status in_review failed: ${reviewed.output}`);
   }

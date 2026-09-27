@@ -21,8 +21,8 @@ import {
 import type { IdSource } from '../shared/ids.js';
 import type {
   ActorType,
-  InboxItem,
-  InboxItemType,
+  InboxItemTypeV2,
+  InboxItemV2,
   InboxKind,
   SubscriptionReason,
 } from '../shared/protocol.js';
@@ -31,7 +31,7 @@ import { issuesByIds } from '../issue/issue.records.js';
 export interface NewInboxItem {
   readonly userId: string;
   readonly kind: InboxKind;
-  readonly type: InboxItemType;
+  readonly type: InboxItemTypeV2;
   readonly issueId: string | null;
   readonly title: string;
   readonly body: string;
@@ -44,7 +44,7 @@ export interface NewInboxItem {
 
 export function dedupeKey(
   userId: string,
-  type: InboxItemType,
+  type: InboxItemTypeV2,
   issueId: string | null,
 ): string {
   return `user:${userId}:${type}:${issueId ?? '-'}`;
@@ -120,7 +120,7 @@ export async function deliver(
 /** Resolves unresolved items of `type` on an issue; returns the affected users. */
 export async function resolveItems(
   tx: Tx,
-  filter: { type: InboxItemType; issueId: string },
+  filter: { type: InboxItemTypeV2; issueId: string },
 ): Promise<string[]> {
   const rows = await tx.conn.query
     .selectFrom('inboxItems')
@@ -256,7 +256,7 @@ export async function activeSubscribers(
 export async function mapInboxItems(
   conn: Conn,
   rows: readonly Record<string, unknown>[],
-): Promise<InboxItem[]> {
+): Promise<InboxItemV2[]> {
   const issues = await issuesByIds(
     conn,
     rows.map((row) => str(row.issueId)),
@@ -266,7 +266,7 @@ export async function mapInboxItems(
     return {
       id: str(row.id) ?? '',
       kind: row.kind === 'decision' ? 'decision' : 'info',
-      type: (str(row.type) ?? 'commented') as InboxItemType,
+      type: (str(row.type) ?? 'commented') as InboxItemTypeV2,
       issueId,
       issueIdentifier: issueId
         ? (issues.get(issueId)?.identifier ?? null)

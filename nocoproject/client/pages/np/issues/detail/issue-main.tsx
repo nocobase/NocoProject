@@ -1,37 +1,55 @@
+import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
-import { type ReactElement, useMemo, useRef, useState } from 'react';
-
+import { useQuery } from '@tanstack/react-query';
 import { CornerLeftUpIcon } from 'lucide-react';
+import { type ReactElement, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NpStatusBadge } from '@/components/np-badges';
+import type { NpRichTextHandle } from '@/components/np-rich-text-editor';
 import { Separator } from '@/components/ui/separator';
 
-import type { AgentListItem, IssueComment, IssueDetail } from '../../types.js';
+import { fetchMembers } from '../../api-collab.js';
+import { npKeys } from '../../constants.js';
+import type {
+  AgentListItem,
+  IssueComment,
+  IssueDetail,
+  Me,
+} from '../../types.js';
 import { ActivityTimeline } from './activity-timeline.js';
+import { ApprovalsCard } from './approvals-card.js';
 import { CommentComposer } from './comment-composer.js';
 import { DependenciesSection } from './dependencies-section.js';
 import { IssueDescription, IssueTitle } from './issue-content.js';
 import { ProposalsCard } from './proposals-card.js';
+import { PullRequestsSection } from './pull-requests-section.js';
 import { SubtasksSection } from './subtasks-section.js';
 import { buildTimeline } from './timeline.js';
 
 /**
- * The main column: parent link, heading, description, executor proposals, sub-issues, dependencies, the activity
- * timeline and the comment composer pinned under it.
+ * The main column: parent link, heading, description, pending approvals, executor proposals, pull requests,
+ * sub-issues, dependencies, the activity timeline and the comment composer pinned under it.
  */
 export function IssueMain({
   detail,
   agents,
+  me,
 }: {
   readonly detail: IssueDetail;
   readonly agents: readonly AgentListItem[];
+  readonly me?: Me;
 }): ReactElement {
   const { t } = useTranslation();
+  const api = useApiClient();
   const { issue } = detail;
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<NpRichTextHandle>(null);
   const [replyTo, setReplyTo] = useState<IssueComment | null>(null);
+  const members = useQuery({
+    queryKey: npKeys.members,
+    queryFn: () => fetchMembers(api),
+  });
 
   const names = useMemo(
     () => new Map(agents.map((agent) => [agent.id, agent.name])),
@@ -39,6 +57,9 @@ export function IssueMain({
   );
   const agentName = (agentId: string | null | undefined): string | null =>
     agentId ? (names.get(agentId) ?? null) : null;
+  const userName = (userId: string): string =>
+    members.data?.find((member) => member.userId === userId)?.name ??
+    (userId === me?.userId ? me.name : userId);
 
   const timeline = useMemo(() => buildTimeline(detail), [detail]);
   const replyToName = replyTo
@@ -78,14 +99,26 @@ export function IssueMain({
             </div>
             <IssueTitle issue={issue} />
           </div>
-          <IssueDescription issue={issue} />
+          <IssueDescription issue={issue} agents={agents} />
+          <ApprovalsCard
+            issueId={issue.id}
+            approvals={detail.approvals}
+            catalog={detail.statusCatalog}
+            meUserId={me?.userId}
+          />
           <ProposalsCard
             issueId={issue.id}
             proposals={detail.proposals}
             agents={agents}
           />
           <Separator />
+          <PullRequestsSection
+            issueId={issue.id}
+            pullRequests={detail.pullRequests}
+          />
+          <Separator />
           <SubtasksSection
+            issueId={issue.id}
             subtasks={detail.subtasks}
             catalog={detail.statusCatalog}
           />
@@ -102,11 +135,14 @@ export function IssueMain({
             <ActivityTimeline
               entries={timeline}
               statusCatalog={detail.statusCatalog}
+              issueId={issue.id}
+              meUserId={me?.userId}
               agentName={agentName}
+              userName={userName}
               replyingToId={replyTo?.id ?? null}
               onReply={(comment) => {
                 setReplyTo(comment);
-                textareaRef.current?.focus();
+                editorRef.current?.focus();
               }}
             />
           </section>
@@ -122,7 +158,7 @@ export function IssueMain({
             replyTo={replyTo}
             replyToName={replyToName}
             onCancelReply={() => setReplyTo(null)}
-            textareaRef={textareaRef}
+            editorRef={editorRef}
           />
         </div>
       </div>

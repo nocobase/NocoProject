@@ -6,6 +6,7 @@ import {
 } from './detail-normalize.js';
 import type {
   AgentListItem,
+  ApprovalRequest,
   CreateAgentInput,
   CreateCommentResult,
   CreateIssueInput,
@@ -131,22 +132,46 @@ export async function fetchIssueDetail(
   return normalizeIssueDetail(data);
 }
 
+export interface IssueUpdateResult {
+  readonly issue: Issue;
+  /** Set when a status change hit an approval gate (iteration 2 §D): the server answered 202 and kept the status. */
+  readonly pendingApproval: ApprovalRequest | null;
+}
+
+/**
+ * The PATCH body: `{ data: Issue }` normally, `{ data: { issue, pendingApproval } }` when the change waits for an
+ * approval (202). Both are read here so callers do not need the status code.
+ */
+export function normalizeIssueUpdate(body: unknown): IssueUpdateResult {
+  const data = ((body as { data?: unknown } | null)?.data ?? body) as
+    | (Issue & { issue?: undefined })
+    | { issue: Issue; pendingApproval?: ApprovalRequest | null };
+  if (data && typeof data === 'object' && 'issue' in data && data.issue) {
+    return {
+      issue: data.issue,
+      pendingApproval:
+        'pendingApproval' in data ? (data.pendingApproval ?? null) : null,
+    };
+  }
+  return { issue: data, pendingApproval: null };
+}
+
 /** PATCH with optimistic concurrency: a stale `revision` answers 409 `REVISION_CONFLICT`. */
 export async function updateIssue(
   api: ApiClient,
   issueId: string,
   changes: UpdateIssueInput,
   revision: number,
-): Promise<Issue> {
-  const { data } = await api.request<
-    { data: Issue },
+): Promise<IssueUpdateResult> {
+  const body = await api.request<
+    unknown,
     UpdateIssueInput & { revision: number }
   >({
     path: `np/issues/${id(issueId)}`,
     method: 'PATCH',
     json: { ...changes, revision },
   });
-  return data;
+  return normalizeIssueUpdate(body);
 }
 
 export async function createComment(

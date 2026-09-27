@@ -18,8 +18,10 @@ import type {
   ExecutorInput,
   ExecutorType,
   IssueV1,
-  UpdateIssueRequestV1,
+  IssueV2,
+  UpdateIssueRequestV2,
 } from '../shared/protocol.js';
+import { EXECUTION_MODES } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
 import {
   stringList,
@@ -173,7 +175,7 @@ export interface ChangeContext {
   readonly conn: Conn;
   readonly users: UserDirectory;
   readonly viewer: Viewer;
-  readonly before: IssueV1;
+  readonly before: IssueV2;
   /** The workflow of the project the issue ends up in. */
   readonly view: WorkflowView;
 }
@@ -185,10 +187,10 @@ export interface ComputedChanges {
 }
 
 function scalarChange(
-  before: IssueV1,
+  before: IssueV2,
   values: Record<string, unknown>,
   activities: ActivityEntry[],
-): (field: keyof IssueV1, action: string, value: unknown) => void {
+): (field: keyof IssueV2, action: string, value: unknown) => void {
   return (field, action, value) => {
     if (before[field] === value) return;
     values[field] = value;
@@ -210,8 +212,10 @@ async function authorizeChanges(
       forbid(
         `Moving from ${before.statusKey} to ${values.statusKey} is not allowed.`,
       );
+    // A transition that needs approval may be requested by anyone who can see the issue: the gate decides.
     if (
       view.isTerminal(values.statusKey) &&
+      !view.approvalFor(before.statusKey, values.statusKey, 'user') &&
       !(await canWriteTerminal(conn, viewer, before))
     )
       forbid(
@@ -225,7 +229,7 @@ async function authorizeChanges(
 /** Phase 0 fields: title, description, status, priority, owner, executor. */
 async function coreChanges(
   ctx: ChangeContext,
-  patch: UpdateIssueRequestV1,
+  patch: UpdateIssueRequestV2,
   values: Record<string, unknown>,
   activities: ActivityEntry[],
 ): Promise<void> {
@@ -277,10 +281,10 @@ async function coreChanges(
   }
 }
 
-/** Iteration 1 fields: stage, dates, auto-execute, parent, project, labels. */
+/** Iteration 1 fields: stage, dates, auto-execute, parent, project, labels; iteration 2: executionMode. */
 async function phase1Changes(
   ctx: ChangeContext,
-  patch: UpdateIssueRequestV1,
+  patch: UpdateIssueRequestV2,
   values: Record<string, unknown>,
   activities: ActivityEntry[],
 ): Promise<string[] | undefined> {
@@ -321,6 +325,14 @@ async function phase1Changes(
     );
     change('parentIssueId', 'parent_changed', parent?.id ?? null);
   }
+  if (patch.executionMode !== undefined) {
+    if (!EXECUTION_MODES.includes(patch.executionMode))
+      throw invalid(
+        'INVALID_EXECUTION_MODE',
+        'executionMode must be task or session.',
+      );
+    change('executionMode', 'execution_mode_changed', patch.executionMode);
+  }
   if (patch.labelIds === undefined) return undefined;
   return requireLabels(conn, stringList(patch.labelIds, 'labelIds'));
 }
@@ -328,7 +340,7 @@ async function phase1Changes(
 /** Validated column changes for a patch, plus one activity per changed field; enforces the field-level rules. */
 export async function computeChanges(
   ctx: ChangeContext,
-  patch: UpdateIssueRequestV1,
+  patch: UpdateIssueRequestV2,
 ): Promise<ComputedChanges> {
   const values: Record<string, unknown> = {};
   const activities: ActivityEntry[] = [];

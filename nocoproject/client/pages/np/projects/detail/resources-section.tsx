@@ -1,18 +1,31 @@
 import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
-import { GitBranchIcon, PlusIcon, Trash2Icon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  GitBranchIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+} from 'lucide-react';
+import { type ReactElement, useState } from 'react';
 import { Link } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 
-import { removeProjectResource } from '../../api-projects.js';
+import {
+  removeProjectResource,
+  updateProjectResource,
+} from '../../api-projects.js';
 import type { ProjectResource } from '../../types.js';
+import { EditResourceDialog } from './edit-resource.js';
+import { reorderResources, sortResources } from './resource-order.js';
 import { useProjectMutation } from './use-project-mutation.js';
 
 /**
- * Repositories the project's agents may check out (§F, §I). Adding opens the `resources/new` route dialog; only the
- * project lead and owner/admin see the add and remove controls.
+ * Repositories the project's agents may check out (§F, §I). Adding opens the `resources/new` route dialog; editing
+ * opens a dialog, and the arrows reorder (iteration 1 leftovers). Only the project lead and owner/admin see the
+ * controls.
  */
 export function ResourcesSection({
   projectId,
@@ -29,7 +42,18 @@ export function ResourcesSection({
     (resourceId: string) => removeProjectResource(api, projectId, resourceId),
     t('np.resources.removed'),
   );
-  const sorted = [...resources].sort((a, b) => a.position - b.position);
+  const [editing, setEditing] = useState<ProjectResource | null>(null);
+  const reorder = useProjectMutation(
+    async (move: { readonly from: number; readonly to: number }) => {
+      for (const change of reorderResources(resources, move.from, move.to)) {
+        await updateProjectResource(api, projectId, change.id, {
+          position: change.position,
+        });
+      }
+    },
+  );
+  const sorted = sortResources(resources);
+  const busy = remove.isPending || reorder.isPending;
 
   return (
     <section className='space-y-3' aria-labelledby='np-resources-heading'>
@@ -55,7 +79,7 @@ export function ResourcesSection({
         </p>
       ) : (
         <ul className='space-y-2'>
-          {sorted.map((resource) => (
+          {sorted.map((resource, index) => (
             <li key={resource.id} className='flex items-start gap-2 text-sm'>
               <GitBranchIcon
                 className='mt-0.5 size-4 shrink-0 text-muted-foreground'
@@ -71,22 +95,66 @@ export function ResourcesSection({
                 </p>
               </div>
               {canEdit ? (
-                <Button
-                  variant='ghost'
-                  size='icon-xs'
-                  disabled={remove.isPending}
-                  aria-label={t('np.resources.remove', {
-                    name: resource.label || resource.url,
-                  })}
-                  onClick={() => remove.mutate(resource.id)}
-                >
-                  <Trash2Icon />
-                </Button>
+                <div className='flex shrink-0 items-center'>
+                  <Button
+                    variant='ghost'
+                    size='icon-xs'
+                    disabled={busy || index === 0}
+                    aria-label={t('np.resourceEdit.moveUp', {
+                      name: resource.label || resource.url,
+                    })}
+                    onClick={() =>
+                      reorder.mutate({ from: index, to: index - 1 })
+                    }
+                  >
+                    <ArrowUpIcon />
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='icon-xs'
+                    disabled={busy || index === sorted.length - 1}
+                    aria-label={t('np.resourceEdit.moveDown', {
+                      name: resource.label || resource.url,
+                    })}
+                    onClick={() =>
+                      reorder.mutate({ from: index, to: index + 1 })
+                    }
+                  >
+                    <ArrowDownIcon />
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='icon-xs'
+                    disabled={busy}
+                    aria-label={t('np.resourceEdit.edit', {
+                      name: resource.label || resource.url,
+                    })}
+                    onClick={() => setEditing(resource)}
+                  >
+                    <PencilIcon />
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='icon-xs'
+                    disabled={busy}
+                    aria-label={t('np.resources.remove', {
+                      name: resource.label || resource.url,
+                    })}
+                    onClick={() => remove.mutate(resource.id)}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                </div>
               ) : null}
             </li>
           ))}
         </ul>
       )}
+      <EditResourceDialog
+        projectId={projectId}
+        resource={editing}
+        onClose={() => setEditing(null)}
+      />
     </section>
   );
 }

@@ -3,8 +3,8 @@ import type { Hono } from 'hono';
 
 import { npRouter, readJson, sessionActor } from '../shared/http.js';
 import type {
-  CreateAgentRequestV1,
-  UpdateAgentRequestV1,
+  CreateAgentRequestV2,
+  UpdateAgentRequestV2,
 } from '../shared/protocol.js';
 import type { AgentService } from './agent.service.js';
 
@@ -22,7 +22,7 @@ export function createAgentRoutes(agents: AgentService): Hono<AuthEnv> {
   routes.post('/', async (context) => {
     const agent = await agents.create(
       sessionActor(context),
-      await readJson<CreateAgentRequestV1>(context),
+      await readJson<CreateAgentRequestV2>(context),
     );
     return context.json({ data: agent }, 201);
   });
@@ -30,7 +30,7 @@ export function createAgentRoutes(agents: AgentService): Hono<AuthEnv> {
     const agent = await agents.update(
       sessionActor(context),
       context.req.param('id'),
-      await readJson<UpdateAgentRequestV1>(context),
+      await readJson<UpdateAgentRequestV2>(context),
     );
     return context.json({ data: agent });
   });

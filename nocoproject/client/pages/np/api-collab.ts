@@ -53,6 +53,18 @@ export async function createLabel(
   return data;
 }
 
+export async function updateLabelColor(
+  api: ApiClient,
+  labelId: string,
+  color: LabelColor,
+): Promise<void> {
+  await api.request<unknown, { color: LabelColor }>({
+    path: `np/labels/${id(labelId)}`,
+    method: 'PATCH',
+    json: { color },
+  });
+}
+
 export async function fetchWorkflows(api: ApiClient): Promise<Workflow[]> {
   const { data } = await api.request<{ data: Workflow[] }>({
     path: 'np/workflows',

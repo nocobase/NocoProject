@@ -3,7 +3,7 @@ import { HttpError, NetworkError } from '../src/api/client.js';
 import type { AgentEvent } from '../src/daemon/adapters/types.js';
 import { EventStreamer, MAX_CONTENT_BYTES, toWireEvent, truncateUtf8 } from '../src/daemon/stream.js';
 import type { RunEventInput } from '../src/protocol.js';
-import { redactText, redactValue, registerSecret } from '../src/util/redact.js';
+import { forgetSecret, redactKnownSecrets, redactText, redactValue, registerSecret } from '../src/util/redact.js';
 
 const AT = '2026-01-01T00:00:00.000Z';
 const ev = (type: AgentEvent['type'], content?: string): AgentEvent => ({ type, content, at: AT });
@@ -39,6 +39,24 @@ describe('redaction', () => {
   it('redacts PEM blocks', () => {
     const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\nabc\n-----END RSA PRIVATE KEY-----';
     expect(redactText(`before\n${pem}\nafter`)).toBe('before\n[REDACTED PRIVATE KEY]\nafter');
+  });
+
+  it('honours minLength and reference-counts registrations', () => {
+    registerSecret('abc12');
+    registerSecret('abc12', { minLength: 6 });
+    expect(redactText('v=abc12')).toBe('v=abc12');
+    registerSecret('env-val', { minLength: 6 });
+    registerSecret('env-val', { minLength: 6 });
+    forgetSecret('env-val');
+    expect(redactText('v=env-val')).toBe('v=[REDACTED]');
+    forgetSecret('env-val');
+    expect(redactText('v=env-val')).toBe('v=env-val');
+  });
+
+  it('masks only registered secrets with redactKnownSecrets', () => {
+    registerSecret('brief-secret-1', { minLength: 6 });
+    expect(redactKnownSecrets('a brief-secret-1 https://u:p@host/x')).toBe('a [REDACTED] https://u:p@host/x');
+    forgetSecret('brief-secret-1');
   });
 
   it('redacts registered secrets and nested values', () => {

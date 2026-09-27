@@ -56,7 +56,7 @@ export function runContext(url: string, overrides: Partial<RunContextFile> = {})
     version: 1,
     runId: '7301234567890123',
     agent: { id: 'agent-1', name: 'Echo Bot', delegationTargets: [] },
-    issue: { id: 'i12', identifier: 'NP-12', title: 'Fix it', parent: null, stage: null, autoExecuteSubtasks: false, projectId: 'p1' },
+    issue: { id: 'i12', identifier: 'NP-12', title: 'Fix it', parent: null, stage: null, autoExecuteSubtasks: false, projectId: 'p1', executionMode: 'task', pullRequests: [] },
     project: { id: 'p1', name: 'Demo', description: null, resources: [{ type: 'gitRepo', url, defaultRef: null }] },
     session: { branchName: null, repoUrl: null },
     ...overrides,

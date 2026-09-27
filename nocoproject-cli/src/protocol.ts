@@ -277,6 +277,8 @@ export interface AgentContextResponse {
   readonly issue: IssueForAgent;
   readonly statusCatalog: readonly StatusCatalogEntry[];
   readonly agentTransitions: readonly StatusTransition[];
+  /** Phase 1 迭代 1：运行所属任务的项目与仓库资源（服务端总是返回，无项目时为 null） */
+  readonly project?: ClaimedProject | null;
 }
 
 // ---------- 浏览器实时主题 ----------
@@ -618,29 +620,15 @@ export const RUN_EVENT_MAX_CONTENT_BYTES = 64 * 1024;
 export type MemberRole = 'owner' | 'admin' | 'member';
 export type ProjectVisibility = 'everyone' | 'members';
 export type ProjectStatus =
-  | 'planned'
-  | 'in_progress'
-  | 'paused'
-  | 'completed'
-  | 'cancelled';
+  'planned' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 export type ProjectMemberRole = 'lead' | 'member';
 export type LabelColor =
-  | 'gray'
-  | 'red'
-  | 'orange'
-  | 'yellow'
-  | 'green'
-  | 'blue'
-  | 'purple';
+  'gray' | 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple';
 export type DependencyType = 'blockedBy' | 'relatedTo';
-export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'autoAccepted';
+export type ProposalStatus =
+  'pending' | 'accepted' | 'rejected' | 'autoAccepted';
 export type SubscriptionReason =
-  | 'creator'
-  | 'owner'
-  | 'executor'
-  | 'commenter'
-  | 'mentioned'
-  | 'manual';
+  'creator' | 'owner' | 'executor' | 'commenter' | 'mentioned' | 'manual';
 export type InboxKind = 'decision' | 'info';
 export type InboxItemType =
   | 'review_requested'
@@ -659,10 +647,7 @@ export type TransitionActor = 'user' | 'agent' | 'system';
 
 /** 迭代 1 新增的触发类型；与 RunTriggerType 合并使用 */
 export type Phase1RunTriggerType =
-  | RunTriggerType
-  | 'dependencyReleased'
-  | 'childBatchDone'
-  | 'proposalAccepted';
+  RunTriggerType | 'dependencyReleased' | 'childBatchDone' | 'proposalAccepted';
 
 export interface WorkflowStatusDefinition {
   readonly key: string;
@@ -806,13 +791,20 @@ export interface ClaimedProject {
 export interface ClaimedRunPhase1Extras {
   readonly project: ClaimedProject | null;
   readonly issue: {
-    readonly parent: { readonly id: string; readonly identifier: string; readonly title: string } | null;
+    readonly parent: {
+      readonly id: string;
+      readonly identifier: string;
+      readonly title: string;
+    } | null;
     readonly stage: number | null;
     readonly autoExecuteSubtasks: boolean;
     readonly projectId: string | null;
   };
   readonly agent: {
-    readonly delegationTargets: readonly { readonly id: string; readonly name: string }[];
+    readonly delegationTargets: readonly {
+      readonly id: string;
+      readonly name: string;
+    }[];
   };
   readonly session: {
     readonly branchName: string | null;
@@ -842,3 +834,290 @@ export const REALTIME_TOPICS_PHASE1 = {
   ...REALTIME_TOPICS,
   inbox: 'np:inbox',
 } as const;
+
+// ---------- Phase 1 迭代 1：服务端实现补充的响应形状（docs/phase1/protocol-iteration-1.md） ----------
+//
+// 只增不改。上面 "Phase 1 迭代 1" 段是契约给出的类型；这里是服务端实现时补充的请求 / 响应形状。
+// 守护进程只用到 AgentCreateIssueResponse、IssueForAgentV1、AgentContextResponseV1、AgentDependencyRequest。
+
+/** 迭代 1 给任务追加的列（`startDate` / `dueDate` 为 `YYYY-MM-DD`） */
+export interface IssuePhase1Fields {
+  readonly stage: number | null;
+  readonly startDate: string | null;
+  readonly dueDate: string | null;
+  readonly autoExecuteSubtasks: boolean;
+  readonly suggestedExecutorAgentId: string | null;
+}
+
+export type IssueV1 = Issue & IssuePhase1Fields;
+
+export interface IssueRef {
+  readonly id: string;
+  readonly identifier: string;
+  readonly title: string;
+}
+
+export interface IssueListItemV1 extends IssueListItem, IssuePhase1Fields {
+  readonly labels: readonly Label[];
+  readonly projectName: string | null;
+  readonly subtaskCount: number;
+  /** 未到终态的 blockedBy 前置 + 更小批次里未到终态的兄弟 */
+  readonly blockedCount: number;
+}
+
+/** 阻塞原因：未完成的 blockedBy 前置，或同父任务下更小 stage 的未完成兄弟 */
+export interface Blocker {
+  readonly issueId: string;
+  readonly identifier: string;
+  readonly title: string;
+  readonly statusKey: string;
+  readonly reason: 'dependency' | 'stage';
+}
+
+export interface IssueSubscriber {
+  readonly userId: string;
+  readonly name: string;
+  readonly reason: SubscriptionReason;
+}
+
+export interface IssueDetailV1 extends IssueDetail {
+  readonly issue: IssueListItemV1;
+  readonly agentTransitions: readonly StatusTransition[];
+  readonly subtasks: readonly SubtaskSummary[];
+  readonly blockedBy: readonly IssueDependency[];
+  readonly blocks: readonly IssueDependency[];
+  readonly blockers: readonly Blocker[];
+  /** 本任务及其直接子任务上的建议（父任务详情据此"全部确认"） */
+  readonly proposals: readonly ExecutorProposal[];
+  readonly subscribers: readonly IssueSubscriber[];
+  readonly labels: readonly Label[];
+  readonly parent: IssueRef | null;
+  readonly project: { readonly id: string; readonly name: string } | null;
+}
+
+export interface IssueBoardGroup {
+  readonly statusKey: string;
+  readonly issues: readonly IssueListItemV1[];
+}
+
+/** `GET /np/issues?view=board` 的 data */
+export interface IssueBoardResponse {
+  readonly groups: readonly IssueBoardGroup[];
+}
+
+export interface IssuePhase1Input {
+  readonly stage?: number | null;
+  readonly startDate?: string | null;
+  readonly dueDate?: string | null;
+  readonly labelIds?: readonly string[];
+  readonly autoExecuteSubtasks?: boolean;
+  readonly parentIssueId?: string | null;
+  /** false = 暂不开始：只改字段，不入队（默认 true） */
+  readonly start?: boolean;
+}
+
+export interface CreateIssueRequestV1
+  extends CreateIssueRequest, IssuePhase1Input {
+  /** 前置任务 id 或编号 */
+  readonly blockedBy?: readonly string[];
+}
+
+export interface UpdateIssueRequestV1
+  extends UpdateIssueRequest, IssuePhase1Input {
+  readonly projectId?: string | null;
+}
+
+export interface AddDependencyRequest {
+  readonly dependsOnIssueId: string;
+  readonly type?: DependencyType;
+}
+
+export interface DecideProposalRequest {
+  readonly reason?: string;
+}
+
+export interface AcceptAllProposalsResponse {
+  readonly accepted: readonly ExecutorProposal[];
+  readonly skipped: readonly {
+    readonly proposalId: string;
+    readonly code: string;
+    readonly message: string;
+  }[];
+}
+
+export interface ProjectV1 extends Project {
+  readonly visibility: ProjectVisibility;
+  readonly leadUserId: string | null;
+  readonly status: ProjectStatus;
+  readonly priority: IssuePriority;
+  readonly startDate: string | null;
+  readonly dueDate: string | null;
+  readonly workflowId: string | null;
+}
+
+export interface ProjectIssueCounts {
+  readonly total: number;
+  /** 状态分类为 done 的任务数 */
+  readonly done: number;
+  readonly byStatus: Readonly<Record<string, number>>;
+}
+
+export interface ProjectListItem extends ProjectV1 {
+  readonly leadName: string | null;
+  readonly memberCount: number;
+  readonly issueCounts: ProjectIssueCounts;
+}
+
+export interface ProjectDetail extends ProjectListItem {
+  readonly members: readonly ProjectMember[];
+  readonly resources: readonly ProjectResource[];
+  readonly workflow: Workflow;
+}
+
+export interface CreateProjectRequest {
+  readonly name: string;
+  readonly description?: string | null;
+  readonly visibility?: ProjectVisibility;
+  readonly leadUserId?: string | null;
+  readonly status?: ProjectStatus;
+  readonly startDate?: string | null;
+  readonly dueDate?: string | null;
+  readonly priority?: IssuePriority;
+}
+
+export interface UpdateProjectRequest {
+  readonly name?: string;
+  readonly description?: string | null;
+  readonly visibility?: ProjectVisibility;
+  readonly leadUserId?: string | null;
+  readonly status?: ProjectStatus;
+  readonly startDate?: string | null;
+  readonly dueDate?: string | null;
+  readonly priority?: IssuePriority;
+  readonly workflowId?: string | null;
+}
+
+export interface AddProjectMemberRequest {
+  readonly userId: string;
+  readonly role?: ProjectMemberRole;
+}
+
+export interface CreateProjectResourceRequest {
+  readonly type: 'gitRepo';
+  readonly url: string;
+  readonly defaultRef?: string | null;
+  readonly label?: string | null;
+}
+
+export interface UpdateProjectResourceRequest {
+  readonly url?: string;
+  readonly defaultRef?: string | null;
+  readonly label?: string | null;
+  readonly position?: number;
+}
+
+export interface UpdateMemberRequest {
+  readonly role: MemberRole;
+}
+
+export interface CreateLabelRequest {
+  readonly name: string;
+  readonly color?: LabelColor;
+}
+
+export interface UpdateLabelRequest {
+  readonly name?: string;
+  readonly color?: LabelColor;
+}
+
+export interface AgentNameRef {
+  readonly id: string;
+  readonly name: string;
+}
+
+export type AgentV1 = Omit<Agent, 'access'> & {
+  readonly access: AgentAccessLevel;
+};
+
+export type AgentListItemV1 = Omit<AgentListItem, 'access'> & {
+  readonly access: AgentAccessLevel;
+  /** 当前用户能否分配、@ 或确认建议给这个 Agent */
+  readonly canInvoke: boolean;
+  /** 当前用户能否编辑它（所有者或 owner/admin） */
+  readonly canEdit: boolean;
+  readonly ownerName: string | null;
+  readonly delegationTargets: readonly AgentNameRef[];
+  readonly accessUserIds: readonly string[];
+};
+
+export type CreateAgentRequestV1 = Omit<CreateAgentRequest, 'access'> & {
+  readonly access?: AgentAccessLevel;
+  readonly accessUserIds?: readonly string[];
+  readonly delegationTargetIds?: readonly string[];
+};
+
+export type UpdateAgentRequestV1 = Omit<UpdateAgentRequest, 'access'> & {
+  readonly access?: AgentAccessLevel;
+  readonly accessUserIds?: readonly string[];
+  readonly delegationTargetIds?: readonly string[];
+};
+
+export interface UpdateRuntimeRequest {
+  readonly visibility: RuntimeVisibility;
+}
+
+export interface InboxUnreadCounts {
+  readonly decision: number;
+  readonly info: number;
+}
+
+/** `GET /np/inbox` 的完整响应体（`unread`、`nextCursor` 与 `data` 同级） */
+export interface InboxListResponse {
+  readonly data: readonly InboxItem[];
+  readonly unread: InboxUnreadCounts;
+  readonly nextCursor: string | null;
+}
+
+export type InboxTopicPayload = { readonly kind: 'inbox.changed' };
+
+/** Agent 回写接口里的任务视图（`GET /np/agent/issues/:id`、`/context`） */
+export interface IssueForAgentV1 extends IssueForAgent {
+  readonly parentIssueId: string | null;
+  readonly parent: IssueRef | null;
+  readonly projectId: string | null;
+  readonly stage: number | null;
+  readonly autoExecuteSubtasks: boolean;
+  readonly labels: readonly string[];
+  readonly blockers: readonly Blocker[];
+}
+
+export interface AgentContextResponseV1 extends AgentContextResponse {
+  readonly issue: IssueForAgentV1;
+  readonly project: ClaimedProject | null;
+}
+
+/** POST /np/agent/issues 的响应（`issue` 是完整任务行合并 Agent 视图） */
+export interface AgentCreateIssueResponse {
+  readonly issue: IssueV1 & IssueForAgentV1;
+  /** executor 指向需要确认的 Agent 时的建议；自动接受时 status = autoAccepted */
+  readonly proposal: ExecutorProposal | null;
+  readonly triggered: readonly TriggeredRun[];
+  /** 创建时已被阻塞（入队被推迟） */
+  readonly blocked: boolean;
+}
+
+/**
+ * POST /np/agent/issues/:id/dependencies：`dependsOnIssueId`（CLI 用法）或 `blockedBy`，id 或编号均可。
+ * 删除：`DELETE /np/agent/issues/:id/dependencies?dependsOnIssueId=<id>&type=blockedBy`，
+ * 或 `DELETE /np/agent/issues/:id/dependencies/:dependencyIdOrIssue`。
+ */
+export interface AgentDependencyRequest {
+  readonly blockedBy?: string;
+  readonly dependsOnIssueId?: string;
+  readonly type?: DependencyType;
+}
+
+// ---------- Phase 1 迭代 2（docs/phase1/iteration-2-contract.md §M） ----------
+
+export * from './protocol.phase1-iter2.js';
+// 服务端补充形状（CLI 不复制）

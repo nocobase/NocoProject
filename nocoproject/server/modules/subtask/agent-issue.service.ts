@@ -196,6 +196,8 @@ async function create(
         ? await ensureLabelsByName(tx, deps.ids, input.labels)
         : [],
       createdById: null,
+      originType: 'agent',
+      originId: auth.runId,
     });
     for (const target of input.blockedBy ?? []) {
       const dependsOn = await findIssue(tx.conn, target);
@@ -266,12 +268,14 @@ async function agentIssueAddDependency(
     const dependsOn = await findIssue(tx.conn, targetKey);
     if (!dependsOn)
       throw invalid('INVALID_DEPENDENCY', `${targetKey} does not exist.`);
-    return insertDependency(tx, deps, {
+    const dependency = await insertDependency(tx, deps, {
       issue,
       dependsOn,
       type,
       actor: agentActor(auth),
     });
+    if (type === 'blockedBy') await deps.triggers().onBlockingAdded(tx, issue);
+    return dependency;
   });
 }
 

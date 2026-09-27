@@ -1,6 +1,7 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 
 import type { CommentService } from '../collaboration/comment.service.js';
+import type { PullRequestService } from '../git/pull-request.service.js';
 import type { IssueQueries } from '../issue/issue.queries.js';
 import type { IssueService } from '../issue/issue.service.js';
 import type { Actor } from '../shared/activity.js';
@@ -16,7 +17,9 @@ import {
 import type {
   AgentCreateIssueRequest,
   AgentDependencyRequest,
+  AgentPullRequestLinkRequest,
   CreateCommentRequest,
+  StatusChangePendingResponse,
 } from '../shared/protocol.js';
 import type { AgentIssueService } from '../subtask/agent-issue.service.js';
 import type { RunAuth, RunTokenService } from './token.js';
@@ -51,15 +54,22 @@ function agentActor(context: Context<RunTokenEnv>): Actor {
   return { type: 'agent', id: auth.agentId, runId: auth.runId };
 }
 
+function flag(context: Context, name: string): boolean {
+  return ['1', 'true'].includes(queryText(context, name) ?? '');
+}
+
 /**
- * `/np/agent/*` (protocol.md §5, iteration-1 contract §D/§I). Reads may address any issue; comments and status writes
- * are limited to the issue of the token's run; sub-issues and dependencies to that issue and its descendants.
+ * `/np/agent/*` (protocol.md §5, iteration-1 contract §D/§I, iteration-2 contract §C/§D/§K). Reads may address issues
+ * in the run issue's project and issues without a project — anything else is 404;
+ * comments, status writes and pull request links are limited to the issue of the token's run; sub-issues and
+ * dependencies to that issue and its descendants. A status write held for approval answers 202.
  */
 export function createAgentApiRoutes(deps: {
   issues: IssueService;
   queries: IssueQueries;
   comments: CommentService;
   agentIssues: AgentIssueService;
+  pullRequests: PullRequestService;
 }): Hono<RunTokenEnv> {
   const routes = npRouter<RunTokenEnv>();
 
@@ -84,21 +94,27 @@ export function createAgentApiRoutes(deps: {
   );
   routes.get('/issues/:id', async (context) =>
     context.json({
-      data: await deps.queries.forAgent(context.req.param('id')),
+      data: await deps.queries.forAgentScoped(
+        context.get('runAuth'),
+        context.req.param('id'),
+      ),
     }),
   );
-  routes.get('/issues/:id/comments', async (context) =>
-    context.json({
-      data: await deps.comments.listForAgent(context.req.param('id'), {
+  routes.get('/issues/:id/comments', async (context) => {
+    const issue = await deps.queries.agentReadable(
+      context.get('runAuth'),
+      context.req.param('id'),
+    );
+    return context.json({
+      data: await deps.comments.listForAgent(issue.id, {
         since: queryText(context, 'since'),
-        rootsOnly: ['1', 'true'].includes(
-          queryText(context, 'rootsOnly') ?? '',
-        ),
+        rootsOnly: flag(context, 'rootsOnly'),
         thread: queryText(context, 'thread'),
         tail: queryInt(context, 'tail'),
+        excludeResolved: flag(context, 'excludeResolved'),
       }),
-    }),
-  );
+    });
+  });
   routes.post('/issues/:id/comments', async (context) => {
     const issueId = await requireRunIssue(context);
     const result = await deps.comments.create(
@@ -119,11 +135,13 @@ export function createAgentApiRoutes(deps: {
       201,
     ),
   );
-  routes.get('/issues/:id/children', async (context) =>
-    context.json({
-      data: await deps.agentIssues.children(context.req.param('id')),
-    }),
-  );
+  routes.get('/issues/:id/children', async (context) => {
+    const issue = await deps.queries.agentReadable(
+      context.get('runAuth'),
+      context.req.param('id'),
+    );
+    return context.json({ data: await deps.agentIssues.children(issue.id) });
+  });
   routes.post('/issues/:id/dependencies', async (context) =>
     context.json(
       {
@@ -158,13 +176,40 @@ export function createAgentApiRoutes(deps: {
   routes.post('/issues/:id/status', async (context) => {
     const issueId = await requireRunIssue(context);
     const body = await readJson<{ statusKey: string }>(context);
-    return context.json({
-      data: await deps.issues.agentSetStatus(
-        agentActor(context),
-        issueId,
-        body.statusKey,
-      ),
-    });
+    const result = await deps.issues.agentSetStatusGated(
+      agentActor(context),
+      issueId,
+      body.statusKey,
+    );
+    if (result.pendingApproval) {
+      const data: StatusChangePendingResponse = {
+        issue: result.issue,
+        pendingApproval: result.pendingApproval,
+      };
+      return context.json({ data }, 202);
+    }
+    return context.json({ data: result.issue });
+  });
+  routes.get('/issues/:id/pull-requests', async (context) => {
+    const issue = await deps.queries.agentReadable(
+      context.get('runAuth'),
+      context.req.param('id'),
+    );
+    return context.json({ data: await deps.pullRequests.forIssue(issue.id) });
+  });
+  routes.post('/issues/:id/pull-requests', async (context) => {
+    const issueId = await requireRunIssue(context);
+    const body = await readJson<AgentPullRequestLinkRequest>(context);
+    const issue = await deps.queries.agentReadable(
+      context.get('runAuth'),
+      issueId,
+    );
+    const { view, created } = await deps.pullRequests.agentLink(
+      agentActor(context),
+      issue,
+      body.url,
+    );
+    return context.json({ data: view }, created ? 201 : 200);
   });
   return routes;
 }

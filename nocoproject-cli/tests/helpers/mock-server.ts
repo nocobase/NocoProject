@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { ClaimedProject, CommentForAgent, IssueForAgent, RunStatus } from '../../src/protocol.js';
+import type { ClaimedProject, CommentForAgent, IssueForAgent, IssuePullRequestView, RunStatus } from '../../src/protocol.js';
 import type { ClaimedRunV1 as ClaimedRun } from '../../src/run-context.js';
 
 export const API_KEY = 'test-api-key-0123456789';
@@ -43,6 +43,9 @@ export interface Dependency {
   readonly type: string;
 }
 
+/** A mock issue; `approvalRequired` gates agent status changes (all, or only to the listed keys) with 202. */
+export type MockIssue = IssueForAgent & { approvalRequired?: boolean | readonly string[] };
+
 export interface EnqueueOptions {
   provider?: string;
   triggerComment?: string;
@@ -68,7 +71,7 @@ const TRANSITIONS = [
 
 export class MockServer {
   readonly calls: Call[] = [];
-  readonly issues = new Map<string, IssueForAgent>();
+  readonly issues = new Map<string, MockIssue>();
   readonly comments = new Map<string, CommentForAgent[]>();
   readonly runs = new Map<string, RunState>();
   readonly queue: ClaimedRun[] = [];
@@ -76,6 +79,8 @@ export class MockServer {
   readonly runtimes = new Map<string, { id: string; provider: string }>();
   readonly meta = new Map<string, IssueMeta>();
   readonly dependencies: Dependency[] = [];
+  readonly pullRequests = new Map<string, IssuePullRequestView[]>();
+  readonly approvals: { id: string; issueId: string; fromStatus: string; toStatus: string }[] = [];
   private readonly sockets = new Set<WebSocket>();
   private server: Server;
   private wss: WebSocketServer;
@@ -131,8 +136,8 @@ export class MockServer {
     for (const ws of this.sockets) ws.send(frame);
   }
 
-  addIssue(partial: Partial<IssueForAgent> & { id: string; identifier: string }): IssueForAgent {
-    const issue: IssueForAgent = {
+  addIssue(partial: Partial<MockIssue> & { id: string; identifier: string }): MockIssue {
+    const issue: MockIssue = {
       title: 'Test issue',
       description: 'Do the thing.',
       statusKey: 'todo',
@@ -285,12 +290,13 @@ export class MockServer {
       return send(200, { data: { run: { id: runId }, agent: { id: 'agent-1', name: 'Echo Bot' }, issue, statusCatalog: [], agentTransitions: TRANSITIONS, project } });
     }
     if (path === '/np/agent/issues' && method === 'POST') return this.createIssue(body, run.claimed, send);
-    const m = path.match(/^\/np\/agent\/issues\/([^/]+)(?:\/(comments|status|children|dependencies))?$/);
+    const m = path.match(/^\/np\/agent\/issues\/([^/]+)(?:\/(comments|status|children|dependencies|pull-requests))?$/);
     const issue = m ? this.findIssue(decodeURIComponent(m[1] as string)) : undefined;
     if (!m || !issue) return send(404, { code: 'ISSUE_NOT_FOUND', message: path });
     if (!m[2]) return send(200, { data: issue });
     if (m[2] === 'children') return send(200, { data: this.children(issue.id) });
     if (m[2] === 'dependencies') return this.dependencyRoute(method, issue.id, url, body, send);
+    if (m[2] === 'pull-requests') return this.pullRequestRoute(method, issue.id, body, send);
     if (m[2] === 'comments' && method === 'GET') return send(200, { data: this.comments.get(issue.id) ?? [] });
     if (m[2] === 'comments') {
       const id = `c${++this.seq}`;
@@ -309,11 +315,31 @@ export class MockServer {
     }
     const allowed = TRANSITIONS.some((t) => t.from === issue.statusKey && t.to === body.statusKey);
     if (!allowed) return send(403, { code: 'TRANSITION_NOT_ALLOWED', message: `${issue.statusKey} → ${body.statusKey}` });
+    const gate = issue.approvalRequired;
+    if (gate === true || (Array.isArray(gate) && gate.includes(body.statusKey))) {
+      const pendingApproval = {
+        id: `ap${++this.seq}`,
+        issueId: issue.id,
+        fromStatus: issue.statusKey,
+        toStatus: body.statusKey,
+        requestedByType: 'agent',
+        requestedById: run.claimed.agent.id,
+        requestedRunId: runId,
+        approverUserIds: ['1'],
+        status: 'pending',
+        decidedById: null,
+        decidedAt: null,
+        comment: null,
+        createdAt: new Date().toISOString(),
+      };
+      this.approvals.push(pendingApproval);
+      return send(202, { data: { issue: { id: issue.id, identifier: issue.identifier, statusKey: issue.statusKey }, pendingApproval } });
+    }
     this.issues.set(issue.id, { ...issue, statusKey: body.statusKey });
     return send(200, { data: { issue: { id: issue.id, statusKey: body.statusKey } } });
   }
 
-  findIssue(ref: string): IssueForAgent | undefined {
+  findIssue(ref: string): MockIssue | undefined {
     return this.issues.get(ref) ?? [...this.issues.values()].find((i) => i.identifier.toUpperCase() === ref.toUpperCase());
   }
 
@@ -343,6 +369,44 @@ export class MockServer {
         const blockedCount = this.dependencies.filter((d) => d.issueId === id && this.issues.get(d.dependsOnIssueId)?.statusKey !== 'done').length;
         return { id, identifier: child.identifier, title: child.title, statusKey: child.statusKey, stage: m.stage, executorType: child.executor.type, executorName: child.executor.name, blockedCount };
       });
+  }
+
+  /** POST / GET /np/agent/issues/:id/pull-requests (iteration 2 §C); only GitHub-style URLs parse. */
+  private pullRequestRoute(method: string, issueId: string, body: any, send: (s: number, p: unknown) => void): void {
+    const list = this.pullRequests.get(issueId) ?? [];
+    if (method === 'GET') return send(200, { data: list });
+    if (method !== 'POST') return send(405, { code: 'METHOD_NOT_ALLOWED', message: method });
+    const match = String(body?.url ?? '').match(/^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\/(\d+)\/?$/);
+    if (!match) return send(400, { code: 'INVALID_PR_URL', message: String(body?.url) });
+    const [, repo, num] = match as [string, string, string];
+    const existing = list.find((p) => p.repo === repo && p.number === Number(num));
+    if (existing) return send(200, { data: existing });
+    const view: IssuePullRequestView = {
+      id: `pr${++this.seq}`,
+      connectionId: null,
+      repo,
+      number: Number(num),
+      url: body.url,
+      title: '',
+      state: 'open',
+      draft: false,
+      headRef: '',
+      baseRef: '',
+      headSha: '',
+      authorLogin: '',
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      mergeableState: null,
+      ciState: null,
+      mergedAt: null,
+      closedAt: null,
+      snapshotAt: null,
+      linkedBy: { type: 'agent', id: 'agent-1', name: 'Echo Bot' },
+      autoCompleteDisabled: false,
+    };
+    this.pullRequests.set(issueId, [...list, view]);
+    return send(201, { data: view });
   }
 
   private dependencyRoute(method: string, issueId: string, url: URL, body: any, send: (s: number, p: unknown) => void): void {

@@ -11,11 +11,16 @@ import { now, num, toDate } from '../shared/db.js';
 import { invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
-  InboxItem,
+  InboxItemV2,
   InboxKind,
   InboxListResponse,
   InboxUnreadCounts,
 } from '../shared/protocol.js';
+
+/** `InboxListResponse` whose items may carry the iteration 2 types. */
+export type InboxListResponseV2 = Omit<InboxListResponse, 'data'> & {
+  readonly data: readonly InboxItemV2[];
+};
 import { mapInboxItems, subscribe, unsubscribe } from './inbox.store.js';
 
 const PAGE_SIZE = 50;
@@ -30,9 +35,9 @@ export interface InboxQuery {
 export type InboxAction = 'read' | 'unread' | 'archive' | 'unarchive';
 
 export interface InboxService {
-  list(actor: Actor, query: InboxQuery): Promise<InboxListResponse>;
+  list(actor: Actor, query: InboxQuery): Promise<InboxListResponseV2>;
   unreadCount(actor: Actor): Promise<InboxUnreadCounts>;
-  mark(actor: Actor, itemId: string, action: InboxAction): Promise<InboxItem>;
+  mark(actor: Actor, itemId: string, action: InboxAction): Promise<InboxItemV2>;
   readAll(actor: Actor, kind: unknown): Promise<InboxUnreadCounts>;
   subscribe(actor: Actor, issueIdOrKey: string): Promise<void>;
   unsubscribe(actor: Actor, issueIdOrKey: string): Promise<void>;

@@ -1,11 +1,17 @@
+import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
-import { HourglassIcon, PlusIcon } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
+import { HourglassIcon, PlusIcon, SparklesIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 
 import { NpExecutor, NpStatusBadge } from '@/components/np-badges';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import { toast } from '@/components/ui/toast';
+
+import { createIntakeBatch } from '../../api-intake.js';
 
 import type { StatusCatalogEntry, SubtaskSummary } from '../../types.js';
 import { groupSubtasksByStage } from './subtask-model.js';
@@ -47,16 +53,32 @@ function SubtaskRow({
 
 /**
  * Sub-issues grouped by stage (§J 2). A stage runs after every lower stage is terminal; "waiting for N" counts a
- * sub-issue's open blockers. New sub-issues open the `new-subtask` route dialog.
+ * sub-issue's open blockers. New sub-issues open the `new-subtask` route dialog; "AI breakdown" turns the description
+ * into sub-issue drafts (iteration 2 §E, `source: 'issue'`) and opens them on the batch entry page for review.
  */
 export function SubtasksSection({
+  issueId,
   subtasks,
   catalog,
 }: {
+  readonly issueId: string;
   readonly subtasks: readonly SubtaskSummary[];
   readonly catalog: readonly StatusCatalogEntry[];
 }): ReactElement {
   const { t } = useTranslation();
+  const api = useApiClient();
+  const navigate = useNavigate();
+  const breakdown = useMutation({
+    mutationFn: () => createIntakeBatch(api, { source: 'issue', issueId }),
+    onSuccess: (detail) =>
+      void navigate(`/intake?batch=${encodeURIComponent(detail.batch.id)}`),
+    onError: () =>
+      toast.add({
+        type: 'error',
+        priority: 'high',
+        title: t('np.intake.parseFailed'),
+      }),
+  });
   const groups = groupSubtasksByStage(subtasks, catalog);
   const done = groups.reduce((total, group) => total + group.done, 0);
   const staged = groups.some((group) => group.stage !== null);
@@ -75,15 +97,30 @@ export function SubtasksSection({
             </span>
           ) : null}
         </h2>
-        <Button
-          variant='outline'
-          size='sm'
-          nativeButton={false}
-          render={<Link to='new-subtask' />}
-        >
-          <PlusIcon data-icon='inline-start' />
-          {t('np.subtasks.new')}
-        </Button>
+        <div className='flex gap-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={breakdown.isPending}
+            onClick={() => breakdown.mutate()}
+          >
+            {breakdown.isPending ? (
+              <Spinner data-icon='inline-start' />
+            ) : (
+              <SparklesIcon data-icon='inline-start' />
+            )}
+            {t('np.intake.aiBreakdown')}
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            nativeButton={false}
+            render={<Link to='new-subtask' />}
+          >
+            <PlusIcon data-icon='inline-start' />
+            {t('np.subtasks.new')}
+          </Button>
+        </div>
       </div>
       {subtasks.length === 0 ? (
         <p className='text-sm text-muted-foreground'>

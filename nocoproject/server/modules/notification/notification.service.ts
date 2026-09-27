@@ -16,121 +16,44 @@
  * | mentioned           | info     | mentioned member   | `mention://user/<id>` in a comment or the description     |
  * | commented           | info     | subscribers        | a new comment (mentioned members get `mentioned` instead) |
  * | status_changed      | info     | subscribers        | status changed by a user or an agent (not by the system)  |
+ * | approval_pending    | decision | each approver      | a status change waits for approval (iteration 2)          |
+ * | approval_decided    | info     | requester (member), else the owner | the request was approved or rejected      |
+ * | pr_review           | decision | owner              | a ready PR on an issue executed by an agent               |
+ * | pr_merged           | info     | subscribers        | a linked PR was merged                                    |
  *
  * Nobody is notified of their own action. Decision items resolve when the matching action is done (status leaves
- * in_review / blocked; every proposal on the parent decided); `run_failed` items are archived when the issue reaches
- * in_review or a terminal status. Every recipient gets `inbox.changed` (realtime `np:inbox`).
+ * in_review / blocked; every proposal on the parent decided; the approval request decided or cancelled; the PR merged
+ * or closed); `run_failed` items are archived when the issue reaches in_review or a terminal status. Every recipient
+ * gets `inbox.changed` (realtime `np:inbox`). `body` is an English fallback; `payload` carries what the browser
+ * renders from (`type` + `payload`), including `identifier` and `issueTitle` on every item.
  */
 import type { Tx } from '../shared/db.js';
 import { str, unique } from '../shared/db.js';
 import type { DomainEvent, EventActor } from '../shared/events.js';
-import type { IdSource } from '../shared/ids.js';
-import type { InboxItemType, InboxKind, IssueV1 } from '../shared/protocol.js';
-import type { UserDirectory } from '../shared/users.js';
+import type { IssueV1 } from '../shared/protocol.js';
 import { findIssue } from '../issue/issue.records.js';
-import { agentNames } from '../run/run.queries.js';
-import type { WorkflowService } from '../workflow/workflow.service.js';
+import {
+  onApprovalDecided,
+  onApprovalRequested,
+  onPullRequestClosed,
+  onPullRequestMerged,
+  onPullRequestReview,
+} from './delivery-notices.js';
 import {
   activeSubscribers,
   archiveRunFailed,
-  dedupeKey,
-  deliver,
   resolveItems,
-  subscribe,
 } from './inbox.store.js';
+import { Round, type NotificationDeps } from './round.js';
+
+export type { NotificationDeps } from './round.js';
 
 export interface NotificationService {
   process(tx: Tx, events: readonly DomainEvent[]): Promise<void>;
 }
 
-export interface NotificationDeps {
-  readonly ids: IdSource;
-  readonly users: UserDirectory;
-  readonly workflows: WorkflowService;
-}
-
-interface Notice {
-  readonly type: InboxItemType;
-  readonly kind: InboxKind;
-  readonly body: string;
-  readonly payload?: Readonly<Record<string, unknown>>;
-  readonly dedupeKey?: string;
-}
-
-/** Per-transaction state: the recipients touched and a name cache. */
-class Round {
-  readonly touched = new Set<string>();
-  private readonly names = new Map<string, string | null>();
-
-  constructor(
-    readonly tx: Tx,
-    readonly deps: NotificationDeps,
-  ) {}
-
-  async actorName(actor: EventActor): Promise<string | null> {
-    if (actor.type === 'system' || !actor.id) return null;
-    const key = `${actor.type}:${actor.id}`;
-    if (!this.names.has(key)) {
-      const map =
-        actor.type === 'agent'
-          ? await agentNames(this.tx.conn, [actor.id])
-          : await this.deps.users.names(this.tx.conn, [actor.id]);
-      this.names.set(key, map.get(actor.id) ?? null);
-    }
-    return this.names.get(key) ?? null;
-  }
-
-  async existingUsers(
-    ids: readonly (string | null | undefined)[],
-  ): Promise<string[]> {
-    const names = await this.deps.users.names(this.tx.conn, ids);
-    return unique(ids).filter((id) => names.has(id));
-  }
-
-  /** Delivers to each recipient except the actor. */
-  async notify(
-    issue: IssueV1,
-    recipients: readonly (string | null | undefined)[],
-    actor: EventActor,
-    notice: Notice,
-  ): Promise<void> {
-    const actorName = await this.actorName(actor);
-    for (const userId of unique(recipients)) {
-      if (actor.type === 'user' && actor.id === userId) continue;
-      this.touched.add(
-        await deliver(this.tx, this.deps.ids, {
-          userId,
-          kind: notice.kind,
-          type: notice.type,
-          issueId: issue.id,
-          title: `${issue.identifier} ${issue.title}`,
-          body: notice.body,
-          actorType: actor.type,
-          actorId: actor.id,
-          actorName,
-          dedupeKey:
-            notice.dedupeKey ?? dedupeKey(userId, notice.type, issue.id),
-          payload: notice.payload ?? null,
-        }),
-      );
-    }
-  }
-
-  async subscribe(
-    issueId: string,
-    userIds: readonly (string | null | undefined)[],
-    reason: Parameters<typeof subscribe>[4],
-  ): Promise<void> {
-    for (const userId of unique(userIds))
-      await subscribe(this.tx, this.deps.ids, issueId, userId, reason);
-  }
-
-  touch(userIds: readonly string[]): void {
-    for (const userId of userIds) this.touched.add(userId);
-  }
-}
-
 const SYSTEM: EventActor = { type: 'system', id: null };
+const EXCERPT_LENGTH = 200;
 
 async function onIssueCreated(
   round: Round,
@@ -161,6 +84,7 @@ async function onIssueCreated(
     type: 'mentioned',
     kind: 'info',
     body: 'You were mentioned in the description.',
+    payload: { source: 'description' },
   });
 }
 
@@ -218,11 +142,16 @@ async function onIssueUpdated(
   const { actor, changes } = event;
   if (changes.owner?.to) {
     await round.subscribe(issue.id, [changes.owner.to], 'owner');
+    const fromName = changes.owner.from
+      ? ((
+          await round.deps.users.names(round.tx.conn, [changes.owner.from])
+        ).get(changes.owner.from) ?? null)
+      : null;
     await round.notify(issue, [changes.owner.to], actor, {
       type: 'owner_assigned',
       kind: 'info',
       body: 'You were made the owner.',
-      payload: { from: changes.owner.from },
+      payload: { from: changes.owner.from, fromName },
     });
   }
   if (changes.executor?.to.type === 'user' && changes.executor.to.id) {
@@ -240,6 +169,7 @@ async function onIssueUpdated(
       type: 'mentioned',
       kind: 'info',
       body: 'You were mentioned in the description.',
+      payload: { source: 'description' },
     });
   }
   if (changes.status)
@@ -257,7 +187,16 @@ async function onComment(
     await round.subscribe(issue.id, [actor.id], 'commenter');
   const mentioned = await round.existingUsers(event.mentionedUserIds);
   await round.subscribe(issue.id, mentioned, 'mentioned');
-  const payload = { commentId: event.commentId };
+  const comment = await round.tx.conn.query
+    .selectFrom('comments')
+    .select('content')
+    .where('id', '=', event.commentId)
+    .executeTakeFirst();
+  const payload = {
+    commentId: event.commentId,
+    source: 'comment',
+    excerpt: (str(comment?.content) ?? '').slice(0, EXCERPT_LENGTH),
+  };
   await round.notify(issue, mentioned, actor, {
     type: 'mentioned',
     kind: 'info',
@@ -286,6 +225,7 @@ async function onRunFailed(
   const payload = {
     runId: event.runId,
     agentId: event.agentId,
+    agentName: (await round.actorName(actor)) ?? null,
     reason: event.reason,
   };
   const deciders: string[] = [];
@@ -314,6 +254,7 @@ async function pendingProposalCount(tx: Tx, parentId: string): Promise<number> {
     .selectFrom('issues')
     .select('id')
     .where('parentIssueId', '=', parentId)
+    .where('deletedAt', 'is', null)
     .execute();
   const ids = unique([parentId, ...children.map((row) => str(row.id))]);
   const rows = await tx.conn.query
@@ -417,6 +358,16 @@ async function handle(round: Round, event: DomainEvent): Promise<void> {
       return onBatchDone(round, event);
     case 'issue.dependencyReleased':
       return onDependencyReleased(round, event);
+    case 'approval.requested':
+      return onApprovalRequested(round, event);
+    case 'approval.decided':
+      return onApprovalDecided(round, event);
+    case 'pr.reviewRequested':
+      return onPullRequestReview(round, event);
+    case 'pr.merged':
+      return onPullRequestMerged(round, event);
+    case 'pr.closed':
+      return onPullRequestClosed(round, event);
     default:
       return;
   }

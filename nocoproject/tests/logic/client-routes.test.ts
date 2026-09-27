@@ -96,11 +96,13 @@ describe('app client routes', () => {
     expect(pageAuthorizations(resolved.routes)).toEqual([
       { name: 'home', authorizedAs: null },
       { name: 'np-inbox', authorizedAs: 'np-inbox' },
+      { name: 'np-approvals', authorizedAs: 'np-inbox' },
       { name: 'np-issues', authorizedAs: 'np-issues' },
       { name: 'np-issue-new', authorizedAs: 'np-issues' },
       { name: 'np-issue-detail', authorizedAs: 'np-issues' },
       { name: 'np-run-transcript', authorizedAs: 'np-issues' },
       { name: 'np-subtask-new', authorizedAs: 'np-issues' },
+      { name: 'np-intake', authorizedAs: 'np-intake' },
       { name: 'np-projects', authorizedAs: 'np-projects' },
       { name: 'np-project-new', authorizedAs: 'np-projects' },
       { name: 'np-project-detail', authorizedAs: 'np-projects' },
@@ -108,9 +110,24 @@ describe('app client routes', () => {
       { name: 'np-agents', authorizedAs: 'np-agents' },
       { name: 'np-agent-new', authorizedAs: 'np-agents' },
       { name: 'np-agent-detail', authorizedAs: 'np-agents' },
+      { name: 'np-skills', authorizedAs: 'np-skills' },
+      { name: 'np-skill-new', authorizedAs: 'np-skills' },
+      { name: 'np-skill-detail', authorizedAs: 'np-skills' },
       { name: 'np-runtimes', authorizedAs: 'np-runtimes' },
       { name: 'np-runtime-connect', authorizedAs: 'np-runtimes' },
+      { name: 'np-usage', authorizedAs: 'np-usage' },
     ]);
+  });
+
+  it('pins the settings items the NocoProject settings pages are granted by', () => {
+    // Settings pages are owner/admin by server rule; their settings items still need registering and granting.
+    expect(settingsAuthorizations(resolveRoutes().settingsRouteTree)).toEqual(
+      expect.arrayContaining([
+        { name: 'np-members', authorizedAs: 'settings:np-members' },
+        { name: 'np-github', authorizedAs: 'settings:np-github' },
+        { name: 'np-settings', authorizedAs: 'settings:np-settings' },
+      ]),
+    );
   });
 });
 
@@ -250,6 +267,25 @@ function isReferencePage(candidate: string): boolean {
     relative === '' ||
     (!relative.startsWith('..') && !path.isAbsolute(relative))
   );
+}
+
+/** Settings authorization of every settings page in the tree, at any depth. */
+function settingsAuthorizations(
+  routes: readonly AppClientRegisteredRoute[],
+): { name: string; authorizedAs: string | null }[] {
+  return routes.flatMap((route) => [
+    ...(route.componentLoader &&
+    route.authz !== 'skip' &&
+    route.authz !== 'unrestricted'
+      ? [
+          {
+            name: route.name,
+            authorizedAs: `${route.authz.resource.type}:${route.authz.resource.id}`,
+          },
+        ]
+      : []),
+    ...settingsAuthorizations(route.children ?? []),
+  ]);
 }
 
 /** Page authorization comes directly from the registered tree. */

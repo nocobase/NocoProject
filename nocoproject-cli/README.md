@@ -1,11 +1,11 @@
 # nocoproject-cli
 
-Local daemon and agent CLI for NocoProject (Phase 1 iteration 1, protocol version 1).
+Local daemon and agent CLI for NocoProject (Phase 1 iteration 2, protocol version 1).
 
 - The **daemon** registers the coding tools installed on this machine (Claude Code, OpenCode, Codex) as runtimes, wakes up on the `np:daemon` realtime topic (with polling as a fallback), claims queued runs, prepares a workspace, launches the tool, streams its events back and reports the result.
-- The **agent CLI** (`nocoproject issue ...`, `project get`, `repo checkout`) is what the agent runs inside a run to read the issue, post comments, change the status, create sub-issues and check out project repositories. It authenticates with the per-run token the daemon injects.
+- The **agent CLI** (`nocoproject issue ...`, `project get`, `repo checkout`, `pr link` / `pr list`) is what the agent runs inside a run to read the issue, post comments, change the status, create sub-issues, check out project repositories and link pull requests. It authenticates with the per-run token the daemon injects.
 
-The contract lives in `nocoproject/docs/phase0/protocol.md` and `nocoproject/docs/phase1/iteration-1-contract.md` (§I); `src/protocol.ts` is a verbatim copy of the shared types.
+The contract lives in `nocoproject/docs/phase0/protocol.md`, `nocoproject/docs/phase1/iteration-1-contract.md` (§I) and `nocoproject/docs/phase1/iteration-2-contract.md` (§C, §D, §G, §H, §J, §L); `src/protocol.ts` is a copy of the shared types and re-exports the iteration-2 additions from `src/protocol.phase1-iter2.ts`.
 
 ## Install
 
@@ -47,8 +47,8 @@ What it does:
 2. Subscribes to `np:daemon` over `<serverUrl>/ws`, authenticated with the `x-api-key` header. It reconnects with exponential backoff and jitter and pings every 30 s. It also polls for work every `pollIntervalMs` (15 s from the server).
 3. Claims runs in batches for all runtimes, within a shared slot limit. It renews each lease every 15 s until the run starts.
 4. For each run, creates `~/.nocoproject/workspaces/<issueKey>-<runKey>/{workdir,logs}`. It reuses the previous `workDir` and resumes the provider session when the server hands them back and `fresh` is false.
-5. Writes `<workDir>/.nocoproject/context.json` (mode 0600, never contains the run token) from the Phase 1 claim extras: project and repositories, parent issue, stage, `autoExecuteSubtasks`, delegation targets and the previous session's `branchName` / `repoUrl`.
-6. Writes the runtime brief as a marker block in `CLAUDE.md` (claude) or `AGENTS.md` (opencode, codex, echo). Content outside the markers is left untouched.
+5. Writes `<workDir>/.nocoproject/context.json` (mode 0600, never contains the run token or the agent's env vars) from the Phase 1 claim extras: project and repositories, parent issue, stage, `autoExecuteSubtasks`, delegation targets, the previous session's `branchName` / `repoUrl`, and (iteration 2) `issue.executionMode` (`task` when missing) and `issue.pullRequests` (`[{ number, url, state }]`).
+6. Rebuilds the agent's skills from `agent.skills` (see [Skills](#skills)) and writes the runtime brief as a marker block in `CLAUDE.md` (claude) or `AGENTS.md` (opencode, codex, echo). Content outside the markers is left untouched.
 7. Launches the tool with the per-turn prompt and streams events in batches (every 500 ms, and immediately on the first visible event). Events are redacted and truncated to 64 KB, with increasing `seq` numbers.
 8. Checks for cancellation every 5 s and also reacts to WebSocket `cancelRequested`, killing the whole process tree. An idle watchdog kills an agent that produces no output for 2 h.
 9. Reports `complete` (with session id, summary and usage), `fail` (with a classified `FailureReason`) or `cancel-ack`. When the agent checked out a repository, `complete` and `fail` also carry `branchName` and `repoUrl` from `<workDir>/.nocoproject/checkout.json`.
@@ -73,6 +73,20 @@ A `426 PROTOCOL_MISMATCH` stops claiming and logs a loud upgrade message.
 
 The API key and run tokens are never written to logs: every log line and every event goes through redaction. Agents never receive `NOCOPROJECT_API_KEY`.
 
+### Agent environment variables (iteration 2 §G)
+
+The claim payload's `agent.env` (`Record<string, string>`, decrypted by the server) is injected into the tool process:
+
+- Names starting with `NOCOPROJECT_`, `PATH`, `HOME`, `SHELL` and names that are not `^[A-Z_][A-Z0-9_]*$` are skipped; the run's event stream gets a status line naming the skipped variables (never their values). The run variables (`NOCOPROJECT_TOKEN`, ...) always win.
+- Every value of 6 characters or more joins the redaction table for the lifetime of the run (reference-counted, so concurrent runs of the same agent stay masked): it is replaced with `[REDACTED]` in run events, the completion summary, failure details, daemon logs, the agent's stdout/stderr log files and the brief file. Shorter values are not masked, so a value like `1` does not blank out every digit.
+- `context.json` never contains the env, and nothing writes it to disk.
+
+### Skills (iteration 2 §H)
+
+Every run rebuilds `<workDir>/.nocoproject/skills/<slug>/` from the claim payload's `agent.skills` (`[{ id, slug, name, description, content, files: [{ path, content }] }]`): `SKILL.md` is `content` (with `name` / `description` YAML front matter added when the content has none) and each file is written at its relative path. The whole directory is removed first, so skills that were detached, and stale files, disappear. Slugs must be `^[a-z0-9][a-z0-9._-]*$`; file paths that are absolute or contain a `..` segment are rejected (a status line in the event stream says which), the rest of the skill is still written. A file named `SKILL.md` is ignored in favour of `content`.
+
+The Claude Code adapter additionally copies each skill to `<workDir>/.claude/skills/<slug>/`, where Claude Code discovers skills natively. Only directories the daemon wrote there (listed in `.nocoproject/native-skills.json`) are ever removed, so other skills in `.claude/skills/` are left alone.
+
 ## Run-token mode (agent commands)
 
 The daemon injects `NOCOPROJECT_SERVER_URL`, `NOCOPROJECT_TOKEN` (`npr_...`), `NOCOPROJECT_RUN_ID`, `NOCOPROJECT_AGENT_ID`, `NOCOPROJECT_ISSUE_ID`, `NOCOPROJECT_ISSUE_KEY`, `NOCOPROJECT_WORKDIR` (the run's workDir) and `NOCOPROJECT_HOME` (the daemon's state directory, so the agent's `repo checkout` shares the daemon's repository cache) into the agent process. When the token and URL are present, `issue` commands call the agent API (`/api/np/agent/*`) with `Authorization: Bearer <token>`:
@@ -92,12 +106,19 @@ nocoproject issue dependency add [NP-12] --blocked-by NP-3[,NP-4] --json
 nocoproject issue dependency remove [NP-12] --blocked-by NP-3 --json
 nocoproject project get --json                      # project + resources from context.json
 nocoproject repo checkout <url> [--ref <ref>] [--fresh] [--json]
+
+# Iteration 2: pull requests
+nocoproject pr link <url> [--issue NP-12] [--json]  # POST /np/agent/issues/:id/pull-requests { url }
+nocoproject pr list [--issue NP-12] [--json]        # GET  /np/agent/issues/:id/pull-requests
 ```
 
 - Issue arguments can be identifiers (`NP-12`) or raw ids. An identifier is resolved through `NOCOPROJECT_ISSUE_KEY`/`NOCOPROJECT_ISSUE_ID` or `GET /np/agent/context`. Any other value is passed through as a raw id. With no argument, the run's own issue is used.
 - `comment add` requires exactly one of `--content-file` or `--content`; `issue create` takes at most one of `--description-file` or `--description`.
 - In request bodies (`--parent`, `--blocked-by`) identifiers are resolved to ids: the run's issue and its parent locally, others with `GET /np/agent/issues/<identifier>` (unknown → exit 4). `--executor` also accepts the name of one of the agent's delegation targets. Only flags that are given are sent; the server defaults `parentIssueId` to the run's issue and `executor` to `none`.
 - `issue dependency remove` calls `DELETE /np/agent/issues/:id/dependencies?dependsOnIssueId=<id>&type=blockedBy` (the agent knows the blocking issue, not the dependency row id). `add` posts `{ dependsOnIssueId, type: 'blockedBy' }`.
+- `issue status` handles approval gates (iteration 2 §D): when the server answers **202** `{ data: { issue, pendingApproval } }`, the status is unchanged and a pending approval request was created. The command prints `approval pending (request <id>)` (with `--json`: the `{ issue, pendingApproval }` object) and exits 0.
+- `pr link <url>` checks that the URL is an absolute http(s) URL (otherwise exit 5 `INVALID_PR_URL`) and lets the server parse it (`400 INVALID_PR_URL` → exit 5). Text output: `linked <repo>#<number> (<state>) to <issue>`. `pr list` prints `<repo>#<number> (<state>[, CI <ciState>])  <title>` and the URL per pull request. `--issue` defaults to the run's issue.
+- `issue comment list` marks resolved threads with `[resolved]` when the server sends `resolved: true`.
 - `project get` reads `context.json` and falls back to `GET /np/agent/context` (`project`) outside a daemon workDir.
 - Every command accepts `--json`. Errors are printed as `{"error":{"code","message","exitCode"}}`.
 - Exit codes: `0` ok, `1` other (including git failures), `2` network, `3` auth (missing or invalid token, 401/403), `4` not found, `5` validation (bad input, 400/409/422, `TRANSITION_NOT_ALLOWED`, `REPO_NOT_ALLOWED`, `CONTEXT_MISSING`).
@@ -120,18 +141,26 @@ nocoproject repo checkout <url> [--ref <ref>] [--fresh] [--json]
 
 | Provider | Launch | Brief |
 |---|---|---|
-| `claude` | `claude -p --output-format stream-json --input-format stream-json --verbose --permission-mode bypassPermissions [--model m] [--resume id]`, with the prompt sent on stdin as one stream-json user message. `control_request` frames are auto-approved, and stdin is closed after `result`. | `CLAUDE.md` |
+| `claude` | `claude -p --output-format stream-json --input-format stream-json --verbose --permission-mode bypassPermissions [--model m] [--resume id]`, with the prompt sent on stdin as one stream-json user message. `control_request` frames are auto-approved, and stdin is closed after `result`. Skills are also copied to `.claude/skills/`. | `CLAUDE.md` |
 | `codex` | `codex exec --json --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -C <workDir> [-m model] <prompt>`; resume with `codex exec resume --json --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox [-m model] <sessionId> <prompt>`. stdin is closed at once. JSONL events: `thread.started` (session id), `item.*` (`agent_message` → text, `reasoning` → thinking, `command_execution` / `file_change` / `mcp_tool_call` / `web_search` → toolUse + toolResult, `todo_list` → status, `error` item → warning status), `turn.completed` (usage; cached tokens are reported as `cacheReadTokens` and subtracted from `inputTokens`), `turn.failed` / `error`. Codex writes MCP and login noise (even 401s) to stderr on successful runs, so stderr is only used when the JSON stream has no error. | `AGENTS.md` |
 | `opencode` | `opencode run --format json --auto --thinking --print-logs --log-level WARN --dir <workDir> [--session id] [--model provider/model] <prompt>` (with `PWD` reset to the workDir) | `AGENTS.md` |
 | `echo` | `node dist/echo-agent.js <prompt>`: a scripted fake agent that runs the real `issue get` / `status` / `comment add` commands | `AGENTS.md` |
 
 If the provider rejects `--resume` for an unknown session, the run is retried once with a fresh session inside the same run.
 
-The echo agent accepts test directives in the issue title or description: `[echo:sleep=<ms>]` to exercise cancellation and the watchdog, `[echo:fail=<text>]` to exercise failure classification (for example `[echo:fail=API Error: 429]` is reported as `agentError.providerRateLimit`), `[echo:subtasks=<n>]` to create n sub-issues with `issue create --executor self --stage <i>` (the parent then stays `in_progress`), and `[echo:checkout=<url>]` to run `repo checkout <url>`, write a file in the worktree and commit it on the agent branch.
+The echo agent accepts test directives in the issue title or description: `[echo:sleep=<ms>]` to exercise cancellation and the watchdog, `[echo:fail=<text>]` to exercise failure classification (for example `[echo:fail=API Error: 429]` is reported as `agentError.providerRateLimit`), `[echo:subtasks=<n>]` to create n sub-issues with `issue create --executor self --stage <i>` (the parent then stays `in_progress`), and `[echo:checkout=<url>]` to run `repo checkout <url>`, write a file in the worktree and commit it on the agent branch. Iteration 2 adds `[echo:pr=<url>]` (runs `pr link <url>`), `[echo:status=<key>]` (runs `issue status <issue> <key>` instead of the usual `in_review`; a 202 "approval pending" counts as success), `[echo:env=<NAME>]` (writes `NAME=<value>` into the reply and a text event, to check env injection and redaction) and `[echo:skill=<slug>]` (writes the first body line of `.nocoproject/skills/<slug>/SKILL.md`, after the front matter, into the reply). In session mode (`issue.executionMode` in `context.json`) the echo agent never sets `in_review`.
 
 ### Brief (Phase 1 additions)
 
 Besides the Phase 0 sections the brief has `## Project Context` (project name and description, parent issue and stage), `## Repositories` (resources, the checkout command, the branch rule, the previous branch, PRs with `gh pr create` and the issue identifier in the title), `## Sub-issues` (when to split, `--stage` / `--blocked-by`, what `--executor self` does given the issue's `autoExecuteSubtasks`, other agents become proposals unless they are in the delegation list, never @-mention agents) and `## Parent coordination` (what to do when woken by `childBatchDone`). The per-turn prompt names the parent issue and opens `childBatchDone`, `dependencyReleased` and `proposalAccepted` turns with a matching sentence.
+
+### Brief (iteration 2 additions)
+
+- `## Available Commands` lists `pr link` and `pr list`.
+- `## Repositories` tells the agent to push, open the PR with `gh pr create --title "<identifier>: <summary>"` and then run `nocoproject pr link <url>`, noting that the branch name already contains the identifier so the server links it automatically too. PRs already linked to the issue (`issue.pullRequests`) are listed, also when the project has no repositories.
+- `## Skills` (only when skills are attached) lists each skill's name, description and `.nocoproject/skills/<slug>/SKILL.md` path and says to read `SKILL.md` when a task matches; for Claude Code it adds that the same skills are discovered under `.claude/skills/`.
+- Session mode (`issue.executionMode = 'session'`): the brief opens with `## Conversation Mode` (live conversation with the owner, short replies, no per-turn summary report, working directory and session carry over, no `in_review` needed), the `## Workflow` becomes the conversational loop (read the quoted comment, reply briefly in the thread, leave the status alone), and the per-turn prompt opens with "You are in a live conversation with the owner on issue …" and closes with "Reply briefly via … you do not need to set `in_review`".
+- Resolved comment threads are filtered by the server; the brief and prompt only quote the triggering comments.
 
 ## Development
 
@@ -140,7 +169,9 @@ pnpm typecheck
 pnpm test                 # builds dist/ first (vitest global setup), then runs all suites
 NOCOPROJECT_LIVE_OPENCODE=1 pnpm vitest run tests/opencode.live.test.ts   # real OpenCode run (costs tokens)
 NOCOPROJECT_LIVE_CODEX=1 pnpm vitest run tests/codex.live.test.ts         # real Codex run (costs tokens)
+NOCOPROJECT_LIVE_CLAUDE=1 pnpm vitest run tests/claude.live.test.ts       # real Claude Code run (costs tokens; skipped with a message when `claude` is not installed)
+pnpm vitest run --exclude "**/*.live.test.ts"                             # everything except the live tests
 npm pack --dry-run
 ```
 
-The tests use an in-process mock server (`tests/helpers/mock-server.ts`) that implements the daemon API, the agent API (including the Phase 1 endpoints and claim extras) and the realtime socket. Repository checkout is tested against local bare repositories in temp directories (no network). The Codex fixtures in `tests/fixtures/codex/` are real `codex-cli 0.154.0` captures.
+The tests use an in-process mock server (`tests/helpers/mock-server.ts`) that implements the daemon API, the agent API (including the Phase 1 endpoints and claim extras, the iteration-2 pull-request endpoints, `agent.env` / `agent.skills` / `issue.executionMode` / `issue.pullRequests` in the claim payload via `enqueue` options, and a 202 approval gate for issues created with `approvalRequired: true | string[]`) and the realtime socket. Repository checkout is tested against local bare repositories in temp directories (no network). The Codex fixtures in `tests/fixtures/codex/` are real `codex-cli 0.154.0` captures.

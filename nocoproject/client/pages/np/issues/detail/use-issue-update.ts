@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
-import { updateIssue } from '../../api.js';
+import { type IssueUpdateResult, updateIssue } from '../../api.js';
 import { npKeys } from '../../constants.js';
 import type { Issue, IssueDetail, UpdateIssueInput } from '../../types.js';
 import { toast } from '@/components/ui/toast';
@@ -14,11 +14,12 @@ import { toast } from '@/components/ui/toast';
 /**
  * PATCH an issue with optimistic concurrency (protocol §3). The request carries the newest `revision` the cache
  * holds; a 409 `REVISION_CONFLICT` means someone else changed the issue first, so the change is dropped, the user is
- * told, and the detail is reloaded rather than silently overwriting their edit.
+ * told, and the detail is reloaded rather than silently overwriting their edit. A status change that waits for an
+ * approval (202) is reported with a "waiting for approval" toast and the detail reloaded to show the approval card.
  */
 export function useIssueUpdate(
   issue: Issue,
-): UseMutationResult<Issue, unknown, UpdateIssueInput> {
+): UseMutationResult<IssueUpdateResult, unknown, UpdateIssueInput> {
   const { t } = useTranslation();
   const api = useApiClient();
   const queryClient = useQueryClient();
@@ -34,7 +35,15 @@ export function useIssueUpdate(
         cached?.issue.revision ?? issue.revision,
       );
     },
-    onSuccess: (updated) => {
+    onSuccess: ({ issue: updated, pendingApproval }) => {
+      // A gated status change (iteration 2 §D) answers 202 with the issue unchanged and a pending approval.
+      if (pendingApproval) {
+        toast.add({
+          type: 'info',
+          title: t('np.approvals.pendingToast'),
+          description: t('np.approvals.pendingToastDescription'),
+        });
+      }
       queryClient.setQueryData<IssueDetail>(detailKey, (previous) =>
         previous
           ? { ...previous, issue: { ...previous.issue, ...updated } }

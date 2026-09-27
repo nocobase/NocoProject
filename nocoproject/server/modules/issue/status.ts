@@ -11,8 +11,10 @@ import type {
   StatusCategory,
   StatusTransition,
   TransitionActor,
+  TransitionApproval,
   Workflow,
   WorkflowDefinition,
+  WorkflowTransitionDefinitionV2,
 } from '../shared/protocol.js';
 
 /** The status new issues start in. */
@@ -96,6 +98,15 @@ export interface WorkflowView {
   isDormant(key: string): boolean;
   isDone(key: string): boolean;
   canTransition(from: string, to: string, actor: TransitionActor): boolean;
+  /**
+   * Iteration 2: the approval a transition needs, or null. When several transitions match (e.g. `* → *` and
+   * `in_review → done`), their approver roles are combined; any one of them with `approval` makes it required.
+   */
+  approvalFor(
+    from: string,
+    to: string,
+    actor: TransitionActor,
+  ): TransitionApproval | null;
 }
 
 function matches(pattern: string, key: string): boolean {
@@ -157,6 +168,22 @@ export function compileWorkflow(workflow: Workflow): WorkflowView {
           matches(transition.from, from) &&
           matches(transition.to, to),
       );
+    },
+    approvalFor(from, to, actor) {
+      const roles = new Set<TransitionApproval['approvers'][number]>();
+      let required = false;
+      for (const transition of definition.transitions as readonly WorkflowTransitionDefinitionV2[]) {
+        if (
+          !transition.approval ||
+          !transition.actors.includes(actor) ||
+          !matches(transition.from, from) ||
+          !matches(transition.to, to)
+        )
+          continue;
+        required = true;
+        for (const role of transition.approval.approvers ?? []) roles.add(role);
+      }
+      return required ? { approvers: Array.from(roles) } : null;
     },
   };
 }

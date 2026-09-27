@@ -19,6 +19,8 @@ import type {
   DaemonStartRequest,
   DependencyType,
   IssueForAgent,
+  IssuePullRequestView,
+  StatusChangePendingResponse,
   SubtaskSummary,
 } from '../protocol.js';
 import { redactText } from '../util/redact.js';
@@ -76,6 +78,11 @@ export class HttpClient {
 
   /** Performs a request and returns the parsed JSON envelope. */
   async raw<T = unknown>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+    return (await this.request<T>(method, path, opts)).json;
+  }
+
+  /** Like `raw`, but also returns the HTTP status (for 2xx codes that mean different things, e.g. 202). */
+  async request<T = unknown>(method: string, path: string, opts: RequestOptions = {}): Promise<{ status: number; json: T }> {
     const url = new URL(`${this.apiBase}${path}`);
     for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
     const headers: Record<string, string> = { accept: 'application/json' };
@@ -113,16 +120,26 @@ export class HttpClient {
         typeof body.message === 'string' ? body.message : typeof body.error === 'string' ? body.error : text.slice(0, 300);
       throw new HttpError(response.status, code, redactText(message || response.statusText), method, path);
     }
-    return json as T;
+    return { status: response.status, json: json as T };
   }
 
   async data<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
-    const envelope = await this.raw<{ data?: T }>(method, path, opts);
-    return (envelope && typeof envelope === 'object' && 'data' in envelope ? envelope.data : envelope) as T;
+    return unwrap<T>(await this.raw(method, path, opts));
   }
 }
 
 const enc = encodeURIComponent;
+
+const unwrap = <T>(envelope: unknown): T =>
+  (envelope && typeof envelope === 'object' && 'data' in envelope ? (envelope as { data: T }).data : envelope) as T;
+
+/**
+ * Result of `POST /np/agent/issues/:id/status`: 200 applies the change; 202 means an approval
+ * gate stopped it and created a pending request (iteration 2 §D) — not an error.
+ */
+export type StatusChangeResult =
+  | { readonly kind: 'applied'; readonly data: unknown }
+  | { readonly kind: 'pending'; readonly data: StatusChangePendingResponse };
 
 export class DaemonApi {
   readonly http: HttpClient;
@@ -191,8 +208,19 @@ export class AgentApi {
   addComment(id: string, content: string, parentId?: string): Promise<unknown> {
     return this.http.data('POST', `/np/agent/issues/${enc(id)}/comments`, { body: { content, parentId } });
   }
-  setStatus(id: string, statusKey: string): Promise<unknown> {
-    return this.http.data('POST', `/np/agent/issues/${enc(id)}/status`, { body: { statusKey } });
+  async setStatus(id: string, statusKey: string): Promise<StatusChangeResult> {
+    const { status, json } = await this.http.request('POST', `/np/agent/issues/${enc(id)}/status`, { body: { statusKey } });
+    const data = unwrap<unknown>(json);
+    if (status === 202) return { kind: 'pending', data: data as StatusChangePendingResponse };
+    return { kind: 'applied', data };
+  }
+  /** POST /np/agent/issues/:id/pull-requests { url } (iteration 2 §C). */
+  linkPullRequest(id: string, url: string): Promise<IssuePullRequestView> {
+    return this.http.data('POST', `/np/agent/issues/${enc(id)}/pull-requests`, { body: { url } });
+  }
+  /** GET /np/agent/issues/:id/pull-requests (iteration 2 §C). */
+  pullRequests(id: string): Promise<IssuePullRequestView[]> {
+    return this.http.data('GET', `/np/agent/issues/${enc(id)}/pull-requests`);
   }
   /** POST /np/agent/issues (contract §D). The response is passed through as-is. */
   createIssue(body: AgentCreateIssueRequest): Promise<unknown> {

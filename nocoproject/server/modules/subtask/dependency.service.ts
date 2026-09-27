@@ -268,7 +268,16 @@ export function createDependencyService(
             'dependsOnIssueId does not exist.',
           );
         }
-        return insertDependency(tx, deps, { issue, dependsOn, type, actor });
+        const dependency = await insertDependency(tx, deps, {
+          issue,
+          dependsOn,
+          type,
+          actor,
+        });
+        // A new blocker withdraws queued runs (iteration 2 §K); dispatched and running runs are left alone.
+        if (type === 'blockedBy')
+          await deps.triggers().onBlockingAdded(tx, issue);
+        return dependency;
       });
     },
 

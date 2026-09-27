@@ -7,7 +7,10 @@ import type { RunEventService } from './run-events.js';
 import type { RunQueries } from './run.queries.js';
 import type { RunService } from './run.service.js';
 
-/** `/np/runs` (browser): run detail, event log, stop and retry. */
+/**
+ * `/np/runs` (browser): run detail, event log, stop and retry. Every route first checks that the caller can see the
+ * run's issue (404 otherwise, iteration 2 §K).
+ */
 export function createRunRoutes(deps: {
   runs: RunService;
   queries: RunQueries;
@@ -15,6 +18,20 @@ export function createRunRoutes(deps: {
   recovery: RunRecoveryService;
 }): Hono<AuthEnv> {
   const routes = npRouter<AuthEnv>();
+  routes.use('/:id/*', async (context, next) => {
+    await deps.queries.assertVisible(
+      sessionActor(context),
+      context.req.param('id') ?? '',
+    );
+    await next();
+  });
+  routes.use('/:id', async (context, next) => {
+    await deps.queries.assertVisible(
+      sessionActor(context),
+      context.req.param('id') ?? '',
+    );
+    await next();
+  });
   routes.get('/:id', async (context) =>
     context.json({ data: await deps.queries.detail(context.req.param('id')) }),
   );

@@ -6,11 +6,16 @@ import { type FormEvent, type ReactElement, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
 import { NpExecutorSelect } from '@/components/np-executor-select';
+import {
+  NpStartDialog,
+  type NpStartRequest,
+} from '@/components/np-start-dialog';
 import { RouteDialog } from '@/components/route-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
@@ -25,17 +30,24 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { useRouteOverlay } from '@/components/use-route-overlay';
 
+import { fetchMembers } from '../api-collab.js';
 import { createIssue, fetchAgents, fetchMe, fetchProjects } from '../api.js';
 import { ISSUE_PRIORITIES, npKeys } from '../constants.js';
-import type { ExecutorRef, IssuePriority } from '../types.js';
+import type { ExecutorRef, IssuePriority, StartDecision } from '../types.js';
+import { PropertySelect } from './detail/property-fields.js';
 
 const FORM_ID = 'np-issue-new-form';
 
-/** Route `/issues/new`: create an issue. */
+/**
+ * Route `/issues/new`: create an issue. `?project=` preselects the project (the project page's "new issue"); the
+ * owner defaults to the signed-in user and can be anyone; choosing an agent as executor asks "start now?" before
+ * creating (iteration 1 leftover); session mode makes the issue a conversation with the agent (iteration 2 §J).
+ */
 export default function NewIssuePage(): ReactElement {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
@@ -77,6 +89,10 @@ function NewIssueBody({
     queryKey: npKeys.agents,
     queryFn: () => fetchAgents(api),
   });
+  const members = useQuery({
+    queryKey: npKeys.members,
+    queryFn: () => fetchMembers(api),
+  });
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -90,8 +106,12 @@ function NewIssueBody({
     type: 'none',
     id: null,
   });
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
+  const [sessionMode, setSessionMode] = useState(false);
   const [titleError, setTitleError] = useState<string>();
   const [formError, setFormError] = useState<string>();
+  const [startRequest, setStartRequest] = useState<NpStartRequest | null>(null);
+  const owner = ownerUserId ?? me.data?.userId ?? null;
 
   const priorityItems = ISSUE_PRIORITIES.map((value) => ({
     value,
@@ -105,7 +125,7 @@ function NewIssueBody({
     })),
   ];
 
-  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) {
@@ -113,16 +133,30 @@ function NewIssueBody({
       return;
     }
     setTitleError(undefined);
+    if (executor.type === 'agent' && executor.id) {
+      const agent = agents.data?.find((item) => item.id === executor.id);
+      setStartRequest({
+        agentNames: [agent?.name ?? executor.id],
+        autoExecuteSubtasks: false,
+      });
+      return;
+    }
+    void create();
+  }
+
+  async function create(decision?: StartDecision): Promise<void> {
     setFormError(undefined);
     onSubmittingChange(true);
     try {
       const issue = await createIssue(api, {
-        title: trimmed,
+        title: title.trim(),
         description: description.trim() || undefined,
         priority,
         projectId: projectId === 'none' ? undefined : projectId,
-        // Phase 0 has no user directory: the owner is always the signed-in user, which the server defaults to.
+        ownerUserId: owner ?? undefined,
         executor: executor.type === 'none' ? undefined : executor,
+        executionMode: sessionMode ? 'session' : undefined,
+        ...(decision ?? {}),
       });
       onSubmittingChange(false);
       toast.add({
@@ -142,7 +176,7 @@ function NewIssueBody({
   }
 
   return (
-    <form id={FORM_ID} onSubmit={(event) => void submit(event)} noValidate>
+    <form id={FORM_ID} onSubmit={submit} noValidate>
       <FieldGroup>
         {formError ? (
           <Alert variant='destructive'>
@@ -225,13 +259,21 @@ function NewIssueBody({
             <FieldLabel htmlFor='np-issue-owner'>
               {t('np.properties.owner')}
             </FieldLabel>
-            <Input
+            <PropertySelect
               id='np-issue-owner'
-              value={me.data?.name ?? ''}
-              readOnly
-              aria-readonly='true'
+              size='default'
+              options={(members.data ?? []).map((member) => ({
+                value: member.userId,
+                label:
+                  member.userId === me.data?.userId
+                    ? `${member.name} ${t('np.properties.you')}`
+                    : member.name,
+              }))}
+              value={owner}
+              disabled={!members.data}
+              onChange={(value) => setOwnerUserId(value)}
             />
-            <FieldDescription>{t('np.issueForm.ownerHint')}</FieldDescription>
+            <FieldDescription>{t('np.issueExtra.ownerHint')}</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor='np-issue-executor'>
@@ -241,6 +283,7 @@ function NewIssueBody({
               id='np-issue-executor'
               value={executor}
               agents={agents.data ?? []}
+              members={members.data}
               onChange={setExecutor}
             />
             <FieldDescription>
@@ -248,7 +291,28 @@ function NewIssueBody({
             </FieldDescription>
           </Field>
         </div>
+        <Field orientation='horizontal'>
+          <FieldContent>
+            <FieldLabel htmlFor='np-issue-session-mode'>
+              {t('np.session.modeLabel')}
+            </FieldLabel>
+            <FieldDescription>{t('np.session.modeHint')}</FieldDescription>
+          </FieldContent>
+          <Switch
+            id='np-issue-session-mode'
+            checked={sessionMode}
+            onCheckedChange={setSessionMode}
+          />
+        </Field>
       </FieldGroup>
+      <NpStartDialog
+        request={startRequest}
+        onCancel={() => setStartRequest(null)}
+        onDecide={(decision) => {
+          setStartRequest(null);
+          void create(decision);
+        }}
+      />
     </form>
   );
 }

@@ -1,13 +1,18 @@
 /**
  * Row mapping and lookups for the `issues` table.
+ *
+ * Iteration 2: `deletedAt` soft-deletes an issue (only an intake revert does this). Lookups here skip deleted issues,
+ * so they are 404 everywhere and drop out of lists, counts and blocking.
  */
 import type { Conn } from '../shared/db.js';
 import { bool, iso, num, str, unique } from '../shared/db.js';
 import type {
+  ExecutionMode,
   ExecutorType,
+  IssueOriginType,
   IssuePriority,
   IssueRef,
-  IssueV1,
+  IssueV2,
 } from '../shared/protocol.js';
 
 export const ISSUE_PRIORITIES: readonly IssuePriority[] = [
@@ -42,7 +47,15 @@ export function isExecutorType(value: unknown): value is ExecutorType {
   return value === 'user' || value === 'agent' || value === 'none';
 }
 
-export function mapIssue(row: Record<string, unknown>): IssueV1 {
+function executionModeOf(value: unknown): ExecutionMode {
+  return value === 'session' ? 'session' : 'task';
+}
+
+function originTypeOf(value: unknown): IssueOriginType {
+  return value === 'intake' || value === 'agent' ? value : 'manual';
+}
+
+export function mapIssue(row: Record<string, unknown>): IssueV2 {
   return {
     id: str(row.id) ?? '',
     number: num(row.number),
@@ -67,6 +80,9 @@ export function mapIssue(row: Record<string, unknown>): IssueV1 {
     dueDate: str(row.dueDate),
     autoExecuteSubtasks: bool(row.autoExecuteSubtasks),
     suggestedExecutorAgentId: str(row.suggestedExecutorAgentId),
+    executionMode: executionModeOf(row.executionMode),
+    originType: originTypeOf(row.originType),
+    originId: str(row.originId),
   };
 }
 
@@ -74,32 +90,34 @@ export function issueRef(issue: IssueRef): IssueRef {
   return { id: issue.id, identifier: issue.identifier, title: issue.title };
 }
 
-/** Issues by id, in one query. */
+/** Issues by id, in one query (deleted issues are left out). */
 export async function issuesByIds(
   conn: Conn,
   ids: readonly (string | null | undefined)[],
-): Promise<Map<string, IssueV1>> {
+): Promise<Map<string, IssueV2>> {
   const wanted = unique(ids);
   if (wanted.length === 0) return new Map();
   const rows = await conn.query
     .selectFrom('issues')
     .selectAll()
     .where('id', 'in', wanted)
+    .where('deletedAt', 'is', null)
     .execute();
   return new Map(rows.map((row) => [str(row.id) ?? '', mapIssue(row)]));
 }
 
 const IDENTIFIER_PATTERN = /^[A-Za-z][A-Za-z0-9]*-\d+$/u;
 
-/** Finds an issue by id or by its identifier (`NP-12`). */
+/** Finds an issue by id or by its identifier (`NP-12`); a deleted issue is not found. */
 export async function findIssue(
   conn: Conn,
   idOrKey: string,
-): Promise<IssueV1 | null> {
+): Promise<IssueV2 | null> {
   const byId = await conn.query
     .selectFrom('issues')
     .selectAll()
     .where('id', '=', idOrKey)
+    .where('deletedAt', 'is', null)
     .executeTakeFirst();
   if (byId) return mapIssue(byId);
   if (!IDENTIFIER_PATTERN.test(idOrKey)) return null;
@@ -107,6 +125,7 @@ export async function findIssue(
     .selectFrom('issues')
     .selectAll()
     .where('identifier', 'in', unique([idOrKey, idOrKey.toUpperCase()]))
+    .where('deletedAt', 'is', null)
     .executeTakeFirst();
   return byKey ? mapIssue(byKey) : null;
 }

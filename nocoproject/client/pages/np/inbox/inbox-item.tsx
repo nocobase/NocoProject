@@ -29,9 +29,11 @@ import {
 import { cn } from '@/lib/utils';
 
 import type { InboxAction } from '../api-inbox.js';
-import { useNpFormatters } from '../format.js';
+import { statusLabelKey } from '../constants.js';
+import { failureReasonKey, useNpFormatters } from '../format.js';
 import type { InboxItem } from '../types.js';
 import { inboxActionsFor, isSettled } from './inbox-model.js';
+import { inboxBodyText } from './inbox-text.js';
 
 const ACTION_ICON = {
   read: MailOpenIcon,
@@ -63,6 +65,13 @@ export function InboxItemCard({
   const ActorIcon = item.actorType === 'agent' ? BotIcon : UserIcon;
   const label = (action: InboxAction): string =>
     t(`np.inbox.actions.${action}`);
+  // The sentence from `type + payload` in the viewer's language; the server's English `body` when it cannot be built.
+  const localized = inboxBodyText(
+    item,
+    (key) => t(statusLabelKey(key), { defaultValue: key }),
+    (reason) => t(failureReasonKey(reason), { defaultValue: reason }),
+  );
+  const body = localized ? t(localized.key, localized.values) : item.body;
 
   return (
     <ContextMenu>
@@ -109,9 +118,9 @@ export function InboxItemCard({
           >
             {item.title}
           </span>
-          {item.body ? (
+          {body ? (
             <span className='line-clamp-2 block text-sm text-muted-foreground wrap-anywhere'>
-              {item.body}
+              {body}
             </span>
           ) : null}
           <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>

@@ -1,5 +1,6 @@
 import { DEFAULT_STATUS_CATALOG } from './constants.js';
 import type {
+  ApprovalRequest,
   CommentThread,
   ExecutorProposal,
   Issue,
@@ -7,12 +8,15 @@ import type {
   IssueComment,
   IssueDependency,
   IssueDetail,
+  IssuePullRequestView,
   IssueRef,
   IssueSubscriber,
   Label,
+  QueuedRun,
   RunSummary,
   StatusCatalogEntry,
   SubtaskSummary,
+  UsageRow,
 } from './types.js';
 
 /**
@@ -34,6 +38,10 @@ export interface RawIssueDetail extends Partial<Issue> {
   readonly labels?: readonly Label[];
   readonly parent?: IssueRef | null;
   readonly project?: { readonly id: string; readonly name: string } | null;
+  readonly pullRequests?: readonly IssuePullRequestView[];
+  readonly approvals?: readonly ApprovalRequest[];
+  readonly queuedRun?: QueuedRun | null;
+  readonly usage?: UsageRow | null;
 }
 
 function byCreatedAt(
@@ -114,6 +122,11 @@ export function normalizeIssueDetail(raw: RawIssueDetail): IssueDetail {
     labels: raw.labels ?? issue.labels ?? [],
     parent: raw.parent ?? null,
     project: raw.project ?? null,
+    // Iteration 2 additions (§C, §D, §I, §J).
+    pullRequests: raw.pullRequests ?? [],
+    approvals: raw.approvals ?? [],
+    queuedRun: raw.queuedRun ?? null,
+    usage: raw.usage ?? null,
     issue,
     threads: normalizeComments(raw.comments ?? []),
     activities: [...(raw.activities ?? [])].sort(byCreatedAt),

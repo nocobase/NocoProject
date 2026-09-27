@@ -204,4 +204,67 @@ describe('inbox', () => {
       ),
     );
   });
+
+  it('renders iteration 2 cards from type and payload, falling back to the English body', async () => {
+    const user = userEvent.setup();
+    const approval = item({
+      id: 'n4',
+      type: 'approval_pending',
+      issueId: '104',
+      issueIdentifier: 'NP-4',
+      title: 'NP-4 Ship the release',
+      body: 'Approval requested (English fallback)',
+      actorName: 'Claude Coder',
+      payload: { fromStatus: 'in_review', toStatus: 'done', requestId: 'ap1' },
+    });
+    const prReview = item({
+      id: 'n5',
+      type: 'pr_review',
+      issueId: '105',
+      title: 'NP-5 Fix login',
+      body: 'PR is ready (English fallback)',
+      payload: { repo: 'acme/app', number: 42 },
+    });
+    const bare = item({
+      id: 'n6',
+      type: 'pr_merged',
+      title: 'NP-6 Docs',
+      body: 'A PR was merged (English fallback)',
+      payload: {},
+    });
+    api.request.mockImplementation(
+      (options: {
+        path: string;
+        method?: string;
+        query?: Record<string, string>;
+      }) =>
+        options.path === 'np/inbox'
+          ? Promise.resolve({ data: [approval, prReview, bare] })
+          : respond(options),
+    );
+    await renderInbox();
+
+    expect(
+      await screen.findByText(
+        'Claude Coder asks to move it from In review to Done.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByText('Approval requested')).toBeVisible();
+    expect(screen.getByText('PR acme/app#42 is ready to merge.')).toBeVisible();
+    expect(screen.getByText('PR ready to merge')).toBeVisible();
+    expect(
+      screen.getByText('A PR was merged (English fallback)'),
+    ).toBeVisible();
+
+    // An approval decision opens its issue, where the approval card is.
+    await user.click(screen.getByText('NP-4 Ship the release'));
+    expect(await screen.findByText('issue page')).toBeVisible();
+  });
+
+  it('links to the page of approvals waiting for me', async () => {
+    api.request.mockImplementation(respond);
+    await renderInbox();
+    const link = await screen.findByText('Waiting for my approval');
+    expect(link.closest('a')).toHaveAttribute('href', '/inbox/approvals');
+  });
 });

@@ -22,8 +22,16 @@ import type { Knex } from 'knex';
 
 import {
   createNpServices,
+  type NpServiceDeps,
   type NpServices,
 } from '../../server/modules/services.ts';
+import type { ClaimedRunV2 } from '../../server/modules/run/claim.service.ts';
+import {
+  createAgentApiRoutes,
+  runTokenAuth,
+} from '../../server/modules/run/agent-api.routes.ts';
+import { createSecretBox } from '../../server/modules/shared/crypto.ts';
+import { guarded } from '../../server/modules/shared/http.ts';
 import type { Actor } from '../../server/modules/shared/activity.ts';
 import {
   createDomainEventBus,
@@ -56,6 +64,26 @@ export const NP_PHASE1_TABLES = [
   'agent_access_grants',
   'agent_delegation_grants',
 ] as const;
+
+/** Tables of the Phase 1 iteration 2 migration. */
+export const NP_PHASE1_ITER2_TABLES = [
+  'git_connections',
+  'pull_requests',
+  'issue_pull_requests',
+  'webhook_deliveries',
+  'approval_requests',
+  'comment_reactions',
+  'agent_env_vars',
+  'agent_env_audits',
+  'skills',
+  'skill_files',
+  'agent_skills',
+  'intake_batches',
+  'intake_drafts',
+] as const;
+
+/** A fixed test key for stored secrets (32 bytes of 0x11). */
+export const TEST_SECRET_KEY = Buffer.alloc(32, 0x11);
 
 /** Every table the Phase 0 migration creates, for truncation between tests. */
 export const NP_TABLES = [
@@ -170,7 +198,18 @@ export async function openNpTestDatabase(
   };
 }
 
-export function buildServices(database: DatabaseManager): NpTestServices {
+/** Test doubles and options for iteration 2 services (GitHub client, AI parser, approval gateway). */
+export type NpTestOptions = Partial<
+  Pick<
+    NpServiceDeps,
+    'github' | 'aiIntake' | 'aiConfigured' | 'approvalGateway' | 'secrets'
+  >
+>;
+
+export function buildServices(
+  database: DatabaseManager,
+  options: NpTestOptions = {},
+): NpTestServices {
   const events: DomainEvent[] = [];
   const bus = createDomainEventBus((error) => {
     throw error;
@@ -181,6 +220,8 @@ export function buildServices(database: DatabaseManager): NpTestServices {
     database,
     idGenerator: new SnowflakeIdGenerator({ workerId }),
     bus,
+    secrets: createSecretBox(TEST_SECRET_KEY),
+    ...options,
   });
   return { services, events };
 }
@@ -188,7 +229,7 @@ export function buildServices(database: DatabaseManager): NpTestServices {
 /** Empties every NocoProject table (keeping the seeded workflow template) and restores the settings row. */
 export async function resetData(db: NpTestDatabase): Promise<void> {
   await db.knex.raw(
-    `TRUNCATE ${[...NP_TABLES, ...NP_PHASE1_TABLES].map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
+    `TRUNCATE ${[...NP_TABLES, ...NP_PHASE1_TABLES, ...NP_PHASE1_ITER2_TABLES].map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
   );
   await db.knex.raw(
     `INSERT INTO "${db.schema}".system_settings (id, issue_prefix, issue_counter) VALUES ('default', 'NP', 0)`,
@@ -290,4 +331,49 @@ export async function triggerRows(
     [runId],
   );
   return (result as { rows: Record<string, unknown>[] }).rows;
+}
+
+/** Claims one run for the runtime and returns its payload (iteration 2 extras included). */
+export async function claimOne(
+  services: NpServices,
+  owner: Actor,
+  fixture: Fixture,
+): Promise<ClaimedRunV2 | undefined> {
+  const claim = await services.claims.claim(
+    owner.id as string,
+    {
+      daemonId: fixture.daemonId,
+      slots: [{ runtimeId: fixture.runtimeId, free: 1 }],
+    },
+    'http://test',
+  );
+  return claim.runs[0] as ClaimedRunV2 | undefined;
+}
+
+/** A caller of the agent API (`/np/agent/*` router) holding a run token. */
+export function agentApi(services: NpServices, token: string) {
+  const router = guarded(
+    [runTokenAuth(services.runTokens)],
+    createAgentApiRoutes({
+      issues: services.issues,
+      queries: services.issueQueries,
+      comments: services.comments,
+      agentIssues: services.agentIssues,
+      pullRequests: services.pullRequests,
+    }),
+  );
+  return async (method: string, path: string, body?: unknown) => {
+    const response = await router.request(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return {
+      status: response.status,
+      body: (await response.json()) as { data: unknown; code?: string },
+    };
+  };
 }

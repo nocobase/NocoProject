@@ -1,10 +1,11 @@
 import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 
 import { NpExecutor, NpStatusBadge } from '@/components/np-badges';
 import { NpExecutorSelect } from '@/components/np-executor-select';
+import { NpLabelColorPicker } from '@/components/np-label-color-picker';
 import { NpStartDialog } from '@/components/np-start-dialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,8 +18,13 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
+import { toast } from '@/components/ui/toast';
 
-import { fetchLabels, fetchMembers } from '../../api-collab.js';
+import {
+  fetchLabels,
+  fetchMembers,
+  updateLabelColor,
+} from '../../api-collab.js';
 import { fetchProjects } from '../../api.js';
 import {
   ISSUE_PRIORITIES,
@@ -32,15 +38,19 @@ import type {
   AgentListItem,
   IssueDetail,
   IssuePriority,
+  Label,
+  LabelColor,
   Me,
 } from '../../types.js';
 import { ExecutionLog } from './execution-log.js';
+import { IssueUsage } from './issue-usage.js';
 import {
   DateField,
   LabelsField,
   PropertyRow,
   PropertySelect,
 } from './property-fields.js';
+import { SessionPanel } from './session-panel.js';
 import { Subscribers } from './subscribers.js';
 import { useConfirmedUpdate } from './use-confirmed-update.js';
 import { useIssueUpdate } from './use-issue-update.js';
@@ -85,6 +95,23 @@ export function PropertiesPanel({
     queryKey: npKeys.labels,
     queryFn: () => fetchLabels(api),
   });
+  const queryClient = useQueryClient();
+  const recolor = useMutation({
+    mutationFn: ({ label, color }: { label: Label; color: LabelColor }) =>
+      updateLabelColor(api, label.id, color),
+    onError: () =>
+      toast.add({
+        type: 'error',
+        priority: 'high',
+        title: t('np.common.requestFailed'),
+      }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: npKeys.labels });
+      void queryClient.invalidateQueries({ queryKey: npKeys.issue(issue.id) });
+      void queryClient.invalidateQueries({ queryKey: npKeys.issues });
+    },
+  });
+  const sessionMode = issue.executionMode === 'session';
 
   const projectId = detail.project?.id ?? issue.projectId ?? null;
   const project = projects.data?.find((item) => item.id === projectId);
@@ -240,13 +267,22 @@ export function PropertiesPanel({
           </PropertyRow>
         ) : null}
         <PropertyRow label={t('np.properties.labels')} htmlFor='np-prop-labels'>
-          <LabelsField
-            id='np-prop-labels'
-            labels={labels.data ?? detail.labels}
-            value={detail.labels.map((label) => label.id)}
-            disabled={busy}
-            onChange={(labelIds) => update.mutate({ labelIds })}
-          />
+          <div className='flex items-center gap-1'>
+            <div className='min-w-0 flex-1'>
+              <LabelsField
+                id='np-prop-labels'
+                labels={labels.data ?? detail.labels}
+                value={detail.labels.map((label) => label.id)}
+                disabled={busy}
+                onChange={(labelIds) => update.mutate({ labelIds })}
+              />
+            </div>
+            <NpLabelColorPicker
+              labels={detail.labels}
+              disabled={recolor.isPending}
+              onChange={(label, color) => recolor.mutate({ label, color })}
+            />
+          </div>
         </PropertyRow>
         <PropertyRow
           label={t('np.properties.project')}
@@ -295,7 +331,34 @@ export function PropertiesPanel({
             }
           />
         </PropertyRow>
+        <PropertyRow
+          label={t('np.session.modeLabel')}
+          htmlFor='np-prop-session-mode'
+        >
+          <div className='flex items-center gap-2'>
+            <Switch
+              id='np-prop-session-mode'
+              checked={sessionMode}
+              disabled={busy}
+              onCheckedChange={(checked) =>
+                update.mutate({ executionMode: checked ? 'session' : 'task' })
+              }
+            />
+            <span className='text-xs text-muted-foreground'>
+              {sessionMode
+                ? t('np.session.modeSession')
+                : t('np.session.modeTask')}
+            </span>
+          </div>
+        </PropertyRow>
       </section>
+
+      {sessionMode ? (
+        <>
+          <Separator />
+          <SessionPanel detail={detail} agents={agents} />
+        </>
+      ) : null}
 
       <Separator />
 
@@ -327,6 +390,10 @@ export function PropertiesPanel({
           </span>
         </PropertyRow>
       </section>
+
+      <Separator />
+
+      <IssueUsage issue={issue} usage={detail.usage} />
 
       <Separator />
 

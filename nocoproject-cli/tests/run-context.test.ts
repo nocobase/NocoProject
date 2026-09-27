@@ -1,11 +1,11 @@
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildAgentEnv } from '../src/daemon/env.js';
+import { buildAgentEnv, filterAgentEnv } from '../src/daemon/env.js';
 import { checkoutExtras } from '../src/daemon/runner.js';
 import { buildRunContext, findWorkDir, readCheckoutRecord, readRunContext, writeCheckoutRecord, writeRunContext } from '../src/run-context.js';
-import { claimedRun, phase1Run } from './helpers/fixtures.js';
+import { claimedRun, iter2Run, phase1Run } from './helpers/fixtures.js';
 
 describe('run context', () => {
   it('fills defaults for a Phase 0 claim payload', () => {
@@ -13,7 +13,7 @@ describe('run context', () => {
       version: 1,
       runId: '7301234567890123',
       agent: { id: 'a1', name: 'Coder', delegationTargets: [] },
-      issue: { id: 'i12', identifier: 'NP-12', title: 'Fix login redirect', parent: null, stage: null, autoExecuteSubtasks: false, projectId: null },
+      issue: { id: 'i12', identifier: 'NP-12', title: 'Fix login redirect', parent: null, stage: null, autoExecuteSubtasks: false, projectId: null, executionMode: 'task', pullRequests: [] },
       project: null,
       session: { branchName: null, repoUrl: null },
     });
@@ -27,6 +27,17 @@ describe('run context', () => {
     expect(ctx).toMatchObject({ project: run.project, issue: { stage: 2, autoExecuteSubtasks: true, parent: { identifier: 'NP-10' } }, session: { branchName: 'agent/coder/np-12' } });
     expect(JSON.stringify(ctx)).not.toContain(run.token);
     expect(path).toBe(join(dir, '.nocoproject', 'context.json'));
+  });
+
+  it('adds executionMode and pullRequests and never writes agent env or skills', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ncp-ctx2-'));
+    const run = iter2Run({ executionMode: 'session' });
+    writeRunContext(dir, run);
+    const text = readFileSync(join(dir, '.nocoproject', 'context.json'), 'utf8');
+    expect(JSON.parse(text).issue).toMatchObject({ executionMode: 'session', pullRequests: [{ number: 42, url: 'https://github.com/nocobase/nocoproject/pull/42', state: 'open' }] });
+    expect(text).not.toContain('deploy-secret-value-123');
+    expect(text).not.toContain('DEPLOY_TOKEN');
+    expect(text).not.toContain('make deploy');
   });
 
   it('finds the workDir from the env or by walking up from cwd', () => {
@@ -52,5 +63,17 @@ describe('run context', () => {
     const env = buildAgentEnv({ serverUrl: 'http://s/main', token: 'npr_x', claimed: claimedRun(), workDir: '/w', home: '/h' });
     expect(env).toMatchObject({ NOCOPROJECT_WORKDIR: '/w', NOCOPROJECT_HOME: '/h', NOCOPROJECT_ISSUE_KEY: 'NP-12' });
     expect(env.NOCOPROJECT_API_KEY).toBeUndefined();
+  });
+
+  it('injects the agent env but skips reserved and invalid names', () => {
+    expect(filterAgentEnv({ A_B: '1', PATH: '/x', HOME: '/h', SHELL: '/bin/sh', NOCOPROJECT_X: 'y', 'bad-name': 'z', lower: 'q' })).toEqual({
+      vars: { A_B: '1' },
+      skipped: ['PATH', 'HOME', 'SHELL', 'NOCOPROJECT_X', 'bad-name', 'lower'],
+    });
+    const run = iter2Run();
+    const env = buildAgentEnv({ serverUrl: 'http://s/main', token: 'npr_real', claimed: run, workDir: '/w' });
+    expect(env.DEPLOY_TOKEN).toBe('deploy-secret-value-123');
+    expect(env.NOCOPROJECT_TOKEN).toBe('npr_real');
+    expect(env.PATH).not.toBe('/evil');
   });
 });

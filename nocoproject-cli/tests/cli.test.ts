@@ -15,6 +15,7 @@ beforeAll(async () => {
   mock.runtimes.set('echo', { id: 'rt-echo', provider: 'echo' });
   mock.addIssue({ id: 'i9', identifier: 'NP-9', title: 'CLI issue', description: 'Body **md**' });
   mock.addIssue({ id: 'i10', identifier: 'NP-10', title: 'Other issue' });
+  mock.addIssue({ id: 'i11', identifier: 'NP-11', title: 'Gated issue', statusKey: 'in_progress', approvalRequired: ['in_review'] });
   token = mock.issueToken('i9');
 });
 afterAll(async () => mock.stop());
@@ -85,6 +86,42 @@ describe('run-token mode CLI', () => {
     const r = await run(['issue', 'status', 'NP-9', 'done', '--json']);
     expect(r.code).toBe(5);
     expect(JSON.parse(r.out).error.code).toBe('TRANSITION_NOT_ALLOWED');
+  });
+
+  it('treats a 202 approval gate as success (text and --json)', async () => {
+    const r = await run(['issue', 'status', 'NP-11', 'in_review']);
+    expect(r.code).toBe(0);
+    expect(r.out.trim()).toMatch(/^approval pending \(request ap\d+\)$/);
+    expect(mock.issues.get('i11')?.statusKey).toBe('in_progress');
+    const j = await run(['issue', 'status', 'NP-11', 'in_review', '--json']);
+    expect(j.code).toBe(0);
+    expect(JSON.parse(j.out)).toMatchObject({ issue: { id: 'i11', statusKey: 'in_progress' }, pendingApproval: { status: 'pending', toStatus: 'in_review', fromStatus: 'in_progress' } });
+  });
+
+  it('links and lists pull requests', async () => {
+    const url = 'https://github.com/acme/demo/pull/7';
+    const r = await run(['pr', 'link', url], { NOCOPROJECT_ISSUE_ID: 'i9', NOCOPROJECT_ISSUE_KEY: 'NP-9' });
+    expect(r.code).toBe(0);
+    expect(r.out.trim()).toBe('linked acme/demo#7 (open) to NP-9');
+    expect(mock.callsTo(/POST \/np\/agent\/issues\/i9\/pull-requests/).at(-1)?.body).toEqual({ url });
+    const other = await run(['pr', 'link', 'https://github.com/acme/demo/pull/8', '--issue', 'NP-10', '--json']);
+    expect(other.code).toBe(0);
+    expect(JSON.parse(other.out)).toMatchObject({ repo: 'acme/demo', number: 8, state: 'open', linkedBy: { type: 'agent' } });
+    expect(mock.pullRequests.get('i10')).toHaveLength(1);
+    const list = await run(['pr', 'list', '--json'], { NOCOPROJECT_ISSUE_ID: 'i9' });
+    expect(list.code).toBe(0);
+    expect(JSON.parse(list.out).map((p: { number: number }) => p.number)).toEqual([7]);
+    const text = await run(['pr', 'list', '--issue', 'i10']);
+    expect(text.out).toContain('acme/demo#8 (open)\n  https://github.com/acme/demo/pull/8');
+  });
+
+  it('rejects bad pull request URLs (exit 5)', async () => {
+    const local = await run(['pr', 'link', 'not a url', '--json'], { NOCOPROJECT_ISSUE_ID: 'i9' });
+    expect(local.code).toBe(5);
+    expect(JSON.parse(local.out).error.code).toBe('INVALID_PR_URL');
+    const remote = await run(['pr', 'link', 'https://github.com/acme/demo/issues/3', '--json'], { NOCOPROJECT_ISSUE_ID: 'i9' });
+    expect(remote.code).toBe(5);
+    expect(JSON.parse(remote.out).error.code).toBe('INVALID_PR_URL');
   });
 
   it('maps auth and network failures to exit 3 and 2', async () => {

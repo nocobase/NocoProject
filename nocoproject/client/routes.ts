@@ -1,10 +1,14 @@
 import {
+  BarChart3,
   Bot,
   FolderKanban,
+  GitPullRequest,
   Home,
-  Inbox,
+  ListPlus,
   ListTodo,
   MonitorCog,
+  Settings2,
+  Sparkles,
   UsersRound,
 } from 'lucide-react';
 import {
@@ -12,6 +16,8 @@ import {
   defineSettingsRoutes,
   type AppClientRouteContribution,
 } from '@nocobase/app-client/plugins';
+
+import { NpInboxNavIcon } from './components/np-inbox-nav-icon.js';
 
 const appRoutes: AppClientRouteContribution = defineAppRoutes([
   {
@@ -25,13 +31,24 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     path: '/',
   },
   {
-    // NocoProject inbox (iteration 1 §J 3): decisions and notifications for the signed-in user.
+    // NocoProject inbox (iteration 1 §J 3): decisions and notifications for the signed-in user. The icon carries the
+    // unread decision count (iteration 2 §K). `approvals` (iteration 2 §D) is a covering child page that inherits the
+    // `np-inbox` grant.
     auth: 'required',
     authz: { resource: { type: 'page', id: 'np-inbox' }, action: 'access' },
+    breadcrumb: { title: 'navigation.inbox' },
     componentLoader: () => import('./pages/np/inbox/index.js'),
     name: 'np-inbox',
-    navigation: { title: 'navigation.inbox', icon: Inbox },
+    navigation: { title: 'navigation.inbox', icon: NpInboxNavIcon },
     path: '/inbox',
+    children: [
+      {
+        breadcrumb: { title: 'np.approvals.pageTitle' },
+        componentLoader: () => import('./pages/np/inbox/approvals.js'),
+        name: 'np-approvals',
+        path: 'approvals',
+      },
+    ],
   },
   {
     // NocoProject issues. The detail is a covering child page (the list keeps its filters underneath); create and the
@@ -70,6 +87,15 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
         ],
       },
     ],
+  },
+  {
+    // Batch entry (iteration 2 §E, "批量录入"): paste text, review the parsed drafts, create the issues.
+    auth: 'required',
+    authz: { resource: { type: 'page', id: 'np-intake' }, action: 'access' },
+    componentLoader: () => import('./pages/np/intake/index.js'),
+    name: 'np-intake',
+    navigation: { title: 'navigation.intake', icon: ListPlus },
+    path: '/intake',
   },
   {
     // NocoProject projects (iteration 1 §J 4). The detail is a covering child page; create and "add repository" are
@@ -127,6 +153,30 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     ],
   },
   {
+    // Skills (iteration 2 §H, "技能"): SKILL.md with files, mounted on agents. Create is a route dialog, the skill a
+    // covering child page; both inherit the `np-skills` grant.
+    auth: 'required',
+    authz: { resource: { type: 'page', id: 'np-skills' }, action: 'access' },
+    breadcrumb: { title: 'navigation.skills' },
+    componentLoader: () => import('./pages/np/skills/index.js'),
+    name: 'np-skills',
+    navigation: { title: 'navigation.skills', icon: Sparkles },
+    path: '/skills',
+    children: [
+      {
+        componentLoader: () => import('./pages/np/skills/new.js'),
+        name: 'np-skill-new',
+        path: 'new',
+      },
+      {
+        breadcrumb: { title: 'np.skills.breadcrumb' },
+        componentLoader: () => import('./pages/np/skills/detail/index.js'),
+        name: 'np-skill-detail',
+        path: ':skillId',
+      },
+    ],
+  },
+  {
     auth: 'required',
     authz: { resource: { type: 'page', id: 'np-runtimes' }, action: 'access' },
     componentLoader: () => import('./pages/np/runtimes/index.js'),
@@ -140,6 +190,15 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
         path: 'connect',
       },
     ],
+  },
+  {
+    // Usage (iteration 2 §I, "用量统计"): tokens and estimated cost of runs, grouped five ways.
+    auth: 'required',
+    authz: { resource: { type: 'page', id: 'np-usage' }, action: 'access' },
+    componentLoader: () => import('./pages/np/usage/index.js'),
+    name: 'np-usage',
+    navigation: { title: 'navigation.usage', icon: BarChart3 },
+    path: '/usage',
   },
   {
     auth: 'guest',
@@ -184,6 +243,30 @@ const settingsRoutes: AppClientRouteContribution = defineSettingsRoutes([
     name: 'np-members',
     navigation: { title: 'navigation.members', icon: UsersRound },
     path: '/members',
+  },
+  {
+    // Iteration 2 §C: the GitHub connection. Owner/admin only by server rule (`/np/integrations/github` answers 403
+    // otherwise); the settings item is registered so it can be granted like `np-members`.
+    authz: {
+      resource: { type: 'settings', id: 'np-github' },
+      action: 'access',
+    },
+    componentLoader: () => import('./pages/np/settings/github.js'),
+    name: 'np-github',
+    navigation: { title: 'navigation.github', icon: GitPullRequest },
+    path: '/github',
+  },
+  {
+    // Iteration 2 §I: workspace settings (merged-PR status, sub-issue default, intake parser, model prices).
+    // Owner/admin only by server rule (`PATCH /np/settings`).
+    authz: {
+      resource: { type: 'settings', id: 'np-settings' },
+      action: 'access',
+    },
+    componentLoader: () => import('./pages/np/settings/nocoproject.js'),
+    name: 'np-settings',
+    navigation: { title: 'navigation.nocoproject', icon: Settings2 },
+    path: '/nocoproject',
   },
 ]);
 

@@ -145,6 +145,7 @@ const npCollabEnUS = {
       'Review requests, blocked agents and executor proposals appear here.',
     unread: 'Unread',
     unreadCount: '{{count}} unread',
+    unreadDecisions: '{{count}} unread decisions',
     count: '×{{count}}',
     resolved: 'Resolved',
     actionsFor: 'Actions for {{title}}',
@@ -168,6 +169,10 @@ const npCollabEnUS = {
       mentioned: 'Mentioned',
       commented: 'New comment',
       status_changed: 'Status changed',
+      approval_pending: 'Approval requested',
+      approval_decided: 'Approval decided',
+      pr_review: 'PR ready to merge',
+      pr_merged: 'PR merged',
     },
   },
   projects: {
@@ -306,6 +311,7 @@ const npCollabEnUS = {
     cancelled: 'Stopped',
     timeout: 'Timed out',
     agentBlocked: 'The agent reported it is blocked',
+    blocked: 'Held back by a new blocker',
     apiInvalidRequest: 'The provider rejected the request',
     agentError: {
       providerAuth: 'Provider sign-in failed',
@@ -323,6 +329,22 @@ const npCollabEnUS = {
       agentTimeout: 'The agent timed out',
       unknown: 'Unknown agent error',
     },
+  },
+  connect: {
+    title: 'Add a computer',
+    description:
+      'Run these commands on the computer where your coding tools are installed.',
+    install: 'Install the CLI',
+    login: 'Sign in to this application',
+    start: 'Start the daemon',
+    apiKeyPlaceholder: 'API key',
+    apiKeyHint: 'Create an API key in Settings → API Keys.',
+    after:
+      'The computer appears in this list within a few seconds, with one runtime per detected coding tool.',
+    copy: 'Copy command',
+    copied: 'Copied',
+    copyFailed: 'Unable to copy. Select the command and copy it manually.',
+    done: 'Done',
   },
 };
 

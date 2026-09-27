@@ -73,13 +73,60 @@ export type ActivityLabel =
   | 'parentChanged'
   | 'stageChanged'
   | 'datesChanged'
+  // Phase 1 iteration 2 (§M)
+  | 'prLinked'
+  | 'prUnlinked'
+  | 'prMerged'
+  | 'approvalRequested'
+  | 'approvalApproved'
+  | 'approvalRejected'
+  | 'approvalSelf'
+  | 'approvalNoApprover'
+  | 'threadResolved'
+  | 'threadUnresolved'
+  | 'executionModeChanged'
+  | 'envChanged'
+  | 'skillsChanged'
+  | 'intakeConfirmed'
+  | 'intakeReverted'
   | 'updated';
+
+/** Iteration 2 actions are matched exactly (snake case, as the contract spells them) before the keyword rules. */
+const EXACT_LABELS: Readonly<Record<string, ActivityLabel>> = {
+  pr_linked: 'prLinked',
+  pr_unlinked: 'prUnlinked',
+  pr_merged: 'prMerged',
+  approval_requested: 'approvalRequested',
+  approval_approved: 'approvalApproved',
+  approval_rejected: 'approvalRejected',
+  approval_self: 'approvalSelf',
+  approval_no_approver: 'approvalNoApprover',
+  thread_resolved: 'threadResolved',
+  thread_unresolved: 'threadUnresolved',
+  execution_mode_changed: 'executionModeChanged',
+  env_changed: 'envChanged',
+  skills_changed: 'skillsChanged',
+  intake_confirmed: 'intakeConfirmed',
+  intake_reverted: 'intakeReverted',
+};
+
+/** Labels whose details carry a status change to show as badges. */
+export const STATUS_CHANGE_LABELS: ReadonlySet<ActivityLabel> = new Set([
+  'statusChanged',
+  'approvalRequested',
+  'approvalApproved',
+  'approvalRejected',
+  'approvalSelf',
+  'approvalNoApprover',
+]);
 
 /**
  * Maps a server activity `action` to a locale label. The Phase 0 action vocabulary is not fixed by the protocol, so
  * the match is by keyword (`status.changed`, `issue.statusChanged`, `status_change` all read as a status change).
  */
 export function activityLabel(action: string): ActivityLabel {
+  const exact = EXACT_LABELS[action];
+  if (exact) return exact;
   const normalized = action.toLowerCase().replace(/[^a-z]/gu, '');
   // Iteration 1 actions (§D): a run held back by open blockers, dependencies, labels, proposals and the new fields.
   if (normalized.includes('deferred')) return 'runDeferredBlocked';
@@ -117,4 +164,14 @@ export function activityChange(
     from: pick('from', 'fromStatus', 'previous', 'old'),
     to: pick('to', 'toStatus', 'next', 'new'),
   };
+}
+
+/** First line of a comment as plain text, for the collapsed header of a resolved thread. */
+export function commentSnippet(content: string, max = 120): string {
+  const text = content
+    .replace(/\[@([^\]]*)\]\(mention:\/\/[^)]+\)/gu, '@$1')
+    .replace(/[`*_>#~]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }

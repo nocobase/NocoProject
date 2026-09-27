@@ -7,6 +7,7 @@ import type {
   RunStatus,
   StatusCatalogEntry,
   StatusCategory,
+  UsageQuery,
   Workflow,
 } from './types.js';
 
@@ -117,6 +118,17 @@ export const npKeys = {
   inboxList: (kind: InboxKind, archived: boolean) =>
     ['np', 'inbox', 'list', kind, archived] as const,
   inboxUnread: ['np', 'inbox', 'unread'] as const,
+  // Phase 1 iteration 2
+  gitConnection: ['np', 'integrations', 'github'] as const,
+  approvals: ['np', 'approvals'] as const,
+  intakeBatches: ['np', 'intake'] as const,
+  intakeBatch: (id: string) => ['np', 'intake', id] as const,
+  skills: ['np', 'skills'] as const,
+  skill: (id: string) => ['np', 'skills', id] as const,
+  agentEnv: (id: string) => ['np', 'agent-env', id] as const,
+  agentEnvAudits: (id: string) => ['np', 'agent-env', id, 'audits'] as const,
+  usage: (query: UsageQuery) => ['np', 'usage', query] as const,
+  settings: ['np', 'settings'] as const,
 };
 
 /** Dormant statuses (§ terminology): backlog, or any status whose category is done or closed. */

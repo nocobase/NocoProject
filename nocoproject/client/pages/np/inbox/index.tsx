@@ -6,9 +6,14 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { AlertCircleIcon, CheckCheckIcon, InboxIcon } from 'lucide-react';
+import {
+  AlertCircleIcon,
+  CheckCheckIcon,
+  InboxIcon,
+  ShieldCheckIcon,
+} from 'lucide-react';
 import type { ReactElement } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, Outlet, useNavigate, useSearchParams } from 'react-router';
 
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
@@ -57,7 +62,8 @@ type InboxPage = Awaited<ReturnType<typeof fetchInbox>>;
 /**
  * Route `/inbox` (§J 3): what needs the viewer's decision (review requests, blocked agents, executor proposals) and
  * notifications, each tab with its unread count. The tab and "show archived" live in the query string. Opening a card
- * marks it read and goes to its issue. The `np:inbox` user topic invalidates everything here.
+ * marks it read and goes to its issue (an `approval_pending` decision included). "Waiting for my approval" opens the
+ * `approvals` child page. The `np:inbox` user topic invalidates everything here.
  */
 export default function InboxPage(): ReactElement {
   const { t } = useTranslation();
@@ -220,73 +226,86 @@ export default function InboxPage(): ReactElement {
   }
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('np.inbox.title')}
-        description={t('np.inbox.description')}
-        actions={
-          <Button
-            variant='outline'
-            disabled={readAll.isPending || unread[tab] === 0}
-            onClick={() => readAll.mutate()}
-          >
-            {readAll.isPending ? (
-              <Spinner data-icon='inline-start' />
-            ) : (
-              <CheckCheckIcon data-icon='inline-start' />
-            )}
-            {t('np.inbox.readAll')}
-          </Button>
-        }
-      />
-      <div className='space-y-4'>
-        <div className='flex flex-wrap items-center justify-between gap-3'>
-          <Tabs
-            value={tab}
-            onValueChange={(value) =>
-              setParam('tab', value === 'info' ? 'info' : null)
-            }
-          >
-            <TabsList variant='line'>
-              {INBOX_TABS.map((kind) => (
-                <TabsTrigger key={kind} value={kind}>
-                  {t(`np.inbox.tabs.${kind}`)}
-                  {unread[kind] > 0 ? (
-                    <Badge
-                      variant={kind === 'decision' ? 'default' : 'secondary'}
-                      className='tabular-nums'
-                      aria-label={t('np.inbox.unreadCount', {
-                        count: unread[kind],
-                      })}
-                    >
-                      {unread[kind]}
-                    </Badge>
-                  ) : null}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-          <div className='flex items-center gap-2'>
-            {list.isFetching && items ? (
-              <Spinner
-                className='size-4 text-muted-foreground'
-                aria-label={t('status.loading')}
-              />
-            ) : null}
-            <Switch
-              id='np-inbox-archived'
-              checked={archived}
-              onCheckedChange={(checked) =>
-                setParam('archived', checked ? '1' : null)
+    <>
+      <PageContainer>
+        <PageHeader
+          title={t('np.inbox.title')}
+          description={t('np.inbox.description')}
+          actions={
+            <div className='flex flex-wrap gap-2'>
+              <Button
+                variant='outline'
+                nativeButton={false}
+                render={<Link to='approvals' />}
+              >
+                <ShieldCheckIcon data-icon='inline-start' />
+                {t('np.approvals.pageTitle')}
+              </Button>
+              <Button
+                variant='outline'
+                disabled={readAll.isPending || unread[tab] === 0}
+                onClick={() => readAll.mutate()}
+              >
+                {readAll.isPending ? (
+                  <Spinner data-icon='inline-start' />
+                ) : (
+                  <CheckCheckIcon data-icon='inline-start' />
+                )}
+                {t('np.inbox.readAll')}
+              </Button>
+            </div>
+          }
+        />
+        <div className='space-y-4'>
+          <div className='flex flex-wrap items-center justify-between gap-3'>
+            <Tabs
+              value={tab}
+              onValueChange={(value) =>
+                setParam('tab', value === 'info' ? 'info' : null)
               }
-            />
-            <Label htmlFor='np-inbox-archived'>
-              {t('np.inbox.showArchived')}
-            </Label>
+            >
+              <TabsList variant='line'>
+                {INBOX_TABS.map((kind) => (
+                  <TabsTrigger key={kind} value={kind}>
+                    {t(`np.inbox.tabs.${kind}`)}
+                    {unread[kind] > 0 ? (
+                      <Badge
+                        variant={kind === 'decision' ? 'default' : 'secondary'}
+                        className='tabular-nums'
+                        aria-label={t('np.inbox.unreadCount', {
+                          count: unread[kind],
+                        })}
+                      >
+                        {unread[kind]}
+                      </Badge>
+                    ) : null}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            <div className='flex items-center gap-2'>
+              {list.isFetching && items ? (
+                <Spinner
+                  className='size-4 text-muted-foreground'
+                  aria-label={t('status.loading')}
+                />
+              ) : null}
+              <Switch
+                id='np-inbox-archived'
+                checked={archived}
+                onCheckedChange={(checked) =>
+                  setParam('archived', checked ? '1' : null)
+                }
+              />
+              <Label htmlFor='np-inbox-archived'>
+                {t('np.inbox.showArchived')}
+              </Label>
+            </div>
           </div>
+          {content}
         </div>
-        {content}
-      </div>
-    </PageContainer>
+      </PageContainer>
+      <Outlet />
+    </>
   );
 }

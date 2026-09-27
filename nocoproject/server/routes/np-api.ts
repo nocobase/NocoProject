@@ -1,6 +1,7 @@
 /**
- * NocoProject browser API (protocol.md §3, iteration-1 contract §B–§H):
- * `/api/np/{me,members,workflows,projects,labels,issues,inbox,agents,runtimes,runs}`.
+ * NocoProject browser API (protocol.md §3, iteration-1 contract §B–§H, iteration-2 contract §C–§K):
+ * `/api/np/{me,members,workflows,projects,labels,issues,inbox,agents,runtimes,runs}` and, from iteration 2,
+ * `/api/np/{integrations,approvals,intake,comments,skills,usage,settings}`.
  *
  * Every prefix is mounted behind its own guard: a run token is refused with 403 before the session lookup,
  * `auth.required()` answers 401 for anonymous callers, and `ensureMember` bootstraps the caller's members row. The
@@ -17,8 +18,21 @@ import {
 } from '@nocobase/app-server/router';
 import { Hono } from 'hono';
 
+import type { AppIdentityConfig } from '@nocobase/app-server/config';
+
 import { createAgentRoutes } from '../modules/agent/agent.routes.js';
+import { createAgentEnvRoutes } from '../modules/agent/env.routes.js';
+import { createApprovalRoutes } from '../modules/approval/approval.routes.js';
 import { createCommentRoutes } from '../modules/collaboration/comment.routes.js';
+import { createReactionRoutes } from '../modules/collaboration/reaction.routes.js';
+import {
+  createIntegrationRoutes,
+  createIssuePullRequestRoutes,
+} from '../modules/git/git.routes.js';
+import { createIntakeRoutes } from '../modules/intake/intake.routes.js';
+import { createSkillRoutes } from '../modules/skill/skill.routes.js';
+import { createSettingsRoutes } from '../modules/system/settings.routes.js';
+import { createUsageRoutes } from '../modules/usage/usage.routes.js';
 import { createIssueRoutes } from '../modules/issue/issue.routes.js';
 import { createLabelRoutes } from '../modules/label/label.routes.js';
 import {
@@ -37,7 +51,16 @@ import { createWorkflowRoutes } from '../modules/workflow/workflow.routes.js';
 import { guarded, npRouter, rejectRunTokens } from '../modules/shared/http.js';
 import type { MeResponse } from '../modules/shared/protocol.js';
 import {
+  npAgentEnvServiceToken,
   npAgentServiceToken,
+  npApprovalGatewayToken,
+  npGitConnectionServiceToken,
+  npIntakeServiceToken,
+  npPullRequestServiceToken,
+  npReactionServiceToken,
+  npSkillServiceToken,
+  npUsageServiceToken,
+  npWorkspaceSettingsServiceToken,
   npCommentServiceToken,
   npDependencyServiceToken,
   npInboxServiceToken,
@@ -108,12 +131,19 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
           proposals: container.resolve(npProposalServiceToken),
         }),
         createSubscriptionRoutes(inbox),
+        createIssuePullRequestRoutes(
+          container.resolve(npPullRequestServiceToken),
+        ),
       ),
     );
     router.route('/np/inbox', guarded(guard, createInboxRoutes(inbox)));
     router.route(
       '/np/agents',
-      guarded(guard, createAgentRoutes(container.resolve(npAgentServiceToken))),
+      guarded(
+        guard,
+        createAgentRoutes(container.resolve(npAgentServiceToken)),
+        createAgentEnvRoutes(container.resolve(npAgentEnvServiceToken)),
+      ),
     );
     router.route(
       '/np/runtimes',
@@ -134,5 +164,59 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
         }),
       ),
     );
+    mountIteration2(router, app, guard);
     return router;
   });
+
+/** The iteration 2 prefixes, each behind the same guard as the rest of the browser API. */
+function mountIteration2(
+  router: Hono,
+  app: Application,
+  guard: Parameters<typeof guarded>[0],
+): void {
+  const { container } = app;
+  router.route(
+    '/np/integrations',
+    guarded(
+      guard,
+      createIntegrationRoutes({
+        connections: container.resolve(npGitConnectionServiceToken),
+        publicOrigin: app.config.get<AppIdentityConfig>('app')?.publicOrigin,
+        publicBasePath: app.publicBasePath,
+      }),
+    ),
+  );
+  router.route(
+    '/np/approvals',
+    guarded(
+      guard,
+      createApprovalRoutes(container.resolve(npApprovalGatewayToken)),
+    ),
+  );
+  router.route(
+    '/np/intake',
+    guarded(guard, createIntakeRoutes(container.resolve(npIntakeServiceToken))),
+  );
+  router.route(
+    '/np/comments',
+    guarded(
+      guard,
+      createReactionRoutes(container.resolve(npReactionServiceToken)),
+    ),
+  );
+  router.route(
+    '/np/skills',
+    guarded(guard, createSkillRoutes(container.resolve(npSkillServiceToken))),
+  );
+  router.route(
+    '/np/usage',
+    guarded(guard, createUsageRoutes(container.resolve(npUsageServiceToken))),
+  );
+  router.route(
+    '/np/settings',
+    guarded(
+      guard,
+      createSettingsRoutes(container.resolve(npWorkspaceSettingsServiceToken)),
+    ),
+  );
+}

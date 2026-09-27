@@ -26,6 +26,18 @@ export {
   npAgentIssueServiceToken,
   npInboxServiceToken,
   NP_MEMBERS_SETTINGS_ID,
+  NP_SETTINGS_SETTINGS_ID,
+  NP_GITHUB_SETTINGS_ID,
+  npApprovalGatewayToken,
+  npGitConnectionServiceToken,
+  npPullRequestServiceToken,
+  npWebhookServiceToken,
+  npIntakeServiceToken,
+  npReactionServiceToken,
+  npAgentEnvServiceToken,
+  npSkillServiceToken,
+  npUsageServiceToken,
+  npWorkspaceSettingsServiceToken,
 } from './np.js';
 
 const serviceProviders: readonly ApplicationServiceProviderConstructor[] = [

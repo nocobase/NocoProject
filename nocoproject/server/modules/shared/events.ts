@@ -9,7 +9,8 @@
  *
  * Before the commit, the same events are handed to the notification module inside the transaction (the
  * `beforeCommit` hook of `createTxRunner`); the `issue.*`, `comment.*`, `proposal.*` and `run.failed` events below
- * exist for it. The inbox they feed is not temporary; only this bus is.
+ * exist for it, and so do the iteration 2 `approval.*` and `pr.*` events. The inbox they feed is not temporary; only
+ * this bus is.
  */
 import type { DependencyType, ExecutorType, RunStatus } from './protocol.js';
 
@@ -118,7 +119,52 @@ export type DomainEvent =
       readonly dependencyType: DependencyType;
       readonly added: boolean;
     }
-  | { readonly type: 'inbox.changed'; readonly userId: string };
+  | { readonly type: 'inbox.changed'; readonly userId: string }
+  // Iteration 2 (docs/phase1/iteration-2-contract.md §C, §D).
+  | {
+      readonly type: 'approval.requested';
+      readonly requestId: string;
+      readonly issueId: string;
+      readonly fromStatus: string;
+      readonly toStatus: string;
+      readonly approverUserIds: readonly string[];
+      readonly actor: EventActor;
+    }
+  | {
+      readonly type: 'approval.decided';
+      readonly requestId: string;
+      readonly issueId: string;
+      readonly status: 'approved' | 'rejected' | 'cancelled';
+      readonly fromStatus: string;
+      readonly toStatus: string;
+      readonly requestedBy: EventActor;
+      /** The approver; system for a cancellation. */
+      readonly actor: EventActor;
+      readonly comment: string | null;
+    }
+  | {
+      readonly type: 'pr.reviewRequested';
+      readonly issueId: string;
+      readonly pullRequestId: string;
+      readonly repo: string;
+      readonly number: number;
+      readonly url: string;
+    }
+  | {
+      /** A PR was merged or closed: its `pr_review` cards resolve. */
+      readonly type: 'pr.closed';
+      readonly issueIds: readonly string[];
+      readonly merged: boolean;
+    }
+  | {
+      readonly type: 'pr.merged';
+      readonly issueId: string;
+      readonly repo: string;
+      readonly number: number;
+      readonly url: string;
+      /** The status the merge moved the issue to, or null when it did not change it. */
+      readonly statusChangedTo: string | null;
+    };
 
 export type DomainEventListener = (event: DomainEvent) => void;
 

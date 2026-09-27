@@ -8,6 +8,7 @@ import { createMigrator, createSeeder } from '@nocobase/db';
 
 import {
   MIGRATIONS_DIR,
+  NP_PHASE1_ITER2_TABLES,
   NP_PHASE1_TABLES,
   NP_TABLES,
   SEEDS_DIR,
@@ -151,6 +152,49 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     await db!.knex.raw(`DELETE FROM "${db!.schema}".inbox_items`);
   });
 
+  it('adds the iteration 2 tables, columns and the pending-approval index', async () => {
+    expect(await tables(db!)).toEqual(
+      expect.arrayContaining([...NP_PHASE1_ITER2_TABLES]),
+    );
+    const defs = await indexes(db!);
+    expect(defs.get('np_pull_requests_repo_number_unique')).toMatch(
+      /UNIQUE.*\(repo, number\)/u,
+    );
+    expect(defs.get('np_webhook_deliveries_unique')).toMatch(
+      /UNIQUE.*\(provider, delivery_id\)/u,
+    );
+    expect(defs.get('np_git_connections_provider_unique')).toMatch(
+      /UNIQUE.*\(provider\)/u,
+    );
+    expect(defs.get('np_comment_reactions_unique')).toMatch(
+      /UNIQUE.*\(comment_id, user_id, emoji\)/u,
+    );
+    expect(await columns(db!, 'issues')).toEqual(
+      expect.arrayContaining([
+        'execution_mode',
+        'origin_type',
+        'origin_id',
+        'deleted_at',
+      ]),
+    );
+    expect(await columns(db!, 'comments')).toEqual(
+      expect.arrayContaining(['resolved_at', 'resolved_by_id']),
+    );
+    const insert = (id: string, status: string) =>
+      db!.knex.raw(
+        `INSERT INTO "${db!.schema}".approval_requests (id, issue_id, from_status, to_status, requested_by_type,
+           requested_by_id, approver_user_ids, status, created_at, updated_at)
+         VALUES (?, 'i1', 'in_review', 'done', 'user', 'u1', '[]', ?, now(), now())`,
+        [id, status],
+      );
+    await insert('a1', 'pending');
+    await expect(insert('a2', 'pending')).rejects.toThrow(
+      /np_approval_requests_pending_unique/u,
+    );
+    await insert('a3', 'rejected');
+    await db!.knex.raw(`DELETE FROM "${db!.schema}".approval_requests`);
+  });
+
   it('enforces one pending run per agent, subject and thread scope', async () => {
     const insert = (id: string, status: string, scope: string | null) =>
       db!.knex.raw(
@@ -174,16 +218,27 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
       expect.arrayContaining([
         '2026092700002_np_system_settings',
         '2026092800002_np_default_workflow',
-        // No authorization tables in this schema: the grant seed runs and does nothing.
+        // No authorization tables in this schema: the grant seeds run and do nothing.
         '2026092800003_np_member_page_grants',
+        '2026092900002_np_workflow_with_approval',
+        '2026092900003_np_iter2_page_grants',
+        '2026092900004_np_github_settings_grant',
       ]),
     );
     const workflows = (await db!.knex.raw(
       `SELECT id, name, is_default FROM "${db!.schema}".workflow_templates`,
     )) as { rows: { id: string; name: string; is_default: boolean }[] };
-    expect(workflows.rows).toEqual([
-      { id: 'default', name: '软件开发', is_default: true },
-    ]);
+    expect(workflows.rows).toEqual(
+      expect.arrayContaining([
+        { id: 'default', name: '软件开发', is_default: true },
+        {
+          id: 'software-with-approval',
+          name: '软件开发（验收审批）',
+          is_default: false,
+        },
+      ]),
+    );
+    expect(workflows.rows).toHaveLength(2);
     await db!.knex.raw(
       `UPDATE "${db!.schema}".system_settings SET issue_counter = 7`,
     );
@@ -206,18 +261,43 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026092900001_np_phase1_iter2',
       '2026092800001_np_phase1_iter1',
       '2026092700001_np_phase0',
     ]);
     const remaining = await tables(db!);
-    for (const table of [...NP_TABLES, ...PHASE1_ALL_TABLES])
+    for (const table of [
+      ...NP_TABLES,
+      ...PHASE1_ALL_TABLES,
+      ...NP_PHASE1_ITER2_TABLES,
+    ])
       expect(remaining).not.toContain(table);
     const defs = await indexes(db!);
     expect(defs.has('np_runs_pending_unique')).toBe(false);
     expect(defs.has('np_inbox_items_dedupe_unique')).toBe(false);
+    expect(defs.has('np_approval_requests_pending_unique')).toBe(false);
 
     const again = await migrator().latest();
     expect(again.executed).toContain('2026092700001_np_phase0');
     expect((await indexes(db!)).has('np_runs_pending_unique')).toBe(true);
+  });
+
+  it('rolls back the iteration 2 batch alone', async () => {
+    await migrator().rollback();
+    await migrator().upTo('2026092800001_np_phase1_iter1');
+    const applied = await migrator().latest();
+    expect(applied.executed).toEqual(['2026092900001_np_phase1_iter2']);
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual(['2026092900001_np_phase1_iter2']);
+    const remaining = await tables(db!);
+    for (const table of NP_PHASE1_ITER2_TABLES)
+      expect(remaining).not.toContain(table);
+    expect(remaining).toEqual(expect.arrayContaining(PHASE1_ALL_TABLES));
+    const issueColumns = await columns(db!, 'issues');
+    expect(issueColumns).not.toContain('execution_mode');
+    expect(issueColumns).not.toContain('deleted_at');
+    expect(issueColumns).toContain('stage');
+    expect(await columns(db!, 'comments')).not.toContain('resolved_at');
+    await migrator().latest();
   });
 });

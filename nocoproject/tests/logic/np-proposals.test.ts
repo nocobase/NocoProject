@@ -70,6 +70,7 @@ async function claimParent(autoExecuteSubtasks: boolean) {
       queries: services.issueQueries,
       comments: services.comments,
       agentIssues: services.agentIssues,
+      pullRequests: services.pullRequests,
     }),
   );
   const call = async (method: string, path: string, body?: unknown) => {

@@ -66,7 +66,14 @@ export function useBoardMove(
       const revision =
         issue.revision ??
         (await fetchIssueDetail(api, issue.id)).issue.revision;
-      await updateIssue(api, issue.id, changes, revision);
+      const result = await updateIssue(api, issue.id, changes, revision);
+      if (result.pendingApproval) {
+        toast.add({
+          type: 'info',
+          title: t('np.approvals.pendingToast'),
+          description: t('np.approvals.pendingToastDescription'),
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: npKeys.issues });
       void queryClient.invalidateQueries({ queryKey: npKeys.issue(issue.id) });
     } catch (error: unknown) {

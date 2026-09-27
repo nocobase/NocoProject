@@ -24,7 +24,7 @@ import type { Actor } from './activity.js';
 import type { Conn } from './db.js';
 import { isoOrNull, str, unique } from './db.js';
 import { forbidden, notFound } from './errors.js';
-import type { Issue, IssueV1, MemberRole } from './protocol.js';
+import type { ApproverRole, Issue, IssueV2, MemberRole } from './protocol.js';
 import { findIssue } from '../issue/issue.records.js';
 
 export interface Viewer {
@@ -143,7 +143,7 @@ export async function requireVisibleIssue(
   conn: Conn,
   viewer: Viewer,
   idOrKey: string,
-): Promise<IssueV1> {
+): Promise<IssueV2> {
   const issue = await findIssue(conn, idOrKey);
   if (!issue || !(await canSeeIssue(conn, viewer, issue)))
     throw notFound('Issue');
@@ -286,4 +286,37 @@ export function canEditAgent(
   agent: { readonly ownerUserId: string },
 ): boolean {
   return isAdmin(viewer) || agent.ownerUserId === viewer.userId;
+}
+
+/** Owner and admin members (for approvals whose approvers include `admin`). */
+export async function adminUserIds(conn: Conn): Promise<string[]> {
+  const rows = await conn.query
+    .selectFrom('members')
+    .select('userId')
+    .where('role', 'in', ['owner', 'admin'])
+    .execute();
+  return unique(rows.map((row) => str(row.userId)));
+}
+
+/**
+ * Approver user ids for an issue (iteration 2 §D): `owner` → the issue owner; `projectLead` → the project lead
+ * (skipped without a project or lead); `admin` → every owner/admin member.
+ */
+export async function resolveApproverIds(
+  conn: Conn,
+  issue: Pick<Issue, 'ownerUserId' | 'projectId'>,
+  roles: readonly ApproverRole[],
+): Promise<string[]> {
+  const result: (string | null)[] = [];
+  if (roles.includes('owner')) result.push(issue.ownerUserId);
+  if (roles.includes('projectLead') && issue.projectId) {
+    const project = await conn.query
+      .selectFrom('projects')
+      .select('leadUserId')
+      .where('id', '=', issue.projectId)
+      .executeTakeFirst();
+    result.push(project ? str(project.leadUserId) : null);
+  }
+  if (roles.includes('admin')) result.push(...(await adminUserIds(conn)));
+  return unique(result);
 }

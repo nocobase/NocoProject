@@ -1,3 +1,5 @@
+import './np-editor-dom.js';
+
 import { ApiClientError } from '@nocobase/app-client';
 import { I18nRuntime } from '@nocobase/i18n';
 import { I18nProvider } from '@nocobase/i18n/client';
@@ -15,6 +17,10 @@ const realtime = vi.hoisted(() => ({
   subscribe: vi.fn(() => () => {}),
   onOpen: vi.fn(() => () => {}),
 }));
+
+const toast = vi.hoisted(() => ({ add: vi.fn() }));
+
+vi.mock('@/components/ui/toast', () => ({ toast }));
 
 vi.mock('@nocobase/app-client', async (original) => ({
   ...(await original<typeof import('@nocobase/app-client')>()),
@@ -135,6 +141,7 @@ beforeEach(() => {
 
 afterEach(() => {
   api.request.mockReset();
+  toast.add.mockReset();
   vi.unstubAllGlobals();
 });
 
@@ -290,5 +297,130 @@ describe('issue detail', () => {
             'np/issues/101' && !(options as { method?: string }).method,
       ).length;
     await waitFor(() => expect(detailLoads()).toBeGreaterThanOrEqual(2));
+  });
+
+  it('edits the description in the rich text editor and saves it as Markdown', async () => {
+    const user = userEvent.setup();
+    api.request.mockImplementation(
+      (options: { path: string; method?: string }) =>
+        options.method === 'PATCH'
+          ? Promise.resolve({ data: { ...DETAIL.issue, revision: 4 } })
+          : respond(options),
+    );
+    await renderDetail();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Edit description' }),
+    );
+    const editor = await screen.findByRole('textbox', { name: 'Description' });
+    // The stored Markdown loads as rich text: bold stays bold.
+    expect(within(editor).getByText('SKIP LOCKED').tagName).toBe('STRONG');
+    // The editor opens focused with the caret at the end.
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard(' Then ship.');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(api.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'np/issues/101',
+          method: 'PATCH',
+          json: {
+            description: 'Use **SKIP LOCKED**. Then ship.',
+            revision: 3,
+          },
+        }),
+      ),
+    );
+  });
+
+  it('switches the issue to session mode and shows the conversation panel', async () => {
+    const user = userEvent.setup();
+    let mode = 'task';
+    api.request.mockImplementation(
+      (options: { path: string; method?: string; json?: unknown }) => {
+        if (options.method === 'PATCH') {
+          mode = (options.json as { executionMode: string }).executionMode;
+          return Promise.resolve({
+            data: { ...DETAIL.issue, executionMode: mode },
+          });
+        }
+        if (options.path === 'np/issues/101' && !options.method) {
+          return Promise.resolve({
+            data: {
+              ...DETAIL,
+              issue: { ...DETAIL.issue, executionMode: mode },
+            },
+          });
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+
+    await user.click(
+      await screen.findByRole('switch', { name: 'Session mode' }),
+    );
+    await waitFor(() =>
+      expect(api.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'PATCH',
+          json: { executionMode: 'session', revision: 3 },
+        }),
+      ),
+    );
+    expect(await screen.findByTestId('np-session-panel')).toBeInTheDocument();
+  });
+
+  it('reports a status change that waits for approval and shows the approval card', async () => {
+    const user = userEvent.setup();
+    const approval = {
+      id: 'ap1',
+      issueId: '101',
+      fromStatus: 'todo',
+      toStatus: 'done',
+      requestedByType: 'user',
+      requestedById: 'u1',
+      requestedByName: 'Zhou',
+      approverUserIds: ['u9'],
+      status: 'pending',
+      createdAt: NOW,
+    };
+    let approvals: unknown[] = [];
+    api.request.mockImplementation(
+      (options: { path: string; method?: string }) => {
+        if (options.method === 'PATCH') {
+          approvals = [approval];
+          return Promise.resolve({
+            data: { issue: DETAIL.issue, pendingApproval: approval },
+          });
+        }
+        if (options.path === 'np/issues/101' && !options.method) {
+          return Promise.resolve({ data: { ...DETAIL, approvals } });
+        }
+        if (options.path === 'np/members') {
+          return Promise.resolve({
+            data: [{ userId: 'u1', name: 'Zhou', email: null, role: 'owner' }],
+          });
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+
+    await user.click(await screen.findByRole('combobox', { name: 'Status' }));
+    await user.click(await screen.findByRole('option', { name: 'Done' }));
+
+    await waitFor(() =>
+      expect(toast.add).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'info',
+          title: 'Waiting for approval',
+        }),
+      ),
+    );
+    const card = await screen.findByTestId('np-approval-card');
+    expect(card).toHaveTextContent('Zhou');
+    expect(within(card).queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 });

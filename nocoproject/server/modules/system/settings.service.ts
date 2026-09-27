@@ -1,5 +1,6 @@
 /**
  * The single `systemSettings` row: the issue prefix, the issue counter and (iteration 1) the `settings` json.
+ * Iteration 2 adds `modelPrices` and `intakeParser` to the json; missing keys read as their defaults.
  */
 import type { Conn } from '../shared/db.js';
 import {
@@ -9,7 +10,9 @@ import {
   num,
   rawRows,
   str,
+  toJson,
 } from '../shared/db.js';
+import type { IntakeParserSetting, ModelPrice } from '../shared/protocol.js';
 
 export const SETTINGS_ID = 'default';
 const DEFAULT_PREFIX = 'NP';
@@ -22,17 +25,27 @@ export interface AllocatedIssueNumber {
 /** `systemSettings.settings` (contract §A); missing keys take these defaults. */
 export interface WorkspaceSettings {
   readonly autoExecuteSubtasksDefault: boolean;
-  /** Used from iteration 2 (PR merged → status). */
+  /** PR merged → this status; `'none'` leaves the status alone (iteration 2). */
   readonly prMergedStatus: string;
+  readonly modelPrices: readonly ModelPrice[];
+  readonly intakeParser: IntakeParserSetting;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   autoExecuteSubtasksDefault: false,
   prMergedStatus: 'done',
+  modelPrices: [],
+  intakeParser: 'auto',
 };
 
 export interface SettingsService {
   read(conn: Conn): Promise<WorkspaceSettings>;
+  /** Merges `patch` into the stored json (already validated by the caller). */
+  write(
+    conn: Conn,
+    patch: Partial<WorkspaceSettings>,
+  ): Promise<WorkspaceSettings>;
+  issuePrefix(conn: Conn): Promise<string>;
   /**
    * Allocates the next issue number. Must run inside the caller's transaction: on PostgreSQL the counter row stays
    * locked by `UPDATE … RETURNING` until that transaction ends, so concurrent creates are serialized and numbers are
@@ -74,25 +87,56 @@ async function incrementPortable(conn: Conn): Promise<CounterRow | undefined> {
   return { issue_counter: next, issue_prefix: row.issuePrefix };
 }
 
+function normalize(stored: Partial<WorkspaceSettings>): WorkspaceSettings {
+  return {
+    autoExecuteSubtasksDefault:
+      typeof stored.autoExecuteSubtasksDefault === 'boolean'
+        ? stored.autoExecuteSubtasksDefault
+        : DEFAULT_WORKSPACE_SETTINGS.autoExecuteSubtasksDefault,
+    prMergedStatus:
+      typeof stored.prMergedStatus === 'string'
+        ? stored.prMergedStatus
+        : DEFAULT_WORKSPACE_SETTINGS.prMergedStatus,
+    modelPrices: Array.isArray(stored.modelPrices)
+      ? stored.modelPrices
+      : DEFAULT_WORKSPACE_SETTINGS.modelPrices,
+    intakeParser:
+      stored.intakeParser === 'heuristic'
+        ? 'heuristic'
+        : DEFAULT_WORKSPACE_SETTINGS.intakeParser,
+  };
+}
+
+async function readStored(conn: Conn): Promise<Partial<WorkspaceSettings>> {
+  const row = await conn.query
+    .selectFrom('systemSettings')
+    .select('settings')
+    .where('id', '=', SETTINGS_ID)
+    .executeTakeFirst();
+  return fromJson<Partial<WorkspaceSettings>>(row?.settings) ?? {};
+}
+
 export function createSettingsService(): SettingsService {
   return {
     async read(conn) {
+      return normalize(await readStored(conn));
+    },
+    async write(conn, patch) {
+      const next = { ...(await readStored(conn)), ...patch };
+      await conn.query
+        .updateTable('systemSettings')
+        .set({ settings: toJson(next), updatedAt: new Date() })
+        .where('id', '=', SETTINGS_ID)
+        .execute();
+      return normalize(next);
+    },
+    async issuePrefix(conn) {
       const row = await conn.query
         .selectFrom('systemSettings')
-        .select('settings')
+        .select('issuePrefix')
         .where('id', '=', SETTINGS_ID)
         .executeTakeFirst();
-      const stored = fromJson<Partial<WorkspaceSettings>>(row?.settings) ?? {};
-      return {
-        autoExecuteSubtasksDefault:
-          typeof stored.autoExecuteSubtasksDefault === 'boolean'
-            ? stored.autoExecuteSubtasksDefault
-            : DEFAULT_WORKSPACE_SETTINGS.autoExecuteSubtasksDefault,
-        prMergedStatus:
-          typeof stored.prMergedStatus === 'string'
-            ? stored.prMergedStatus
-            : DEFAULT_WORKSPACE_SETTINGS.prMergedStatus,
-      };
+      return str(row?.issuePrefix) || DEFAULT_PREFIX;
     },
     async allocateIssueNumber(conn) {
       const increment = isPostgres(conn)

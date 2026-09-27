@@ -1,14 +1,15 @@
 /**
- * Workflow templates (docs/phase1/iteration-1-contract.md §C). Iteration 1 only reads them: the seed writes the
- * default "软件开发" template and a project without `workflowId` uses it.
+ * Workflow templates (docs/phase1/iteration-1-contract.md §C). Templates are read-only: the seeds write the default
+ * "软件开发" template and (iteration 2) "软件开发（验收审批）"; a project without `workflowId` uses the default, and a
+ * project may switch templates when none of its issues is in a status the new one lacks.
  *
  * Compiled views are cached in memory per template id, and the project → template mapping per project id. The
  * project service invalidates a project's entry when its `workflowId` changes; `invalidate()` drops everything
  * (template edits arrive in iteration 3). The cache is per process, like the rest of the in-process state.
  */
 import type { Conn, TxRunner } from '../shared/db.js';
-import { bool, fromJson, iso, str } from '../shared/db.js';
-import { notFound } from '../shared/errors.js';
+import { bool, fromJson, iso, str, unique } from '../shared/db.js';
+import { conflict, notFound } from '../shared/errors.js';
 import type { Workflow, WorkflowDefinition } from '../shared/protocol.js';
 import {
   BUILTIN_DEFINITION,
@@ -29,6 +30,15 @@ export interface WorkflowService {
   defaultView(conn: Conn): Promise<WorkflowView>;
   invalidateProject(projectId: string): void;
   invalidate(): void;
+  /**
+   * 409 `WORKFLOW_STATUS_CONFLICT` when an issue of the project is in a status the template (null = default) does
+   * not have (iteration 2: projects may switch templates).
+   */
+  assertProjectCompatible(
+    conn: Conn,
+    projectId: string,
+    workflowId: string | null,
+  ): Promise<void>;
 }
 
 function isDefinition(value: unknown): value is WorkflowDefinition {
@@ -140,6 +150,25 @@ export function createWorkflowService(deps: { tx: TxRunner }): WorkflowService {
       views.clear();
       projectTemplate.clear();
       defaultId = null;
+    },
+    async assertProjectCompatible(conn, projectId, workflowId) {
+      const view = workflowId
+        ? await loadView(conn, workflowId)
+        : await defaultView(conn);
+      const rows = await conn.query
+        .selectFrom('issues')
+        .select('statusKey')
+        .where('projectId', '=', projectId)
+        .where('deletedAt', 'is', null)
+        .execute();
+      const missing = unique(rows.map((row) => str(row.statusKey))).filter(
+        (key) => !view.isKnown(key),
+      );
+      if (missing.length > 0)
+        throw conflict(
+          'WORKFLOW_STATUS_CONFLICT',
+          `Issues of this project are in statuses the workflow does not have: ${missing.join(', ')}.`,
+        );
     },
   };
 }

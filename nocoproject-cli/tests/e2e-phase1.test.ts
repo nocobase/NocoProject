@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { repoCachePath } from '../src/repo/naming.js';
@@ -93,5 +93,76 @@ describe('Phase 1 daemon e2e (echo adapter)', () => {
     expect(runStatus(mock, last)).toBe('completed');
     expect([...mock.meta.values()].filter((m) => m.parentIssueId === 'i32')).toHaveLength(2);
     expect(mock.issues.get('i32')?.statusKey).toBe('in_review');
+  });
+
+  it('injects agent env into the tool, redacts the values everywhere and writes skills (iteration 2 §G, §H)', async () => {
+    const { mock, harness } = await setup();
+    const secret = 'super-secret-deploy-value';
+    mock.addIssue({ id: 'i33', identifier: 'NP-33', title: 'Deploy', description: 'Go. [echo:env=DEPLOY_TOKEN] [echo:skill=deploy]' });
+    const runId = mock.enqueue('i33', {
+      agentExtras: {
+        instructions: `Never paste ${secret} anywhere.`,
+        env: { DEPLOY_TOKEN: secret, SHORT: 'abc', PATH: '/evil' },
+        skills: [
+          { id: 's1', slug: 'deploy', name: 'Deploy', description: 'Deploy to staging', content: '# Deploy runbook\n\nRun make deploy.', files: [{ path: 'scripts/go.sh', content: 'make deploy\n' }, { path: '../escape.sh', content: 'no' }] },
+        ],
+      },
+    });
+    await waitFor(() => runStatus(mock, runId) === 'completed' || runStatus(mock, runId) === 'failed', 20_000, 'run');
+    expect(runStatus(mock, runId)).toBe('completed');
+
+    const reply = (mock.comments.get('i33') ?? []).find((c) => c.authorType === 'agent')?.content ?? '';
+    expect(reply).toContain(`Env DEPLOY_TOKEN=${secret}`);
+    expect(reply).toContain('Skill deploy: # Deploy runbook');
+
+    const events = JSON.stringify(mock.runs.get(runId)?.events ?? []);
+    expect(events).not.toContain(secret);
+    expect(events).toContain('Env DEPLOY_TOKEN=[REDACTED]');
+    expect(events).toContain('Skipped reserved or invalid environment variables: PATH');
+    expect(events).toContain('skill deploy: rejected file path \\"../escape.sh\\"');
+    expect(JSON.stringify(completeBody(mock, runId))).not.toContain(secret);
+    expect(harness.logs.join('\n')).not.toContain(secret);
+
+    const workDir = startBody(mock, runId)?.workDir as string;
+    const context = readFileSync(join(workDir, '.nocoproject', 'context.json'), 'utf8');
+    expect(context).not.toContain(secret);
+    expect(context).not.toContain('DEPLOY_TOKEN');
+    const brief = readFileSync(join(workDir, 'AGENTS.md'), 'utf8');
+    expect(brief).not.toContain(secret);
+    expect(brief).toContain('Never paste [REDACTED] anywhere.');
+    expect(brief).toContain('- **Deploy** — Deploy to staging `.nocoproject/skills/deploy/SKILL.md`');
+    expect(readFileSync(join(workDir, '.nocoproject', 'skills', 'deploy', 'scripts', 'go.sh'), 'utf8')).toBe('make deploy\n');
+    expect(existsSync(join(workDir, '.nocoproject', 'escape.sh'))).toBe(false);
+    expect(existsSync(join(workDir, '.claude'))).toBe(false);
+  });
+
+  it('links a pull request and treats a 202 approval gate as success (iteration 2 §C, §D)', async () => {
+    const { mock } = await setup();
+    mock.addIssue({ id: 'i34', identifier: 'NP-34', title: 'Ship it', description: '[echo:pr=https://github.com/acme/demo/pull/5] [echo:status=in_review]', approvalRequired: ['in_review'] });
+    const runId = mock.enqueue('i34', { issueExtras: { executionMode: 'task', pullRequests: [] } });
+    await waitFor(() => runStatus(mock, runId) === 'completed' || runStatus(mock, runId) === 'failed', 20_000, 'run');
+    expect(runStatus(mock, runId)).toBe('completed');
+    expect(mock.pullRequests.get('i34')?.map((p) => `${p.repo}#${p.number}`)).toEqual(['acme/demo#5']);
+    expect(mock.approvals).toMatchObject([{ issueId: 'i34', fromStatus: 'in_progress', toStatus: 'in_review' }]);
+    expect(mock.issues.get('i34')?.statusKey).toBe('in_progress');
+    const reply = (mock.comments.get('i34') ?? []).find((c) => c.authorType === 'agent')?.content ?? '';
+    expect(reply).toContain('Linked pull request https://github.com/acme/demo/pull/5.');
+    expect(reply).toMatch(/Status in_review: approval pending \(request ap\d+\)\./);
+  });
+
+  it('runs a session-mode turn without moving the issue to in_review (iteration 2 §J)', async () => {
+    const { mock } = await setup();
+    mock.addIssue({ id: 'i35', identifier: 'NP-35', title: 'Chat', description: 'Let us talk.' });
+    const pullRequests = [{ number: 9, url: 'https://github.com/acme/demo/pull/9', state: 'open' as const }];
+    const runId = mock.enqueue('i35', { triggerComment: 'How is it going?', issueExtras: { executionMode: 'session', pullRequests } });
+    await waitFor(() => runStatus(mock, runId) === 'completed' || runStatus(mock, runId) === 'failed', 20_000, 'run');
+    expect(runStatus(mock, runId)).toBe('completed');
+    expect(mock.issues.get('i35')?.statusKey).toBe('in_progress');
+    const workDir = startBody(mock, runId)?.workDir as string;
+    expect(JSON.parse(readFileSync(join(workDir, '.nocoproject', 'context.json'), 'utf8')).issue).toMatchObject({ executionMode: 'session', pullRequests });
+    const brief = readFileSync(join(workDir, 'AGENTS.md'), 'utf8');
+    expect(brief).toContain('## Conversation Mode');
+    expect(brief).toContain('- #9 (open) https://github.com/acme/demo/pull/9');
+    expect(existsSync(join(workDir, '.nocoproject', 'skills'))).toBe(false);
   });
 });

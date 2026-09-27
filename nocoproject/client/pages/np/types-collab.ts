@@ -37,7 +37,12 @@ export type InboxItemType =
   | 'executor_assigned'
   | 'mentioned'
   | 'commented'
-  | 'status_changed';
+  | 'status_changed'
+  // Phase 1 iteration 2 (§M)
+  | 'approval_pending'
+  | 'approval_decided'
+  | 'pr_review'
+  | 'pr_merged';
 export type AgentAccessLevel = 'ownerOnly' | 'specificUsers' | 'everyone';
 
 export type InboxTopicPayload = { readonly kind: 'inbox.changed' };
@@ -227,6 +232,7 @@ export interface UpdateProjectInput {
   readonly leadUserId?: string | null;
   readonly startDate?: string | null;
   readonly dueDate?: string | null;
+  readonly workflowId?: string | null;
 }
 
 /** `GET /np/issues?view=board`: issues grouped by status (§F). */

@@ -35,7 +35,10 @@ export function useProjectMutation<Variables>(
             ? t('np.common.forbidden')
             : error instanceof ApiClientError && error.code === 'LEAD_MEMBER'
               ? t('np.projectMembers.leadMember')
-              : t('np.common.requestFailed'),
+              : error instanceof ApiClientError &&
+                  error.code === 'WORKFLOW_STATUS_CONFLICT'
+                ? t('np.projectMore.workflowConflict')
+                : t('np.common.requestFailed'),
       }),
     onSettled: () => {
       // The list key prefixes the project key, so this reloads the list and this project together.

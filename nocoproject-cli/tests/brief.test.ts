@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applyBriefBlock, BRIEF_BEGIN, BRIEF_END, buildBrief, buildTurnPrompt, writeBrief } from '../src/daemon/brief.js';
-import { claimedRun, phase1Run } from './helpers/fixtures.js';
+import { claimedRun, iter2Run, phase1Run } from './helpers/fixtures.js';
 
 describe('brief', () => {
   it('renders the runtime block', () => {
@@ -16,7 +16,8 @@ describe('brief', () => {
     expect(brief).toContain('## Repositories');
     expect(brief).toContain('`https://github.com/nocobase/nocoproject.git` (default ref `main`)');
     expect(brief).toContain('on the branch `agent/coder/np-12`');
-    expect(brief).toContain('`gh pr create`; the title must contain NP-12');
+    expect(brief).toContain('`gh pr create --title "NP-12: <summary>"` and link it with `nocoproject pr link <url>`');
+    expect(brief).toContain('The branch name already contains NP-12, so the server also links it automatically.');
     expect(brief).toContain('worked on branch `agent/coder/np-12`');
     expect(brief).toContain('Auto-execute sub-issues is **on** for NP-12');
     expect(brief).toContain('Reviewer (`a7`)');
@@ -60,6 +61,50 @@ describe('brief', () => {
     writeBrief(dir, 'CLAUDE.md', block);
     expect(readFileSync(join(dir, 'CLAUDE.md'), 'utf8')).toBe(once);
     expect(once.startsWith('Project notes.\n')).toBe(true);
+  });
+});
+
+describe('iteration 2 brief', () => {
+  it('lists skills, linked pull requests and the pr commands in task mode', () => {
+    const brief = buildBrief(iter2Run());
+    expect(brief).toContain('## Skills');
+    expect(brief).toContain('- **Deploy** — How to deploy the app to staging. `.nocoproject/skills/deploy/SKILL.md`');
+    expect(brief).toContain('Claude Code also discovers the same skills natively under `.claude/skills/`.');
+    expect(brief).toContain('- #42 (open) https://github.com/nocobase/nocoproject/pull/42');
+    expect(brief).toContain('`nocoproject pr link <url> [--issue NP-12] --json`');
+    expect(brief).toContain('`nocoproject pr list [--issue NP-12] --json`');
+    expect(brief).not.toContain('## Conversation Mode');
+    expect(brief).toContain('5. After delivering, set the status to `in_review`.');
+    expect(brief).not.toContain('deploy-secret-value-123');
+  });
+
+  it('omits the Claude note for other providers and skips invalid skill slugs', () => {
+    const run = iter2Run({}, { provider: 'codex', skills: [{ id: 's2', slug: '../evil', name: 'Evil', description: 'x', content: '', files: [] }] });
+    const brief = buildBrief(run);
+    expect(brief).not.toContain('## Skills');
+    expect(buildBrief(iter2Run({}, { provider: 'codex' }))).not.toContain('.claude/skills');
+  });
+
+  it('snapshots the task-mode brief', () => {
+    expect(buildBrief(iter2Run())).toMatchSnapshot();
+  });
+
+  it('opens conversationally in session mode and does not require in_review', () => {
+    const brief = buildBrief(iter2Run({ executionMode: 'session' }));
+    expect(brief).toMatchSnapshot();
+    expect(brief.indexOf('## Conversation Mode')).toBeLessThan(brief.indexOf('## Background Task Safety'));
+    expect(brief).toContain('do not write a summary report every turn');
+    expect(brief).toContain('Your working directory and your session carry over');
+    expect(brief).toContain('You do not need to move the issue to `in_review`');
+    expect(brief).not.toContain('After delivering, set the status to `in_review`');
+  });
+
+  it('renders the session-mode turn prompt', () => {
+    const prompt = buildTurnPrompt(iter2Run({ executionMode: 'session' }), { resumed: true });
+    expect(prompt).toMatchSnapshot();
+    expect(prompt).toContain('live conversation with the owner on issue NP-12');
+    expect(prompt).toContain('--content-file ./reply.md --parent c9`; you do not need to set `in_review`.');
+    expect(buildTurnPrompt(iter2Run(), { resumed: true })).toContain('When done, deliver via');
   });
 });
 

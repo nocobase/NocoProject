@@ -15,6 +15,7 @@
  * | Any of the above while the issue is blocked (`subtask/blocking.ts`) | nothing; activity `run_deferred_blocked` |
  * | An issue reaches a terminal status                                  | release dependents / next-stage siblings (`trigger/release.ts`) |
  * | Run failed with a retryable reason, attempts left                   | new run, `retryOfRunId`, `retry` (never gated) |
+ * | A new `blockedBy` dependency leaves the issue blocked               | its queued / deferred runs are withdrawn (cancelled, `blocked`); activity `run_deferred_blocked` |
  *
  * Coalescing into an existing pending run, and "a running run makes the new one wait", are enforced by
  * `run.enqueue` and the claim SQL.
@@ -33,6 +34,7 @@ import type {
 } from '../shared/protocol.js';
 import { parseMentions, isNote } from '../collaboration/mentions.js';
 import { runPriorityOf } from '../issue/issue.records.js';
+import { mapRun } from '../run/run.records.js';
 import type {
   EnqueueResult,
   RunService,
@@ -89,6 +91,8 @@ export interface TriggerService {
   ): Promise<EnqueueResult | null>;
   /** Manual retry from the browser. */
   manualRetry(tx: Tx, run: Run, actor: Actor): Promise<EnqueueResult>;
+  /** A blocking dependency was added: withdraw the issue's queued runs if it is now blocked. Returns their ids. */
+  onBlockingAdded(tx: Tx, issue: IssueV1): Promise<string[]>;
 }
 
 export interface TriggerDeps {
@@ -315,6 +319,50 @@ async function manualRetry(
   });
 }
 
+async function onBlockingAdded(
+  deps: TriggerDeps,
+  tx: Tx,
+  issue: IssueV1,
+): Promise<string[]> {
+  const blockers = await blockersOf(tx.conn, deps.workflows, issue);
+  if (blockers.length === 0) return [];
+  const rows = await tx.conn.query
+    .selectFrom('runs')
+    .selectAll()
+    .where('subjectType', '=', 'issue')
+    .where('subjectId', '=', issue.id)
+    .where('status', 'in', ['queued', 'deferred'])
+    .execute();
+  const withdrawn: string[] = [];
+  for (const run of rows.map(mapRun)) {
+    if (!(await deps.runs().withdrawQueued(tx, run))) continue;
+    withdrawn.push(run.id);
+    const first = await tx.conn.query
+      .selectFrom('runTriggers')
+      .select('type')
+      .where('runId', '=', run.id)
+      .orderBy('createdAt', 'asc')
+      .executeTakeFirst();
+    await deps.activity.record(tx.conn, {
+      issueId: issue.id,
+      actor: { type: 'system', id: null },
+      action: 'run_deferred_blocked',
+      details: {
+        agentId: run.agentId,
+        runId: run.id,
+        withdrawn: true,
+        triggerType: first ? str(first.type) : null,
+        blockers: blockers.map((item) => ({
+          issueId: item.issueId,
+          identifier: item.identifier,
+          reason: item.reason,
+        })),
+      },
+    });
+  }
+  return withdrawn;
+}
+
 export function createTriggerService(deps: TriggerDeps): TriggerService {
   const enqueue = (
     tx: Tx,
@@ -339,5 +387,6 @@ export function createTriggerService(deps: TriggerDeps): TriggerService {
     retryFailedRun: (tx, failed, maxAttempts, reason) =>
       retryFailedRun(deps, tx, failed, maxAttempts, reason),
     manualRetry: (tx, run, actor) => manualRetry(deps, tx, run, actor),
+    onBlockingAdded: (tx, issue) => onBlockingAdded(deps, tx, issue),
   };
 }

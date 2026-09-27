@@ -1116,3 +1116,9 @@ export interface AgentDependencyRequest {
   readonly dependsOnIssueId?: string;
   readonly type?: DependencyType;
 }
+
+// ---------- Phase 1 迭代 2（docs/phase1/iteration-2-contract.md §M） ----------
+
+export * from './protocol.phase1-iter2.js';
+// 服务端补充形状（CLI 不复制）
+export * from './protocol.phase1-iter2-server.js';
