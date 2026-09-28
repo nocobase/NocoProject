@@ -49,6 +49,7 @@ import {
   createMemberRoutes,
   ensureMember,
 } from '../modules/member/member.routes.js';
+import { createInvitationRoutes } from '../modules/member/invitation.routes.js';
 import {
   createInboxRoutes,
   createSubscriptionRoutes,
@@ -63,6 +64,7 @@ import type { MeResponse } from '../modules/shared/protocol.js';
 import {
   npAgentEnvServiceToken,
   npAttachmentServiceToken,
+  npInvitationServiceToken,
   npAgentServiceToken,
   npApprovalGatewayToken,
   npGitConnectionServiceToken,
@@ -116,6 +118,16 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
 
     router.route('/np/me', guarded(guard, me));
     router.route('/np/members', guarded(guard, createMemberRoutes(members)));
+    router.route(
+      '/np/invitations',
+      guarded(
+        guard,
+        createInvitationRoutes(container.resolve(npInvitationServiceToken), {
+          publicOrigin: app.config.get<AppIdentityConfig>('app')?.publicOrigin,
+          publicBasePath: app.publicBasePath,
+        }),
+      ),
+    );
     router.route(
       '/np/workflows',
       guarded(

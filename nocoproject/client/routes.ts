@@ -404,6 +404,15 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     name: 'reset-password',
     path: '/reset-password',
   },
+  {
+    // NP-88: the page an invitation email links to. `optional`, not `guest`: a guest page would send a signed-in
+    // visitor to `/` without a word, so the page itself asks them to sign out before accepting.
+    auth: 'optional',
+    authz: 'skip',
+    componentLoader: () => import('./pages/auth/invite.js'),
+    name: 'np-invite',
+    path: '/invite/:token',
+  },
 ]);
 
 const routes: readonly AppClientRouteContribution[] = [appRoutes];

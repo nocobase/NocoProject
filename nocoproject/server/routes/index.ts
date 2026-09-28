@@ -5,6 +5,7 @@ import { npAgentRoutes } from './np-agent.js';
 import { npApiRoutes } from './np-api.js';
 import { npDaemonRoutes } from './np-daemon.js';
 import { npFileRoutes } from './np-files.js';
+import { npInvitationRoutes } from './np-invitations.js';
 import { npWebhookRoutes } from './np-webhooks.js';
 
 const routes: readonly AppRouteContribution<Application>[] = [
@@ -14,6 +15,8 @@ const routes: readonly AppRouteContribution<Application>[] = [
   npDaemonRoutes,
   npAgentRoutes,
   npWebhookRoutes,
+  // NP-88: the public invitation acceptance endpoints (token-verified).
+  npInvitationRoutes,
   // NP-78: attachment upload and content routes (the file plugin's, behind NocoProject guards).
   ...npFileRoutes,
 ];

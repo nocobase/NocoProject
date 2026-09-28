@@ -1136,3 +1136,7 @@ export * from './protocol.phase1-iter4.js';
 
 export * from './protocol.phase2-workflow.js';
 // 服务端专用的组合类型（CLI 的 sync-protocol 去掉这一行）
+
+// ---------- 邮箱邀请（NP-88） ----------
+
+// 服务端与浏览器专用（CLI 的 sync-protocol 去掉这一行）

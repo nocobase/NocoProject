@@ -2,7 +2,8 @@ import { ApiClientError, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import { type ReactElement, useMemo } from 'react';
+import { UserPlusIcon } from 'lucide-react';
+import { type ReactElement, useMemo, useState } from 'react';
 
 import { DataTable } from '@/components/data-table';
 import { NpActorAvatar } from '@/components/np-actor-avatar';
@@ -14,19 +15,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 
 import { fetchMembers, updateMemberRole } from '../api-collab.js';
-import { fetchMe } from '../api.js';
+import { fetchMe, fetchProjects } from '../api.js';
 import { npKeys } from '../constants.js';
 import {
   type Viewer,
   canChangeMemberRole,
+  isWorkspaceAdmin,
   memberRoleOptions,
   viewerFrom,
 } from '../permissions.js';
 import type { Member, MemberRole } from '../types.js';
 import { ConfigSectionHeading } from './config-section.js';
+import { InvitationsSection } from './invitations-section.js';
+import { InviteDialog } from './invite-dialog.js';
 
 function RoleSelect({
   member,
@@ -82,6 +87,9 @@ function RoleSelect({
  * Tab `/config/members` (iteration 1 §J 6, moved into the front-end settings in iteration 3 §G): the workspace
  * members and their roles. Everyone can open it, but only owner/admin change roles, only an owner grants or revokes
  * owner, and the last owner keeps the role (`memberRoleOptions`); `PATCH /np/members/:userId` enforces the same rules.
+ *
+ * NP-88: owner/admin, and a project lead for the projects they lead, invite people by email ("邀请成员"); the
+ * invitations not accepted yet are listed under the members.
  */
 export default function MembersConfigTab(): ReactElement {
   const { t } = useTranslation();
@@ -93,6 +101,11 @@ export default function MembersConfigTab(): ReactElement {
   });
   const me = useQuery({ queryKey: npKeys.me, queryFn: () => fetchMe(api) });
   const viewer = viewerFrom(me.data?.userId, members.data);
+  const projects = useQuery({
+    queryKey: npKeys.projects,
+    queryFn: () => fetchProjects(api),
+  });
+  const [inviting, setInviting] = useState(false);
 
   const change = useMutation({
     mutationFn: ({ member, role }: { member: Member; role: MemberRole }) =>
@@ -162,6 +175,12 @@ export default function MembersConfigTab(): ReactElement {
     [t, viewer, rows, change],
   );
 
+  const admin = isWorkspaceAdmin(viewer);
+  const invitable = (projects.data ?? []).filter(
+    (project) => admin || project.leadUserId === viewer?.userId,
+  );
+  const canInvite = admin || invitable.length > 0;
+
   let content: ReactElement;
   if (members.isError && !rows) {
     content = (
@@ -191,8 +210,26 @@ export default function MembersConfigTab(): ReactElement {
         id='np-config-members-heading'
         title={t('np.members.title')}
         description={t('np.members.description')}
+        actions={
+          canInvite ? (
+            <Button size='sm' onClick={() => setInviting(true)}>
+              <UserPlusIcon />
+              {t('np.invitations.invite')}
+            </Button>
+          ) : null
+        }
       />
       {content}
+      {canInvite ? <InvitationsSection /> : null}
+      <InviteDialog
+        open={inviting}
+        projects={invitable.map((project) => ({
+          id: project.id,
+          name: project.name,
+        }))}
+        requireProject={!admin}
+        onClose={() => setInviting(false)}
+      />
     </section>
   );
 }
