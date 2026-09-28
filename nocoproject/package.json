@@ -198,7 +198,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test --pass-with-no-tests"
+    "test:e2e": "playwright test --pass-with-no-tests",
+    "preview": "node --import tsx scripts/preview-server.ts",
+    "screenshots": "playwright test e2e/screenshots.test.ts"
   },
   "packageManager": "pnpm@11.7.0"
 }

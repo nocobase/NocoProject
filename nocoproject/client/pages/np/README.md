@@ -11,7 +11,7 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 - Body text `text-sm`; `text-xs` only for captions and metadata; tags use `NpTag` (13px).
 - Hit targets never below `icon-sm`.
 - Layout widths that must not shrink are written in rem with a comment: side column `20rem`, inbox list `26rem`, board column `18rem`.
-- Check both presets (compact, default) and both modes (light, dark).
+- Check both presets (compact, default) and both modes (light, dark): `pnpm build && pnpm screenshots` writes all four combinations of every page to `output/screenshots/` from a throwaway preview of this checkout (`docs/dogfooding.md`); attach them to the delivery.
 
 ## 1. Page frame
 

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+/output/
+/test-results/
 
 # Local configuration, including the generated auth.secret.
 /config.yml

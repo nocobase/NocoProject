@@ -45,6 +45,16 @@ jobs:
         env:
           NP_TEST_DATABASE_URL: postgres://demo:demo123456@127.0.0.1:5432/nocoproject_test
           AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      # Screenshots of every page under compact / default × light / dark, from a throwaway preview of this build.
+      - run: pnpm screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: nocoproject/output/screenshots
+          if-no-files-found: ignore
 
   cli:
     name: cli
