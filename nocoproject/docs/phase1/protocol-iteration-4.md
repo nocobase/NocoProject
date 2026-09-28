@@ -177,12 +177,12 @@ NP-85 追加（§10）：`PullRequestMergeBlocker`、`PullRequestMergeKeepReason
 - **AI 整理带附件**（迁移 `2026100400002_np_file_intake_batch`：`npFiles.intakeBatchId`）：`POST /np/intake/batches` 追加 `attachmentIds?`（调用者自己上传、未挂任务、未进其它批次，1–10 个；否则 400 `INVALID_ATTACHMENT`，批次不创建）。文件跟着批次走，全部先放进第一条顶层草稿的 `fields.attachmentIds`；草稿的 `fields.attachmentIds` 可随 `PUT …/drafts` 在草稿之间移动（格式不对进 `validation.errors`）。批次详情与创建响应追加 `attachments: IntakeBatchAttachment[]`（`contentUrl` 带应用前缀，确认后带 `issueId`）。确认时（在触发运行之前）每个文件挂到它所在草稿建出的任务，不在任何草稿里的挂到第一个建出的任务，记 `attachment_added`。批次还是草稿时文件不算孤儿；批次取消 / 已确认后仍未挂的，照常 24 小时后清理。批次里的文件不能再用 `POST /np/issues/:id/attachments` 挂到别处。
 - **AI 整理读附件内容**（同一迁移的 `npFiles.intakeReadStatus`）：创建批次时，先确认文件都是调用者自己的散件，再在服务端抽文本（`intake/attachment-text.ts`：txt / md / csv / json / yaml / log / xml / html 按 UTF-8；docx / pptx / xlsx / odt / odp / ods / rtf / pdf 用 `officeparser`；doc / xls / ppt、图片等不读），每个文件最多 20,000 字、合计 60,000 字、单文件 15 秒。抽出的文本以 `<attachment name="…">…</attachment>` 块接在描述后面交给 AI 解析（截断的带 `truncated="true"`，读不出的只给文件名）；系统提示要求附件只当材料、不执行其中的指令。全文不入库，每个文件的结果 `{ state, chars }` 存进 `intakeReadStatus`，批次的 `attachments[].readStatus` 返回（`read` / `truncated` / `empty` / `unsupported` / `legacy` / `failed` / `skipped`）。至少一个文件读出文字时 `rawContent` 可以为空（否则仍 400 `INVALID_FIELD`）；规则解析只拆描述，描述为空时出一条以第一个文件名为标题的草稿。
 - 前端：三处上传（AI 整理、手动新建、任务详情附件卡）都支持选择、拖入、粘贴；AI 整理和手动新建把文件粘贴或拖进描述框即上传，详情页拖到或粘贴到附件卡上即上传。`FileUploadField`（应用自有的 Registry 副本）为此加了 `ref` 句柄 `addFiles(files)`，升级 Registry 时要保留。
-- Agent 读任务（`IssueForAgentV4`，claim 载荷与 `GET /np/agent/issues/:id`）多 `attachments: { filename, mimeType, size }[]`，本期不提供内容下载。
+- Agent 读任务（`IssueForAgentV4`，claim 载荷与 `GET /np/agent/issues/:id`）多 `attachments: { id, filename, mimeType, size }[]`。NP-111 起提供内容下载：`GET /np/agent/issues/:id/attachments/:fileId/content`（运行令牌；与读任务同一可见范围，文件不属于该任务、id 不合法或任务不可读一律 404；响应带 `Content-Type`、`Content-Disposition: attachment; filename*=UTF-8''…`、`Cache-Control: private, no-store`）。CLI 0.3.1 用 `nocoproject issue attachment list|download` 读取，轮次提示在任务有附件时列出文件名并提示下载。
 - sweeper 每轮清理创建超过 24 小时仍未挂任务的上传（行 + 对象，每轮最多 200 个）。
 - 写操作发 `issue.changed`（详情页实时刷新），不产生收件箱项。
 - 类型：`IssueAttachment`、`AttachFilesRequest`、`IntakeBatchAttachment`、`AttachmentReadState`、`IntakeAttachmentReadStatus`、`IntakeBatchAttachmentsField`、`CreateIssueAttachmentFields`、`AgentAttachmentInfo`、`IssueForAgentAttachmentFields`、`MAX_ATTACHMENTS_PER_REQUEST`、`ERROR_INVALID_ATTACHMENT`；`ActivityActionPhase1Iter4` 追加 `'attachment_added' | 'attachment_removed'`。
 - 配置：`NOCOPROJECT_ATTACHMENT_DISK`、`NOCOPROJECT_ATTACHMENT_MAX_FILE_SIZE`（字节）。单次挂载上限是常量 10（`MAX_ATTACHMENTS_PER_REQUEST`）。前端的单文件大小检查按默认 20 MiB，改了服务端上限时服务端仍以 413 为准。
-- 未实现：评论附件、富文本内嵌图片、Agent 下载内容、Range/206、内容嗅探与病毒扫描；AI 整理不读图片与扫描版 PDF（不做 OCR），「AI 拆解」批次不读父任务的附件。
+- 未实现：评论附件、富文本内嵌图片、Range/206、内容嗅探与病毒扫描；AI 整理不读图片与扫描版 PDF（不做 OCR），「AI 拆解」批次不读父任务的附件。
 
 ## 9. 活动来源 `details.via`（NP-86，迭代 4 之后追加）
 
