@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isEditableTarget,
   isSearchShortcut,
+  modifierKeyLabel,
 } from '../../client/components/np-shortcut-keys.js';
 import { visibleConfigTabs } from '../../client/pages/np/config/config-model.js';
 import {
@@ -467,5 +468,15 @@ describe('knowledge rules (§B)', () => {
       kind: 'project',
       projectId: 'p1',
     });
+  });
+});
+
+describe('modifier key label', () => {
+  it('shows ⌘ on Apple platforms and Ctrl elsewhere', () => {
+    expect(modifierKeyLabel('MacIntel')).toBe('⌘');
+    expect(modifierKeyLabel('iPhone')).toBe('⌘');
+    expect(modifierKeyLabel('Win32')).toBe('Ctrl');
+    expect(modifierKeyLabel('Linux x86_64')).toBe('Ctrl');
+    expect(modifierKeyLabel('')).toBe('Ctrl');
   });
 });
