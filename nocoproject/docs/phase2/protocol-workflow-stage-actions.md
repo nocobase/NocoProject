@@ -1,6 +1,6 @@
 # NocoProject 协议：Phase 2 工作流阶段动作（服务端实现，权威）
 
-> NP-77 方案第 2 版 stage 1（NP-81）。在 Phase 1 迭代 1–4 协议之上追加。契约类型在 `server/modules/shared/protocol.phase2-workflow.ts`（CLI 用 `pnpm sync-protocol` 复制），组合了服务端形状的 `IssueDetailV5Paged` 在 `protocol.phase2-workflow-server.ts`（CLI 不复制）；两者都由 `protocol.ts` 末尾 `export *`。路径前缀 `/api/np`，成功 `{ data }`，失败 `{ code, message }`（Phase 2 起可带 `details`）。模板提议 / 修订 / 写接口与 CLI 命令是 stage 2，界面是 stage 3。
+> NP-77 方案第 2 版 stage 1（NP-81）。在 Phase 1 迭代 1–4 协议之上追加。契约类型在 `server/modules/shared/protocol.phase2-workflow.ts`（CLI 用 `pnpm sync-protocol` 复制），组合了服务端形状的 `IssueDetailV5Paged` 在 `protocol.phase2-workflow-server.ts`（CLI 不复制）；两者都由 `protocol.ts` 末尾 `export *`。路径前缀 `/api/np`，成功 `{ data }`，失败 `{ code, message }`（Phase 2 起可带 `details`）。模板提议 / 修订 / 写接口与 CLI 命令是 stage 2（`protocol-workflow-proposals.md`），界面是 stage 3。
 
 ## 1. 数据模型
 
@@ -81,7 +81,7 @@ canTransition（Agent；人的在字段校验里）→ 设计门禁（Agent）�
 
 - `issue.checklist`：当前状态的 `IssueChecklist`，没有清单为 null。简报（CLI `daemon/brief-workflow.ts`）在有未勾项时加 `## Stage checklist`，列出未勾项（必填加粗标注）并说明离开前必须勾完。
 - `triggers[].stage`：`stageEntered` 触发带 `{ from, to, instruction }`。轮次提示写“进入了哪个阶段”，有指令时加一段“Stage instruction (阶段指令)”。
-- 勾选清单的 CLI 命令在 stage 2（`nocoproject issue checklist`）；在此之前简报让 Agent 在交付评论里写明完成了哪些项。
+- 勾选清单的 CLI 命令 `nocoproject issue checklist [issue] [check|uncheck <item>]` 在 stage 2 加入，简报随之让 Agent 用它勾选完成的项。
 
 ## 7. 其它形状变化
 

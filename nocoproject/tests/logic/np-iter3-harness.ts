@@ -64,7 +64,10 @@ function browserRouter(services: NpServices, as: Actor): Hono<AuthEnv> {
     '/np/projects',
     createProjectRoutes(services.projects, services.knowledge),
   );
-  root.route('/np/workflows', createWorkflowRoutes(services.workflows));
+  root.route(
+    '/np/workflows',
+    createWorkflowRoutes(services.workflows, services.workflowProposals),
+  );
   root.route('/np/settings', createSettingsRoutes(services.workspaceSettings));
   return root;
 }

@@ -92,6 +92,12 @@ export const NP_PHASE1_ITER3_TABLES = [
 /** Tables of the Phase 2 stage actions migration (NP-77). */
 export const NP_PHASE2_WORKFLOW_TABLES = ['issue_checklist_items'] as const;
 
+/** Tables of the Phase 2 workflow proposals migration (NP-77 stage 2). */
+export const NP_PHASE2_PROPOSAL_TABLES = [
+  'workflow_template_revisions',
+  'workflow_proposals',
+] as const;
+
 /** A fixed test key for stored secrets (32 bytes of 0x11). */
 export const TEST_SECRET_KEY = Buffer.alloc(32, 0x11);
 
@@ -244,7 +250,7 @@ export function buildServices(
 /** Empties every NocoProject table (keeping the seeded workflow template) and restores the settings row. */
 export async function resetData(db: NpTestDatabase): Promise<void> {
   await db.knex.raw(
-    `TRUNCATE ${[...NP_TABLES, ...NP_PHASE1_TABLES, ...NP_PHASE1_ITER2_TABLES, ...NP_PHASE1_ITER3_TABLES, ...NP_PHASE2_WORKFLOW_TABLES].map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
+    `TRUNCATE ${[...NP_TABLES, ...NP_PHASE1_TABLES, ...NP_PHASE1_ITER2_TABLES, ...NP_PHASE1_ITER3_TABLES, ...NP_PHASE2_WORKFLOW_TABLES, ...NP_PHASE2_PROPOSAL_TABLES].map((table) => `"${db.schema}"."${table}"`).join(', ')}`,
   );
   await db.knex.raw(
     `INSERT INTO "${db.schema}".system_settings (id, issue_prefix, issue_counter) VALUES ('default', 'NP', 0)`,

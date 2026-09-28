@@ -12,6 +12,7 @@ import {
   NP_PHASE1_ITER2_TABLES,
   NP_PHASE1_ITER3_TABLES,
   NP_PHASE1_TABLES,
+  NP_PHASE2_PROPOSAL_TABLES,
   NP_PHASE2_WORKFLOW_TABLES,
   NP_TABLES,
   SEEDS_DIR,
@@ -382,6 +383,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026100400001_np_phase2_workflow_proposals',
       '2026100200001_np_phase2_stage_actions',
       '2026100100001_np_phase1_iter4',
       '2026093000001_np_phase1_iter3',
@@ -396,6 +398,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
       ...NP_PHASE1_ITER2_TABLES,
       ...NP_PHASE1_ITER3_TABLES,
       ...NP_PHASE2_WORKFLOW_TABLES,
+      ...NP_PHASE2_PROPOSAL_TABLES,
     ])
       expect(remaining).not.toContain(table);
     const defs = await indexes(db!);

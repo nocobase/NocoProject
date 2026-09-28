@@ -130,6 +130,15 @@ nocoproject pm metrics [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--project <id>] [-
                                                     # GET  /np/agent/pm/metrics
 nocoproject pm knowledge [--project <id>] [--q <text>] [--json]
                                                     # GET  /np/agent/pm/knowledge
+
+# Phase 2 (NP-77): stage checklists, workflow template proposals
+nocoproject issue checklist [NP-12] [check|uncheck <itemKey|statusKey/itemKey>] [--status <key>] [--json]
+                                                    # GET / PATCH /np/agent/issues/:id/checklists[/:statusKey/items/:itemKey]
+nocoproject workflow list [--json]                  # GET  /np/agent/workflows
+nocoproject workflow get [<template>] [--definition] [--json]
+                                                    # GET  /np/agent/workflows/:id
+nocoproject workflow propose (<template> | --copy-from <template> --name N) --definition-file F --reason R [--json]
+                                                    # POST /np/agent/workflows/proposals
 ```
 
 - Issue arguments can be identifiers (`NP-12`) or raw ids. An identifier is resolved through `NOCOPROJECT_ISSUE_KEY`/`NOCOPROJECT_ISSUE_ID` or `GET /np/agent/context`. Any other value is passed through as a raw id. With no argument, the run's own issue is used.
@@ -143,9 +152,11 @@ nocoproject pm knowledge [--project <id>] [--q <text>] [--json]
 - `kb propose` never edits a document: it creates a pending proposal for the project lead (owner/admin for system documents). Exactly one of `--doc` (update; the slug or id is resolved to `docId` with `GET /np/agent/knowledge/:idOrSlug`) or `--title` (new document, optional `--slug` matching the server's `KNOWLEDGE_SLUG_PATTERN`, `^[a-z0-9][a-z0-9-]{0,63}$`). `--content-file` holds the whole proposed content (not a diff) and must not be empty; `--reason` is required (≤ 500 characters), `--summary` optional (≤ 300). These are checked locally (exit 5) before anything is sent. The body is `{ docId? | title, slug?, summary?, content, reason }`; `projectId` is left to the server (the run's project). A second pending proposal for the same document from the same run is `409 KNOWLEDGE_PROPOSAL_PENDING` → exit 5. Text output: `proposed <an update to <slug> | new document "<title>"> (proposal <id>, pending); ...`.
 - `issue design-proposal` (iteration 4 §B) posts the whole proposal from `--content-file` (required, not empty; exit 5 otherwise) and prints the returned `kind='proposal'` comment (`{ data: comment }`; with `--json` the comment object). It does not change the status: the agent then runs `issue status <issue> proposal_review`. While a design-first issue is unapproved, the server refuses `in_progress` from an agent with `403 DESIGN_NOT_APPROVED` → exit 5.
 - `pm ...` (iteration 4 §C) only works for agents of kind `manager`; otherwise the server answers `403 MANAGER_ONLY` and the CLI exits 3 with "pm commands are only available to project-manager agents". Everything is filtered by what the run's asker (`actorUserId`) can see. `pm issues` sends only the flags that are given: `--project` → `projectId`, `--status` → `statusKey`, `--owner` → `ownerUserId` (`me` is passed as-is and means the asker), `--executor` → `executorId`, `--q`, `--since` → `updatedSince` (`30m`, `12h`, `7d`, `2w` relative to now, or an ISO date; anything else exits 5), `--limit` (≤ 100), `--cursor`. `--json` prints `{ data, nextCursor }`; text output prints one line per issue and `more: --cursor <c>` when there is another page. `pm issue` prints `{ issue, comments, activities, runs, pullRequests, subtasks }` with `--json`, a short summary otherwise. `pm metrics` checks `--from` / `--to` are `YYYY-MM-DD`.
+- `issue checklist` lists the issue's stage checklists (current status first; `[x]` / `[ ]` per item, `(required)`); `check` / `uncheck` take `<itemKey>` of the current status's checklist (or `--status`) or `<statusKey>/<itemKey>` and print `checked <statusKey>/<itemKey> (<n>/<m> required items checked)`. The issue may be left out before `check` / `uncheck`. Writes only work on the run's own issue (`403 ISSUE_NOT_IN_RUN`).
+- `workflow list` prints `<id>  <name>  (rev <n>[, system: copy only][, default], <k> projects)` and marks the template of the run's project (`usedByRunProject`). `workflow get` defaults to that template; `--definition` prints only the definition JSON, the file to edit. `workflow propose` never changes a template: exactly one of `<template>` (edit; system templates answer `409 WORKFLOW_SYSTEM_TEMPLATE`) or `--copy-from` (a new template, `--name` required, ≤ 100 characters); `--reason` required (≤ 500); `--definition-file` must be a JSON object (a whole template from `workflow get --json` is unwrapped to its `definition`). These are checked locally (exit 5). The server validates at once: `400 INVALID_WORKFLOW` and `409 WORKFLOW_STATUS_CONFLICT` carry `details`, which the CLI prints one line per problem (and passes through in `--json`); `409 WORKFLOW_PROPOSAL_PENDING` when this run already proposed for the template. Text output: `proposed <a change to <name> (base revision n) | a new template "<name>" copied from <source>> (proposal <id>, pending); ...` and one line per kind of change.
 - `issue comment list` marks resolved threads with `[resolved]` when the server sends `resolved: true`.
 - `project get` reads `context.json` and falls back to `GET /np/agent/context` (`project`) outside a daemon workDir.
-- Every command accepts `--json`. Errors are printed as `{"error":{"code","message","exitCode"}}`.
+- Every command accepts `--json`. Errors are printed as `{"error":{"code","message","exitCode"}}` (plus `details` when the server sent them).
 - Exit codes: `0` ok, `1` other (including git failures), `2` network, `3` auth (missing or invalid token, 401/403, `MANAGER_ONLY`), `4` not found, `5` validation (bad input, 400/409/422, `TRANSITION_NOT_ALLOWED`, `DESIGN_NOT_APPROVED`, `REPO_NOT_ALLOWED`, `CONTEXT_MISSING`).
 
 ## Repository checkout
@@ -202,6 +213,12 @@ Besides the Phase 0 sections the brief has `## Project Context` (project name an
 - **Project manager** (`agent.kind = 'manager'`): `## Project manager` opens the brief (role: reads across projects, answers, retrospectives, knowledge suggestions; conclusion first; answer in the asker's language; cite identifiers; never change any status; never @-mention agents; `kb propose` for knowledge, at most 3). `## Available Commands` lists the `pm` commands instead of `issue status` and the sub-issue / repository / PR commands; `## Repositories`, `## Sub-issues`, `## Parent coordination` and `## Capture learnings` are left out; `## Workflow` is the answer loop and `## Status Rules` says the agent never changes a status. The turn prompt closes with "… you do not need to set `in_review` and never change the status."
 - A `retrospective` run gets its own prompt: "任务 <key> 已完成，请做总结", then read `nocoproject pm issue <key> --json`, post exactly one comment whose first line is `/note` (what was done, time and usage, conventions or pitfalls, whether conventions need updating), propose durable knowledge with `kb propose`, and change nothing else.
 - Coder briefs for `direct` issues (and claims from older servers) are unchanged.
+
+### Brief (Phase 2 additions)
+
+- `## Stage checklist` (NP-77 stage 1) lists the open items of the current status and, since stage 2, tells the agent to check each one with `nocoproject issue checklist <key> check <itemKey>`.
+- `## Available Commands` (coding agents) lists `issue checklist`, `workflow list|get` and `workflow propose`.
+- `## Changing a workflow template` (after `## Parent coordination`, coding agents only): templates change only when a person asks; read (`workflow list`, `workflow get <template> --definition > wf.json`), edit the whole definition (built-in statuses stay, new statuses need a key, a fixed category and a human exit), propose (system templates only by `--copy-from`), fix what `INVALID_WORKFLOW` / `WORKFLOW_STATUS_CONFLICT` report, call out `runExecutor` actions with an `agentId`, and propose again when a proposal becomes stale.
 
 ## Development
 
