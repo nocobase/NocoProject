@@ -11,7 +11,7 @@ import {
   playInboxChime,
   useInboxChimePreference,
 } from '@/pages/np/inbox/inbox-chime';
-import { inboxBadgeText } from '@/pages/np/inbox/inbox-model';
+import { inboxBadgeText, inboxTitle } from '@/pages/np/inbox/inbox-model';
 import { npKeys } from '@/pages/np/constants';
 import type { InboxTopicPayload } from '@/pages/np/types';
 import { useRealtimeTopic } from '@/pages/np/use-realtime';
@@ -25,8 +25,12 @@ import { useRealtimeTopic } from '@/pages/np/use-realtime';
  * navigation tree. It reads `GET /np/inbox/pending-count` and refreshes on the `np:inbox` user topic, the same signal
  * the inbox page listens to; the key sits under `npKeys.inbox`, so either refresh updates both.
  *
- * The icon is always mounted (the sidebar keeps its tree even when closed), so it also rings the chime (NP-108) when
- * the count goes up after the first load, unless the viewer muted it on the inbox page.
+ * The same count prefixes the browser tab title (`(3) NocoProject`) so it shows while the tab is in the background.
+ * The title is static (set once by `service-provider.ts`), and this icon is mounted once for the whole app layout, so
+ * it owns the prefix: it adds it while the count is above zero and removes it on unmount (sign-out, Settings layout).
+ *
+ * For the same reason it also rings the chime (NP-108) when the count goes up after the first load, unless the viewer
+ * muted it on the inbox page.
  */
 export function NpInboxNavIcon({
   className,
@@ -47,6 +51,12 @@ export function NpInboxNavIcon({
   });
   const count = pending.data?.decision ?? 0;
   const text = inboxBadgeText(count);
+  useEffect(() => {
+    document.title = inboxTitle(document.title, text);
+    return () => {
+      document.title = inboxTitle(document.title, null);
+    };
+  }, [text]);
 
   const [chime] = useInboxChimePreference();
   const previousRef = useRef<number | null>(null);
