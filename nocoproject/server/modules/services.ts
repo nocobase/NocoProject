@@ -127,6 +127,10 @@ import {
   type WorkflowService,
 } from './workflow/workflow.service.js';
 import {
+  createChecklistService,
+  type ChecklistService,
+} from './workflow/checklist.js';
+import {
   createIssueQueries,
   type IssueQueries,
 } from './issue/issue.queries.js';
@@ -208,6 +212,8 @@ export interface NpServices {
   // Iteration 4.
   readonly design: Iteration4Services['design'];
   readonly pm: Iteration4Services['pm'];
+  // Phase 2 (NP-77).
+  readonly checklists: ChecklistService;
 }
 
 /** What an alternative approval gateway gets to build itself (tests: the in-memory double). */
@@ -348,6 +354,8 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       workflows,
       activity,
       settings,
+      ids,
+      users,
     }),
     ...createRunModules(
       { tx, ids, users, activity, workflows, secrets },
@@ -366,6 +374,7 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       { tx, users, activity, settings, workflows },
       services,
     ),
+    checklists: createChecklistService({ tx, ids, users, activity }),
   } satisfies NpServices);
 
   return services;

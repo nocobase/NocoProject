@@ -7,6 +7,7 @@
  * project's template, or the default template for issues without a project.
  */
 import type {
+  StageAction,
   StatusCatalogEntry,
   StatusCategory,
   StatusTransition,
@@ -14,6 +15,7 @@ import type {
   TransitionApproval,
   Workflow,
   WorkflowDefinition,
+  WorkflowStatusDefinitionV5,
   WorkflowTransitionDefinitionV2,
 } from '../shared/protocol.js';
 
@@ -131,6 +133,30 @@ export interface WorkflowView {
     to: string,
     actor: TransitionActor,
   ): TransitionApproval | null;
+  /** Phase 2 (NP-77): the stage actions of a status (`onEnter`), in definition order; empty when it has none. */
+  stageActions(key: string): readonly StageAction[];
+}
+
+const STAGE_ACTION_TYPES = new Set<string>([
+  'notifyOwner',
+  'runExecutor',
+  'suggestExecutor',
+  'checklist',
+  'requirePrMerged',
+  'automation',
+]);
+
+/** `onEnter` as stored, keeping only entries that look like actions (the definition is validated when written). */
+function stageActionsOf(
+  status: WorkflowStatusDefinitionV5,
+): readonly StageAction[] {
+  if (!Array.isArray(status.onEnter)) return [];
+  return (status.onEnter as readonly unknown[]).filter(
+    (action): action is StageAction =>
+      !!action &&
+      typeof action === 'object' &&
+      STAGE_ACTION_TYPES.has(String((action as { type?: unknown }).type)),
+  );
 }
 
 function matches(pattern: string, key: string): boolean {
@@ -163,6 +189,11 @@ export function compileWorkflow(workflow: Workflow): WorkflowView {
     definition.statuses.map((status) => [status.key, status.category]),
   );
   const keys = Array.from(categories.keys());
+  const actions = new Map(
+    (definition.statuses as readonly WorkflowStatusDefinitionV5[]).map(
+      (status) => [status.key, stageActionsOf(status)],
+    ),
+  );
   const agentTransitions = expandTransitions(definition, keys, 'agent');
   const agentWritable = new Set(agentTransitions.map((item) => item.to));
   const catalog = keys.map((key) => ({
@@ -209,6 +240,7 @@ export function compileWorkflow(workflow: Workflow): WorkflowView {
       }
       return required ? { approvers: Array.from(roles) } : null;
     },
+    stageActions: (key) => actions.get(key) ?? [],
   };
 }
 

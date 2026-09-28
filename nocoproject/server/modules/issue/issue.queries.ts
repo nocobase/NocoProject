@@ -18,7 +18,7 @@ import type {
   AgentContextResponseV1,
   BoardGroupV3Server,
   CommentPage,
-  IssueDetailV4Paged,
+  IssueDetailV5Paged,
   IssueForAgentV4,
   IssueListItemV2,
   IssueListPageV3,
@@ -77,7 +77,7 @@ export interface IssueQueries {
     filter: IssueListFilter,
     options?: BoardOptions,
   ): Promise<{ groups: BoardGroupV3Server[] }>;
-  detail(actor: Actor, idOrKey: string): Promise<IssueDetailV4Paged>;
+  detail(actor: Actor, idOrKey: string): Promise<IssueDetailV5Paged>;
   /** `GET /np/issues/:id/activities`. */
   activities(
     actor: Actor,
@@ -207,7 +207,7 @@ async function forAgent(
 async function issueQueryDetail(
   deps: IssueQueryDeps,
   ...[actor, idOrKey]: Parameters<IssueQueries['detail']>
-): Promise<IssueDetailV4Paged> {
+): Promise<IssueDetailV5Paged> {
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
   const issue = await requireVisibleIssue(conn, viewer, idOrKey);

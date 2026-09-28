@@ -3,7 +3,8 @@
  * `/api/np/{me,members,workflows,projects,labels,issues,inbox,agents,runtimes,runs}` and, from iteration 2,
  * `/api/np/{integrations,approvals,intake,comments,skills,usage,settings}` and, from iteration 3,
  * `/api/np/{knowledge,metrics}` (plus the delivery, activity and comment pages under `/api/np/issues/:id`) and, from
- * iteration 4, `/api/np/pm` (plus the design decisions under `/api/np/issues/:id/design`).
+ * iteration 4, `/api/np/pm` (plus the design decisions under `/api/np/issues/:id/design`); Phase 2 the checklists
+ * under `/api/np/issues/:id/checklists`.
  *
  * Every prefix is mounted behind its own guard: a run token is refused with 403 before the session lookup,
  * `auth.required()` answers 401 for anonymous callers, and `ensureMember` bootstraps the caller's members row. The
@@ -39,6 +40,7 @@ import { createSkillRoutes } from '../modules/skill/skill.routes.js';
 import { createSettingsRoutes } from '../modules/system/settings.routes.js';
 import { createUsageRoutes } from '../modules/usage/usage.routes.js';
 import { createDesignRoutes } from '../modules/issue/design.routes.js';
+import { createChecklistRoutes } from '../modules/workflow/checklist.routes.js';
 import { createIssueRoutes } from '../modules/issue/issue.routes.js';
 import { createPmRoutes } from '../modules/pm/pm.routes.js';
 import { createLabelRoutes } from '../modules/label/label.routes.js';
@@ -69,6 +71,7 @@ import {
   npUsageServiceToken,
   npWorkspaceSettingsServiceToken,
   npDeliveryServiceToken,
+  npChecklistServiceToken,
   npDesignServiceToken,
   npKnowledgeServiceToken,
   npPmServiceToken,
@@ -154,6 +157,7 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
           container.resolve(npPullRequestServiceToken),
         ),
         createDesignRoutes(container.resolve(npDesignServiceToken)),
+        createChecklistRoutes(container.resolve(npChecklistServiceToken)),
       ),
     );
     router.route('/np/inbox', guarded(guard, createInboxRoutes(inbox)));

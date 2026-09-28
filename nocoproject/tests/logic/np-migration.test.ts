@@ -2,7 +2,7 @@
 /**
  * The NocoProject migrations and seeds against a real PostgreSQL: up, indexes (including the partial pending-run
  * index), seed idempotency (iteration 4: the design-first statuses on both templates), down, and up again; each
- * iteration's batch rolls back alone.
+ * iteration's batch rolls back alone (the Phase 2 batches: `np-migration-phase2.test.ts`).
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { createMigrator, createSeeder } from '@nocobase/db';
@@ -12,6 +12,7 @@ import {
   NP_PHASE1_ITER2_TABLES,
   NP_PHASE1_ITER3_TABLES,
   NP_PHASE1_TABLES,
+  NP_PHASE2_WORKFLOW_TABLES,
   NP_TABLES,
   SEEDS_DIR,
   openNpTestDatabase,
@@ -381,6 +382,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026100200001_np_phase2_stage_actions',
       '2026100100001_np_phase1_iter4',
       '2026093000001_np_phase1_iter3',
       '2026092900001_np_phase1_iter2',
@@ -393,6 +395,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
       ...PHASE1_ALL_TABLES,
       ...NP_PHASE1_ITER2_TABLES,
       ...NP_PHASE1_ITER3_TABLES,
+      ...NP_PHASE2_WORKFLOW_TABLES,
     ])
       expect(remaining).not.toContain(table);
     const defs = await indexes(db!);
@@ -435,7 +438,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back the iteration 4 batch alone', async () => {
     await migrator().rollback();
     await migrator().upTo('2026093000001_np_phase1_iter3');
-    const applied = await migrator().latest();
+    const applied = await migrator().upTo('2026100100001_np_phase1_iter4');
     expect(applied.executed).toEqual(['2026100100001_np_phase1_iter4']);
     expect(await columns(db!, 'issues')).toContain('process');
     const rolledBack = await migrator().rollback();
@@ -460,7 +463,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     // Start from an empty schema whatever batches the previous cases left.
     while ((await migrator().rollback()).rolledBack.length > 0);
     await migrator().upTo('2026092800001_np_phase1_iter1');
-    const applied = await migrator().latest();
+    const applied = await migrator().upTo('2026100100001_np_phase1_iter4');
     expect(applied.executed).toEqual([
       '2026092900001_np_phase1_iter2',
       '2026093000001_np_phase1_iter3',
