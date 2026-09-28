@@ -17,7 +17,7 @@ import {
 import type { IdSource } from '../shared/ids.js';
 import type {
   ClaimedPullRequest,
-  IssuePullRequestView,
+  IssuePullRequestViewV4,
   IssueV1,
   PullRequest,
   PullRequestCiState,
@@ -93,12 +93,18 @@ export async function findPullRequestById(
 function snapshotValues(
   snapshot: PullRequestSnapshot,
   connectionId: string | null,
+  kept: PullRequest | null,
 ) {
+  // A REST read that sees the PR leave `open` leaves the state to the webhook, whose open → merged transition is
+  // what moves the issues (merge-flow.ts); writing it here first would make the webhook see no transition.
+  const state = kept
+    ? { state: kept.state, mergedAt: kept.mergedAt, closedAt: kept.closedAt }
+    : snapshot;
   return {
     connectionId,
     url: snapshot.url,
     title: snapshot.title,
-    state: snapshot.state,
+    state: state.state,
     draft: snapshot.draft,
     headRef: snapshot.headRef,
     baseRef: snapshot.baseRef,
@@ -108,26 +114,46 @@ function snapshotValues(
     deletions: snapshot.deletions,
     changedFiles: snapshot.changedFiles,
     mergeableState: snapshot.mergeableState,
-    mergedAt: toDate(snapshot.mergedAt),
-    closedAt: toDate(snapshot.closedAt),
+    mergedAt: toDate(state.mergedAt),
+    closedAt: toDate(state.closedAt),
     ...(snapshot.ciState !== undefined ? { ciState: snapshot.ciState } : {}),
+    ...(snapshot.ciRunUrl !== undefined ? { ciRunUrl: snapshot.ciRunUrl } : {}),
+    ...(snapshot.screenshotsUrl !== undefined
+      ? { screenshotsUrl: snapshot.screenshotsUrl }
+      : {}),
     snapshotAt: now(),
   };
 }
 
-/** Inserts or refreshes a pull request from a full snapshot; returns it with the state it had before. */
+/**
+ * Inserts or refreshes a pull request from a full snapshot; returns it with the state it had before. `keepOpenState`
+ * (REST refreshes): a stored open PR stays open even when GitHub says merged or closed — the webhook moves it.
+ */
 export async function upsertPullRequest(
   tx: Tx,
   ids: IdSource,
   snapshot: PullRequestSnapshot,
   connectionId: string | null,
+  options: { readonly keepOpenState?: boolean } = {},
 ): Promise<{ pr: PullRequest; previous: PullRequest | null }> {
   const previous = await findPullRequest(
     tx.conn,
     snapshot.repo,
     snapshot.number,
   );
-  const values = snapshotValues(snapshot, connectionId);
+  const kept =
+    options.keepOpenState &&
+    previous?.state === 'open' &&
+    snapshot.state !== 'open'
+      ? previous
+      : null;
+  const headMoved =
+    !!previous && !!snapshot.headSha && previous.headSha !== snapshot.headSha;
+  const values = {
+    // The stored run links belong to the old head.
+    ...(headMoved ? { ciRunUrl: null, screenshotsUrl: null } : {}),
+    ...snapshotValues(snapshot, connectionId, kept),
+  };
   if (previous) {
     await tx.conn.query
       .updateTable('pullRequests')
@@ -154,7 +180,7 @@ export async function upsertPullRequest(
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
       // A concurrent delivery inserted it first: refresh that row instead.
-      return upsertPullRequest(tx, ids, snapshot, connectionId);
+      return upsertPullRequest(tx, ids, snapshot, connectionId, options);
     }
   }
   return {
@@ -281,12 +307,16 @@ export async function linksOfPullRequest(
   }));
 }
 
-/** Pull requests linked to an issue with who linked them, oldest link first. */
+/**
+ * Pull requests linked to an issue with who linked them, oldest link first. `viewerCanMerge` is the caller's merge
+ * permission on the issue (`canMergePullRequest`); false for agent and system reads.
+ */
 export async function pullRequestsForIssue(
   conn: Conn,
   users: UserDirectory,
   issueId: string,
-): Promise<IssuePullRequestView[]> {
+  viewerCanMerge = false,
+): Promise<IssuePullRequestViewV4[]> {
   const links = await conn.query
     .selectFrom('issuePullRequests')
     .selectAll()
@@ -302,7 +332,14 @@ export async function pullRequestsForIssue(
     .where('id', 'in', prIds)
     .execute();
   const byId = new Map(
-    prs.map((row) => [str(row.id) ?? '', mapPullRequest(row)]),
+    prs.map((row) => [
+      str(row.id) ?? '',
+      {
+        ...mapPullRequest(row),
+        ciRunUrl: str(row.ciRunUrl),
+        screenshotsUrl: str(row.screenshotsUrl),
+      },
+    ]),
   );
   const userNames = await users.names(
     conn,
@@ -316,7 +353,7 @@ export async function pullRequestsForIssue(
       .filter((row) => row.linkedByType === 'agent')
       .map((row) => str(row.linkedById)),
   );
-  const result: IssuePullRequestView[] = [];
+  const result: IssuePullRequestViewV4[] = [];
   for (const link of links) {
     const pr = byId.get(str(link.pullRequestId) ?? '');
     if (!pr) continue;
@@ -335,6 +372,7 @@ export async function pullRequestsForIssue(
       },
       autoCompleteDisabled: bool(link.autoCompleteDisabled),
       linkedAt: iso(link.createdAt),
+      viewerCanMerge,
     });
   }
   return result;

@@ -36,6 +36,7 @@ import type { AgentService } from '../modules/agent/agent.service.js';
 import type { AgentEnvService } from '../modules/agent/env.service.js';
 import type { ReactionService } from '../modules/collaboration/reaction.service.js';
 import type { GitConnectionService } from '../modules/git/connection.service.js';
+import type { PullRequestMergeService } from '../modules/git/merge.service.js';
 import type { PullRequestService } from '../modules/git/pull-request.service.js';
 import type { WebhookService } from '../modules/git/webhook.service.js';
 import {
@@ -167,6 +168,10 @@ export const npDesignServiceToken: ServiceToken<DesignService> =
   createServiceToken<DesignService>('nocoproject/design-service');
 export const npPmServiceToken: ServiceToken<PmService> =
   createServiceToken<PmService>('nocoproject/pm-service');
+export const npPullRequestMergeServiceToken: ServiceToken<PullRequestMergeService> =
+  createServiceToken<PullRequestMergeService>(
+    'nocoproject/pull-request-merge-service',
+  );
 
 /** Binds a module token to the member of `NpServices` it exposes. */
 function bindModule<K extends keyof NpServices>(
@@ -241,6 +246,7 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npDeliveryServiceToken, 'deliveries');
     bindModule(container, npDesignServiceToken, 'design');
     bindModule(container, npPmServiceToken, 'pm');
+    bindModule(container, npPullRequestMergeServiceToken, 'pullRequestMerges');
   }
 
   /** The key for stored secrets (see `shared/crypto.ts`); warns once when it is derived from `auth.secret`. */

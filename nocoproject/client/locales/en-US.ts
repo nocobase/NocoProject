@@ -356,6 +356,7 @@ const enUS = {
         designChangesRequested: 'sent the proposal back',
         designSkipped: 'skipped the design step',
         retrospectiveDone: 'wrote the retrospective',
+        prMergeRequested: 'requested a squash merge of',
         updated: 'updated the issue',
       },
       run: {

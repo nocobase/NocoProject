@@ -242,6 +242,11 @@ export interface InboxDecisionAction {
   readonly opensIssue?: boolean;
   /** A GET action whose `path` is another site (the PR), opened in a new tab. */
   readonly external?: boolean;
+  /** NP-85: open this confirm dialog instead of posting (`prMerge`: the merge dialog for `pullRequestId`). */
+  readonly confirm?: 'prMerge';
+  readonly pullRequestId?: string;
+  /** NP-85: shown greyed out with this reason (a merge blocker). */
+  readonly disabledReason?: string;
 }
 
 export type InboxItemTypePhase1Iter3 =

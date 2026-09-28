@@ -28,6 +28,7 @@ import type {
 } from '../shared/protocol.js';
 import { issuesByIds } from '../issue/issue.records.js';
 import { inboxActions } from './inbox.actions.js';
+import { mergeActionSources } from './inbox.pr-merge.js';
 
 export interface NewInboxItem {
   readonly userId: string;
@@ -286,6 +287,14 @@ export async function mapInboxItems(
     conn,
     rows.map((row) => str(row.issueId)),
   );
+  const merges = await mergeActionSources(
+    conn,
+    rows.map((row) => ({
+      ...row,
+      payload: fromJson<Record<string, unknown>>(row.payload),
+    })),
+    issues,
+  );
   return rows.map((row) => {
     const issueId = str(row.issueId);
     const type = (str(row.type) ?? 'commented') as InboxItemTypeV4;
@@ -301,6 +310,7 @@ export async function mapInboxItems(
       issueIdentifier,
       payload: stored,
       resolvedAt,
+      merge: merges.get(str(row.id) ?? '') ?? null,
     });
     return {
       id: str(row.id) ?? '',

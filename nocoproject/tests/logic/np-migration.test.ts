@@ -381,6 +381,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026100200001_np_pr_merge',
       '2026100100001_np_phase1_iter4',
       '2026093000001_np_phase1_iter3',
       '2026092900001_np_phase1_iter2',
@@ -435,7 +436,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back the iteration 4 batch alone', async () => {
     await migrator().rollback();
     await migrator().upTo('2026093000001_np_phase1_iter3');
-    const applied = await migrator().latest();
+    const applied = await migrator().upTo('2026100100001_np_phase1_iter4');
     expect(applied.executed).toEqual(['2026100100001_np_phase1_iter4']);
     expect(await columns(db!, 'issues')).toContain('process');
     const rolledBack = await migrator().rollback();
@@ -456,6 +457,25 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     await migrator().latest();
   });
 
+  it('adds and drops the pull request CI link columns (NP-85)', async () => {
+    await migrator().rollback();
+    await migrator().upTo('2026100100001_np_phase1_iter4');
+    expect(await columns(db!, 'pull_requests')).not.toContain('ci_run_url');
+    const applied = await migrator().latest();
+    expect(applied.executed).toEqual(['2026100200001_np_pr_merge']);
+    const added = await columns(db!, 'pull_requests');
+    expect(added).toEqual(
+      expect.arrayContaining(['ci_run_url', 'screenshots_url']),
+    );
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual(['2026100200001_np_pr_merge']);
+    const remaining = await columns(db!, 'pull_requests');
+    expect(remaining).not.toContain('ci_run_url');
+    expect(remaining).not.toContain('screenshots_url');
+    expect(remaining).toContain('mergeable_state');
+    await migrator().latest();
+  });
+
   it('rolls back an iteration 2 + 3 + 4 batch and keeps iteration 1', async () => {
     // Start from an empty schema whatever batches the previous cases left.
     while ((await migrator().rollback()).rolledBack.length > 0);
@@ -465,10 +485,12 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
       '2026092900001_np_phase1_iter2',
       '2026093000001_np_phase1_iter3',
       '2026100100001_np_phase1_iter4',
+      '2026100200001_np_pr_merge',
     ]);
-    // Applied together, they are one batch: rollback reverts iteration 4 first, then 3, then 2.
+    // Applied together, they are one batch: rollback reverts the latest first, then 4, 3 and 2.
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026100200001_np_pr_merge',
       '2026100100001_np_phase1_iter4',
       '2026093000001_np_phase1_iter3',
       '2026092900001_np_phase1_iter2',

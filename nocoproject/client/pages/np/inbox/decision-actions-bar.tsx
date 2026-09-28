@@ -8,8 +8,17 @@ import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
+import {
+  MergePullRequestDialog,
+  type MergeTarget,
+} from '../issues/detail/merge-pull-request-dialog.js';
 import type { InboxDecisionAction } from '../types-iter3.js';
-import { actionVariant, externalUrl, inAppPath } from './decision-actions.js';
+import {
+  actionVariant,
+  externalUrl,
+  inAppPath,
+  mergeTargetOf,
+} from './decision-actions.js';
 import { useActionLabel } from './use-action-label.js';
 
 /**
@@ -17,7 +26,8 @@ import { useActionLabel } from './use-action-label.js';
  * (docs/design/ui-design.md §7). The hierarchy is fixed: the primary action is the one filled button and comes
  * first, the other requests are outlined, a rejection is red, and navigation (open the issue, reassign) is a plain
  * text button. An action that `needsComment` opens an inline text field first (⌘Enter sends); an external link
- * (`openPr`) opens a new tab. `pendingKey` is the action in flight.
+ * (`openPr`) opens a new tab. `pendingKey` is the action in flight. NP-85: `confirm: 'prMerge'` opens the merge
+ * dialog, which checks GitHub and merges itself; `disabledReason` greys the action out and says why.
  */
 export function DecisionActionsBar({
   actions,
@@ -44,6 +54,7 @@ export function DecisionActionsBar({
     null,
   );
   const [comment, setComment] = useState('');
+  const [merging, setMerging] = useState<MergeTarget | null>(null);
   if (actions.length === 0) return null;
 
   function send(): void {
@@ -116,28 +127,48 @@ export function DecisionActionsBar({
       {ordered.map((action) => {
         const external = externalUrl(action);
         const pending = pendingKey === action.key;
+        const mergeTarget = mergeTargetOf(action);
+        const reason = action.disabledReason
+          ? t(`np.prMerge.blocker.${action.disabledReason}`, {
+              defaultValue: action.disabledReason,
+            })
+          : null;
         return (
-          <Button
-            key={action.key}
-            size='sm'
-            variant={
-              isNavigation(action) && action.kind !== 'primary'
-                ? 'ghost'
-                : actionVariant(action.kind)
-            }
-            disabled={disabled || pendingKey !== null}
-            data-action={action.key}
-            onClick={() => {
-              if (action.needsComment) setCommenting(action);
-              else onRun(action, '');
-            }}
-          >
-            {pending ? <Spinner data-icon='inline-start' /> : null}
-            {label(action)}
-            {external ? <ExternalLinkIcon data-icon='inline-end' /> : null}
-          </Button>
+          <span key={action.key} className='contents'>
+            <Button
+              size='sm'
+              variant={
+                isNavigation(action) && action.kind !== 'primary'
+                  ? 'ghost'
+                  : actionVariant(action.kind)
+              }
+              disabled={disabled || pendingKey !== null || reason !== null}
+              data-action={action.key}
+              onClick={() => {
+                if (mergeTarget) setMerging(mergeTarget);
+                else if (action.needsComment) setCommenting(action);
+                else onRun(action, '');
+              }}
+            >
+              {pending ? <Spinner data-icon='inline-start' /> : null}
+              {label(action)}
+              {external ? <ExternalLinkIcon data-icon='inline-end' /> : null}
+            </Button>
+            {reason ? (
+              <span
+                className='text-xs text-muted-foreground'
+                data-testid='np-action-disabled-reason'
+              >
+                {reason}
+              </span>
+            ) : null}
+          </span>
         );
       })}
+      <MergePullRequestDialog
+        target={merging}
+        onClose={() => setMerging(null)}
+      />
     </div>
   );
 }

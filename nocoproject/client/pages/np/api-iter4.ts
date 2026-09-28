@@ -13,10 +13,16 @@ import type {
   AgentKind,
   DefaultProcess,
   IssueProcess,
+  MergeBlocker,
+  MergePreflight,
   PmConversation,
   ReasoningEffort,
 } from './types-iter4.js';
-import { PROCESS_CHOICES, REASONING_EFFORTS } from './types-iter4.js';
+import {
+  MERGE_BLOCKERS,
+  PROCESS_CHOICES,
+  REASONING_EFFORTS,
+} from './types-iter4.js';
 
 /**
  * Iteration 4 endpoints and the readers that keep the pages working while the server's protocol document settles
@@ -193,4 +199,45 @@ export async function ensurePmConversation(
     if (status !== 404) throw error;
   }
   return openPmConversation(api);
+}
+
+// ---------- NP-85: merging a pull request ----------
+
+const idPart = (value: string) => encodeURIComponent(value);
+
+/** What merging would do, read fresh from GitHub (`blocker` null = mergeable). */
+export async function fetchMergePreflight(
+  api: ApiClient,
+  issueId: string,
+  pullRequestId: string,
+): Promise<MergePreflight> {
+  return unwrap(
+    await api.request<unknown>({
+      path: `np/issues/${idPart(issueId)}/pull-requests/${idPart(pullRequestId)}/merge`,
+    }),
+  );
+}
+
+/** Squash-merges the head the member confirmed; the issue moves when GitHub's webhook arrives. */
+export async function mergePullRequest(
+  api: ApiClient,
+  issueId: string,
+  pullRequestId: string,
+  expectedHeadSha: string,
+): Promise<{ merged: true; sha: string }> {
+  return unwrap(
+    await api.request<unknown, { expectedHeadSha: string }>({
+      path: `np/issues/${idPart(issueId)}/pull-requests/${idPart(pullRequestId)}/merge`,
+      method: 'POST',
+      json: { expectedHeadSha },
+    }),
+  );
+}
+
+/** The `blocker` of a `PR_NOT_MERGEABLE` error body (`details.blocker`), if any. */
+export function mergeBlockerOfError(payload: unknown): MergeBlocker | null {
+  const details = (payload as { details?: { blocker?: unknown } } | null)
+    ?.details;
+  const blocker = details?.blocker;
+  return MERGE_BLOCKERS.find((item) => item === blocker) ?? null;
 }

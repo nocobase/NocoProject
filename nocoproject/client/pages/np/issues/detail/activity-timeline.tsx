@@ -104,6 +104,9 @@ export function ActivityRow({
       {label === 'processSelected' ? (
         <SelectedProcess details={activity.details} />
       ) : null}
+      {label === 'prMergeRequested' ? (
+        <MergedPullRequest details={activity.details} />
+      ) : null}
       <time
         dateTime={activity.createdAt}
         title={format.dateTime(activity.createdAt)}
@@ -112,6 +115,22 @@ export function ActivityRow({
         {format.relative(activity.createdAt)}
       </time>
     </div>
+  );
+}
+
+/** `repo#12` of a merge request (NP-85). */
+function MergedPullRequest({
+  details,
+}: {
+  readonly details: IssueActivity['details'];
+}): ReactElement | null {
+  const value = (details ?? {}) as { repo?: unknown; number?: unknown };
+  if (typeof value.repo !== 'string' || typeof value.number !== 'number')
+    return null;
+  return (
+    <span className='font-mono text-xs text-foreground'>
+      {value.repo}#{value.number}
+    </span>
   );
 }
 

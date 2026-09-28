@@ -94,6 +94,8 @@ beforeEach(async () => {
     })),
     getPullRequest: vi.fn(async () => prPayload()),
     getCiState: vi.fn(async () => 'success' as const),
+    mergePullRequest: vi.fn(async () => ({ sha: 'merged' })),
+    getLatestCiRun: vi.fn(async () => null),
   };
   services = buildServices(db.database, { github }).services;
   await setRole(db, ALICE, 'owner');

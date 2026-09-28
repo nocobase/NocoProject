@@ -208,6 +208,7 @@ export interface NpServices {
   // Iteration 4.
   readonly design: Iteration4Services['design'];
   readonly pm: Iteration4Services['pm'];
+  readonly pullRequestMerges: Iteration4Services['pullRequestMerges'];
 }
 
 /** What an alternative approval gateway gets to build itself (tests: the in-memory double). */
@@ -363,7 +364,7 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       services,
     ),
     ...createIteration4Services(
-      { tx, users, activity, settings, workflows },
+      { tx, ids, secrets, github, users, activity, settings, workflows },
       services,
     ),
   } satisfies NpServices);
@@ -414,7 +415,7 @@ function createIteration2Services(
       secrets,
       github,
     }),
-    webhooks: createWebhookService({ ...flow, tx, ids, secrets }),
+    webhooks: createWebhookService({ ...flow, tx, ids, secrets, github }),
     intake: createIntakeService({
       tx,
       ids,

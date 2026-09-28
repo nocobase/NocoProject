@@ -9,7 +9,7 @@
  * | proposal_pending   | acceptAll (on the parent issue), open                                      |
  * | approval_pending   | approve, reject (comment), open                                            |
  * | batch_done         | open                                                                       |
- * | pr_review          | openPr (external), open                                                    |
+ * | pr_review          | merge (confirm dialog; for whoever may merge, NP-85), openPr (external), open |
  * | knowledge_proposal | accept, reject (optional comment), openDoc (when the document exists), open |
  * | design_review      | approve (optional comment), requestChanges (comment), open (iteration 4)   |
  * | anything else      | open (when the item names an issue)                                        |
@@ -17,7 +17,20 @@
  * A resolved item keeps only its navigation actions (GET). POST paths are relative to `/api`; GET paths are in-app
  * routes, or external URLs when `external` is set.
  */
-import type { InboxAction, InboxItemTypeV4 } from '../shared/protocol.js';
+import type {
+  InboxActionV4,
+  InboxItemTypeV4,
+  PullRequestMergeBlocker,
+} from '../shared/protocol.js';
+
+type InboxAction = InboxActionV4;
+
+/** A `pr_review` card whose recipient may merge (`inbox.pr-merge.ts`). */
+export interface MergeActionSource {
+  readonly pullRequestId: string;
+  /** From the stored snapshot; null = looks mergeable */
+  readonly disabledReason: PullRequestMergeBlocker | null;
+}
 
 export interface ActionSource {
   readonly type: InboxItemTypeV4;
@@ -25,6 +38,7 @@ export interface ActionSource {
   readonly issueIdentifier: string | null;
   readonly payload: Readonly<Record<string, unknown>> | null;
   readonly resolvedAt: string | null;
+  readonly merge?: MergeActionSource | null;
 }
 
 const label = (key: string) => `np.inboxActions.${key}`;
@@ -112,6 +126,24 @@ function typeActions(source: ActionSource, issueId: string): InboxAction[] {
           { needsComment: true, commentField: 'comment' },
         ),
       ];
+    case 'pr_review': {
+      const merge = source.merge;
+      if (!merge) return [];
+      return [
+        post(
+          'merge',
+          'primary',
+          `${issuePath}/pull-requests/${encodeURIComponent(merge.pullRequestId)}/merge`,
+          {
+            confirm: 'prMerge',
+            pullRequestId: merge.pullRequestId,
+            ...(merge.disabledReason
+              ? { disabledReason: merge.disabledReason }
+              : {}),
+          },
+        ),
+      ];
+    }
     default:
       return [];
   }
@@ -125,7 +157,8 @@ function navigationActions(source: ActionSource): InboxAction[] {
     actions.push({
       key: 'openPr',
       label: label('openPr'),
-      kind: 'primary',
+      // The merge action, when offered, is the one primary button.
+      kind: source.merge && !source.resolvedAt ? 'secondary' : 'primary',
       method: 'GET',
       path: url,
       external: true,

@@ -64,6 +64,7 @@ import {
   npGitConnectionServiceToken,
   npIntakeServiceToken,
   npPullRequestServiceToken,
+  npPullRequestMergeServiceToken,
   npReactionServiceToken,
   npSkillServiceToken,
   npUsageServiceToken,
@@ -152,6 +153,7 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
         createSubscriptionRoutes(inbox),
         createIssuePullRequestRoutes(
           container.resolve(npPullRequestServiceToken),
+          container.resolve(npPullRequestMergeServiceToken),
         ),
         createDesignRoutes(container.resolve(npDesignServiceToken)),
       ),

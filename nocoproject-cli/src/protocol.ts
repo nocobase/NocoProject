@@ -332,6 +332,8 @@ export type CommentKind = 'comment' | 'system';
 export interface ApiErrorBody {
   readonly code: string;
   readonly message: string;
+  /** Machine-readable extras for some codes (e.g. `PR_NOT_MERGEABLE` → `{ blocker }`) */
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface MeResponse {

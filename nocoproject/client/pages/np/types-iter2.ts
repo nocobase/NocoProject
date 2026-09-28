@@ -76,6 +76,11 @@ export interface IssuePullRequestView extends PullRequest {
   readonly linkedByName?: string | null;
   readonly autoCompleteDisabled: boolean;
   readonly linkedAt?: string | null;
+  /** NP-85: whether the viewer may merge (issue owner, project lead, owner/admin); absent on older servers = no. */
+  readonly viewerCanMerge?: boolean;
+  /** NP-85: the head commit's latest Actions run and its `screenshots` artifact. */
+  readonly ciRunUrl?: string | null;
+  readonly screenshotsUrl?: string | null;
 }
 
 /** What a PR card shows as its state badge; a draft is only a draft while open. */

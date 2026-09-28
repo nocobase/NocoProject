@@ -9,9 +9,14 @@
  */
 import type { ActivityRecorder } from '../shared/activity.js';
 import { SYSTEM_ACTOR } from '../shared/activity.js';
-import type { Tx } from '../shared/db.js';
+import type { Conn, Tx } from '../shared/db.js';
 import { unique } from '../shared/db.js';
-import type { PullRequest } from '../shared/protocol.js';
+import type {
+  IssueV1,
+  PullRequest,
+  PullRequestMergeKeepReason,
+  PullRequestMergeOutcome,
+} from '../shared/protocol.js';
 import type { SettingsService } from '../system/settings.service.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 import type { IssueService } from '../issue/issue.service.js';
@@ -25,8 +30,15 @@ export interface GitFlowDeps {
   readonly issues: () => IssueService;
 }
 
-/** Whether every non-disabled PR linked to the issue is merged (false when there is none). */
-async function allLinkedMerged(tx: Tx, issueId: string): Promise<boolean> {
+/**
+ * Whether every non-disabled PR linked to the issue is merged (false when there is none). `assumeMerged`: count that
+ * PR as merged (what merging it would do).
+ */
+async function allLinkedMerged(
+  tx: Pick<Tx, 'conn'>,
+  issueId: string,
+  assumeMerged: string | null = null,
+): Promise<boolean> {
   const links = await tx.conn.query
     .selectFrom('issuePullRequests')
     .select(['pullRequestId', 'autoCompleteDisabled'])
@@ -43,8 +55,40 @@ async function allLinkedMerged(tx: Tx, issueId: string): Promise<boolean> {
     .execute();
   return (
     rows.length === unique(counted).length &&
-    rows.map(mapPullRequest).every((pr) => pr.state === 'merged')
+    rows
+      .map(mapPullRequest)
+      .every((pr) => pr.id === assumeMerged || pr.state === 'merged')
   );
+}
+
+/** What merging `pullRequestId` would do to the issue (the confirm dialog), by the same rule as `onPullRequestMerged`. */
+export async function mergeOutcome(
+  deps: Pick<GitFlowDeps, 'settings' | 'workflows'>,
+  conn: Conn,
+  issue: IssueV1,
+  pullRequestId: string,
+  autoCompleteDisabled: boolean,
+): Promise<PullRequestMergeOutcome> {
+  const keep = (keepReason: PullRequestMergeKeepReason) => ({
+    statusKey: null,
+    statusName: null,
+    keepReason,
+  });
+  const target = (await deps.settings.read(conn)).prMergedStatus;
+  const view = await deps.workflows.forIssue(conn, issue);
+  if (view.isTerminal(issue.statusKey)) return keep('terminal');
+  if (target === 'none') return keep('setting');
+  if (autoCompleteDisabled) return keep('optedOut');
+  if (!(await allLinkedMerged({ conn }, issue.id, pullRequestId)))
+    return keep('otherPrs');
+  const status = view.workflow.definition.statuses.find(
+    (item) => item.key === target,
+  );
+  return {
+    statusKey: target,
+    statusName: status?.name ?? target,
+    keepReason: null,
+  };
 }
 
 export async function onPullRequestMerged(
