@@ -18,7 +18,13 @@ import { cn } from '@/lib/utils';
 import { fetchMembers } from '../../api-collab.js';
 import { createComment } from '../../api.js';
 import { npKeys } from '../../constants.js';
-import type { AgentListItem, ExecutorRef, IssueComment } from '../../types.js';
+import { withComment } from '../../detail-normalize.js';
+import type {
+  AgentListItem,
+  ExecutorRef,
+  IssueComment,
+  IssueDetail,
+} from '../../types.js';
 import { computeTriggerPreview } from '../trigger-preview.js';
 import { useMentionCandidates } from './mention-candidates.js';
 
@@ -85,13 +91,17 @@ export function CommentComposer({
     if (!content.trim() || pending) return;
     setPending(true);
     try {
-      await createComment(api, issueId, {
+      const { comment } = await createComment(api, issueId, {
         content: text,
         parentId: replyTo?.id,
       });
       setContent('');
       editorRef.current?.clear();
       onCancelReply();
+      // Shown at once from the response; the refetch then brings the run it triggered.
+      queryClient.setQueryData<IssueDetail>(npKeys.issue(issueId), (detail) =>
+        detail ? withComment(detail, comment) : detail,
+      );
       void queryClient.invalidateQueries({ queryKey: npKeys.issue(issueId) });
       void queryClient.invalidateQueries({ queryKey: npKeys.issues });
     } catch (error: unknown) {

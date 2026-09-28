@@ -11,10 +11,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NpRichTextHandle } from '../../client/components/np-rich-text-editor.js';
 import locales from '../../client/locales/index.js';
 import { CommentComposer } from '../../client/pages/np/issues/detail/comment-composer.js';
+import { npKeys } from '../../client/pages/np/constants.js';
+import { normalizeIssueDetail } from '../../client/pages/np/detail-normalize.js';
 import type {
   AgentListItem,
   ExecutorRef,
   IssueComment,
+  IssueDetail,
 } from '../../client/pages/np/types.js';
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
@@ -66,9 +69,11 @@ function routeRequests(
 async function renderComposer({
   executor = { type: 'none', id: null },
   replyTo = null,
+  queryClient = new QueryClient(),
 }: {
   readonly executor?: ExecutorRef;
   readonly replyTo?: IssueComment | null;
+  readonly queryClient?: QueryClient;
 } = {}) {
   const runtime = new I18nRuntime({
     defaultLocale: 'en-US',
@@ -77,7 +82,6 @@ async function renderComposer({
   });
   runtime.registerApplicationNamespace('test-app', locales);
   await runtime.init('en-US');
-  const queryClient = new QueryClient();
   const editorRef = createRef<NpRichTextHandle>();
   render(
     <I18nProvider runtime={runtime}>
@@ -226,5 +230,51 @@ describe('comment composer (rich text)', () => {
       expect(posted).toEqual([{ content: 'Thanks', parentId: 'c1' }]),
     );
     await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe(''));
+  });
+
+  it('shows the posted comment in the cached detail before the refetch returns', async () => {
+    const posted = {
+      id: 'c9',
+      authorType: 'user' as const,
+      authorId: '42',
+      content: 'Hello',
+      parentId: null,
+      createdAt: '2026-01-02T00:00:00Z',
+    };
+    routeRequests(() => ({ data: { comment: posted, triggered: [] } }));
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(
+      npKeys.issue('101'),
+      normalizeIssueDetail({
+        issue: { id: '101' } as never,
+        comments: [
+          {
+            id: 'c1',
+            authorType: 'user',
+            authorId: '42',
+            content: 'First',
+            parentId: null,
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    const { textbox } = await renderComposer({ queryClient });
+
+    await user.click(textbox);
+    await user.keyboard('Hello');
+    await user.click(screen.getByRole('button', { name: /Comment/ }));
+
+    await waitFor(() =>
+      expect(
+        queryClient
+          .getQueryData<IssueDetail>(npKeys.issue('101'))
+          ?.threads.map((thread) => thread.root.id),
+      ).toEqual(['c1', 'c9']),
+    );
+    expect(queryClient.getQueryState(npKeys.issue('101'))?.isInvalidated).toBe(
+      true,
+    );
   });
 });
