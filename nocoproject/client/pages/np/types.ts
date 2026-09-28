@@ -103,6 +103,11 @@ export interface Me {
   readonly name: string;
 }
 
+/** `GET /np/me/preferences` (NP-108): the viewer's own preferences, kept with the account. */
+export interface MemberPreferences {
+  readonly inboxChime: boolean;
+}
+
 export interface Project {
   readonly id: string;
   readonly name: string;

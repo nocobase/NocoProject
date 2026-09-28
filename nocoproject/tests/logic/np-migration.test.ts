@@ -386,6 +386,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
+      '2026100600001_np_member_preferences',
       '2026100500001_np_invitations',
       '2026100400002_np_file_intake_batch',
       '2026100400001_np_phase2_workflow_proposals',

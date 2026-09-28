@@ -16,6 +16,7 @@ import type {
   IssueFilters,
   IssueListItem,
   Me,
+  MemberPreferences,
   ProjectListItem,
   RunEventsResponse,
   RunSummary,
@@ -33,6 +34,31 @@ const id = (value: string): string => encodeURIComponent(value);
 
 export async function fetchMe(api: ApiClient): Promise<Me> {
   const { data } = await api.request<{ data: Me }>({ path: 'np/me' });
+  return data;
+}
+
+/** `GET /np/me/preferences` (NP-108). */
+export async function fetchMyPreferences(
+  api: ApiClient,
+  signal?: AbortSignal,
+): Promise<MemberPreferences> {
+  const { data } = await api.request<{ data: MemberPreferences }>({
+    path: 'np/me/preferences',
+    signal,
+  });
+  return data;
+}
+
+/** `PATCH /np/me/preferences` (NP-108): changes only the fields given. */
+export async function updateMyPreferences(
+  api: ApiClient,
+  input: Partial<MemberPreferences>,
+): Promise<MemberPreferences> {
+  const { data } = await api.request<{ data: MemberPreferences }>({
+    path: 'np/me/preferences',
+    method: 'PATCH',
+    json: input,
+  });
   return data;
 }
 

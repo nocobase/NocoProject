@@ -30,7 +30,7 @@ import { useRealtimeTopic } from '@/pages/np/use-realtime';
  * it owns the prefix: it adds it while the count is above zero and removes it on unmount (sign-out, Settings layout).
  *
  * For the same reason it also rings the chime (NP-108) when the count goes up after the first load, unless the viewer
- * muted it on the inbox page.
+ * turned it off under 设置 → 通用 → 我的提醒.
  */
 export function NpInboxNavIcon({
   className,
@@ -58,7 +58,7 @@ export function NpInboxNavIcon({
     };
   }, [text]);
 
-  const [chime] = useInboxChimePreference();
+  const { enabled: chime } = useInboxChimePreference();
   const previousRef = useRef<number | null>(null);
   useEffect(() => {
     armInboxChime();

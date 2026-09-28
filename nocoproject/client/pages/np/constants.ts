@@ -172,6 +172,7 @@ export function isRuntimeOnline(agent: AgentListItem): boolean {
 export const npKeys = {
   all: ['np'] as const,
   me: ['np', 'me'] as const,
+  myPreferences: ['np', 'me', 'preferences'] as const,
   projects: ['np', 'projects'] as const,
   project: (id: string) => ['np', 'projects', id] as const,
   issues: ['np', 'issues'] as const,

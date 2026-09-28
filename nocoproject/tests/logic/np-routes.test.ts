@@ -26,6 +26,7 @@ describe('NocoProject route registration', () => {
 describe('browser API /np/*', () => {
   it.each([
     '/np/me',
+    '/np/me/preferences',
     '/np/projects',
     '/np/issues',
     '/np/issues/NP-1',
@@ -84,6 +85,28 @@ describe('browser API /np/*', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       data: { userId: 'u1', name: 'User u1' },
+    });
+  });
+
+  it('reads and changes the signed-in member’s own preferences (NP-108)', async () => {
+    const { router, doubles } = await build(npApiRoutes);
+    const read = await router.request('/np/me/preferences', {
+      headers: signedIn,
+    });
+    await expect(read.json()).resolves.toEqual({ data: { inboxChime: true } });
+    expect(doubles.members.preferences).toHaveBeenCalledWith('u1');
+
+    const patched = await router.request('/np/me/preferences', {
+      method: 'PATCH',
+      headers: { ...signedIn, 'content-type': 'application/json' },
+      body: JSON.stringify({ inboxChime: false }),
+    });
+    expect(patched.status).toBe(200);
+    await expect(patched.json()).resolves.toEqual({
+      data: { inboxChime: false },
+    });
+    expect(doubles.members.updatePreferences).toHaveBeenCalledWith('u1', {
+      inboxChime: false,
     });
   });
 

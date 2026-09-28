@@ -1022,6 +1022,14 @@ export interface UpdateMemberRequest {
   readonly role: MemberRole;
 }
 
+/** `GET /np/me/preferences`, `PATCH /np/me/preferences` (NP-108): the signed-in member's own preferences. */
+export interface MemberPreferences {
+  /** Chime when the member's pending inbox decisions go up. Defaults to on. */
+  readonly inboxChime: boolean;
+}
+
+export type UpdateMemberPreferencesRequest = Partial<MemberPreferences>;
+
 export interface CreateLabelRequest {
   readonly name: string;
   readonly color?: LabelColor;

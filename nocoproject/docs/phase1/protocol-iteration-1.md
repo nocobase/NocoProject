@@ -11,10 +11,12 @@
 
 ## 2. 成员
 
-| 接口                                 | 成功                                         | 说明                                                                                                                                 |
-| ------------------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /np/members`                    | `Member[]` = `{ userId, name, email, role }` | 列出所有未禁用、未删除的用户；没有 `members` 行的按 `member` 显示（尚未访问过的用户也能被选为负责人）                                |
-| `PATCH /np/members/:userId { role }` | `Member`                                     | 只有 owner/admin；授予或撤销 owner 只有 owner；最后一个 owner 降级 409 `LAST_OWNER`；目标无成员行时创建；非法角色 400 `INVALID_ROLE` |
+| 接口                                       | 成功                                         | 说明                                                                                                                                 |
+| ------------------------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /np/members`                          | `Member[]` = `{ userId, name, email, role }` | 列出所有未禁用、未删除的用户；没有 `members` 行的按 `member` 显示（尚未访问过的用户也能被选为负责人）                                |
+| `PATCH /np/members/:userId { role }`       | `Member`                                     | 只有 owner/admin；授予或撤销 owner 只有 owner；最后一个 owner 降级 409 `LAST_OWNER`；目标无成员行时创建；非法角色 400 `INVALID_ROLE` |
+| `GET /np/me/preferences`                   | `{ inboxChime }`                             | 当前登录成员自己的偏好（NP-108）。`inboxChime`：待决定数增加时浏览器响一声，默认 `true`，存在 `members.inboxChime`，跟着账号走       |
+| `PATCH /np/me/preferences { inboxChime? }` | `{ inboxChime }`                             | 只改自己的、只改给出的字段；任何成员都能改；`inboxChime` 不是布尔值时 400 `INVALID_PREFERENCES`                                      |
 
 设置项 `settings:np-members`（动作 `read`）由 Provider 注册（工作区分区 `nocoproject`，挂在 administration 下）；种子 `2026092800003_np_member_page_grants` 把 `page:np-issues|np-agents|np-runtimes|np-inbox|np-projects` 的 `access` 和 `settings:np-members` 的 `read` 追加到默认权限集 `member`（只追加缺失项，只执行一次，管理员之后可在授权后台修改）。
 

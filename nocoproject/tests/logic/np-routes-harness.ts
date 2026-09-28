@@ -149,6 +149,11 @@ export function createDoubles() {
     ensure: vi.fn(async () => 'member'),
     list: vi.fn(async () => []),
     updateRole: vi.fn(),
+    preferences: vi.fn(async () => ({ inboxChime: true })),
+    updatePreferences: vi.fn(async (_userId: string, input: unknown) => ({
+      inboxChime: true,
+      ...(input as object),
+    })),
   };
   const agentIssues = {
     create: vi.fn(async () => ({ issue: { id: 'i9' }, proposal: null })),

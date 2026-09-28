@@ -279,6 +279,7 @@ describe('settings in the front end (§G)', () => {
         ...members('member'),
         'GET np/settings': { data: { canEdit: false } },
         'GET np/workflows': { data: [] },
+        'GET np/me/preferences': { data: { inboxChime: true } },
       }),
     );
     await renderNpRoutes(configRoutes(), { url: '/config/general' });
@@ -294,7 +295,7 @@ describe('settings in the front end (§G)', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     // Workspace switches are read-only; the viewer's own sound reminder stays editable (NP-108).
     const chime = screen.getByRole('switch', { name: 'Sound reminder' });
-    expect(chime).not.toHaveAttribute('data-disabled');
+    await waitFor(() => expect(chime).not.toHaveAttribute('data-disabled'));
     for (const control of screen.getAllByRole('switch')) {
       if (control !== chime) expect(control).toHaveAttribute('data-disabled');
     }

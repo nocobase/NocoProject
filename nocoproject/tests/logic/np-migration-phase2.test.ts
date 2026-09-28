@@ -4,6 +4,7 @@
  * the new proposal columns, a nullable proposing agent) and down (workflow suggestions removed, NOT NULL again).
  * NP-77 stage 2 workflow proposals: up (template `revision` / `isSystem` with their defaults, the revision and proposal
  * tables and indexes) and down (tables and columns gone). NP-88: the invitations table with its unique token index.
+ * NP-108: the members' `inbox_chime` column, on for existing rows, and gone again on rollback.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { createMigrator } from '@nocobase/db';
@@ -149,6 +150,30 @@ describe.skipIf(!db)('NocoProject Phase 2 migrations (PostgreSQL)', () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual(['2026100500001_np_invitations']);
     expect(await tables()).not.toContain('np_invitations');
+    await migrator().latest();
+  });
+
+  it('adds the inbox chime preference to members and rolls it back alone', async () => {
+    while ((await migrator().rollback()).rolledBack.length > 0);
+    await migrator().upTo('2026100500001_np_invitations');
+    await db!.knex.raw(
+      `INSERT INTO "${db!.schema}".members (id, user_id, role, joined_at, created_at, updated_at)
+       VALUES ('m1', 'u1', 'member', now(), now(), now())`,
+    );
+    const applied = await migrator().upTo(
+      '2026100600001_np_member_preferences',
+    );
+    expect(applied.executed).toEqual(['2026100600001_np_member_preferences']);
+    const rows = await db!.knex.raw(
+      `SELECT inbox_chime FROM "${db!.schema}".members WHERE id = 'm1'`,
+    );
+    expect((rows as { rows: unknown[] }).rows).toEqual([{ inbox_chime: true }]);
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual([
+      '2026100600001_np_member_preferences',
+    ]);
+    expect(await columns(db!, 'members')).not.toContain('inbox_chime');
+    await db!.knex.raw(`DELETE FROM "${db!.schema}".members`);
     await migrator().latest();
   });
 

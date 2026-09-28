@@ -8,7 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { CheckCheckIcon, Volume2Icon, VolumeOffIcon } from 'lucide-react';
+import { CheckCheckIcon } from 'lucide-react';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate, useSearchParams } from 'react-router';
 
@@ -18,12 +18,7 @@ import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 import {
@@ -41,7 +36,6 @@ import {
 } from '../decision/use-decision.js';
 import type { InboxItem, InboxKind, InboxTopicPayload } from '../types.js';
 import { useRealtimeTopic } from '../use-realtime.js';
-import { playInboxChime, useInboxChimePreference } from './inbox-chime.js';
 import { InboxDetail } from './inbox-detail.js';
 import { InboxList } from './inbox-list.js';
 import {
@@ -279,7 +273,6 @@ export default function InboxPage(): ReactElement {
                   />
                 ) : null}
                 <NpShortcuts showTrigger />
-                <InboxChimeToggle />
                 <Button
                   variant='outline'
                   disabled={readAll.isPending || readAllCount === 0}
@@ -350,36 +343,5 @@ export default function InboxPage(): ReactElement {
       </div>
       <Outlet />
     </TooltipProvider>
-  );
-}
-
-/** Mutes or unmutes the inbox chime for this browser; turning it on plays it once so the viewer hears it. */
-function InboxChimeToggle(): ReactElement {
-  const { t } = useTranslation();
-  const [enabled, setEnabled] = useInboxChimePreference();
-  const label = enabled ? t('np.inbox.chime.mute') : t('np.inbox.chime.unmute');
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant='outline'
-            size='icon'
-            className='text-muted-foreground'
-            aria-label={label}
-            aria-pressed={enabled}
-            onClick={() => {
-              setEnabled(!enabled);
-              if (!enabled) playInboxChime({ preview: true });
-            }}
-          />
-        }
-      >
-        {enabled ? <Volume2Icon /> : <VolumeOffIcon />}
-      </TooltipTrigger>
-      <TooltipContent side='bottom'>
-        {enabled ? t('np.inbox.chime.on') : t('np.inbox.chime.off')}
-      </TooltipContent>
-    </Tooltip>
   );
 }

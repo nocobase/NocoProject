@@ -1,64 +1,45 @@
-import { useSyncExternalStore } from 'react';
+import { useApiClient } from '@nocobase/app-client';
+import { useQuery } from '@tanstack/react-query';
+
+import { fetchMyPreferences } from '../api.js';
+import { npKeys } from '../constants.js';
 
 /**
  * The inbox sound reminder (NP-108): a short two-note chime when the number of decisions waiting on the viewer goes
  * up. The sound is synthesised with Web Audio, so there is no asset to ship.
  *
- * Browsers keep audio suspended until the page has had a user gesture; `armInboxChime` resumes the context on the
- * first pointer or key press, and a chime before that is skipped silently. With several tabs open, only one plays:
- * a Web Lock is held for a few seconds by the tab that chimes, the others see it taken and stay quiet.
+ * Whether it plays is the member's own preference, kept with the account (`GET /np/me/preferences`, default on) and
+ * changed under 设置 → 通用 → 我的提醒. Browsers keep audio suspended until the page has had a user gesture;
+ * `armInboxChime` resumes the context on the first pointer or key press, and a chime before that is skipped silently.
+ * With several tabs open, only one plays: a Web Lock is held for a few seconds by the tab that chimes, the others see
+ * it taken and stay quiet.
  */
 
-// Shared by every tab on this origin; `off` mutes the chime, anything else (including nothing) leaves it on.
-const storageKey = 'np:inbox:chime';
-const changeEvent = 'np:inbox-chime-change';
 const lockName = 'np-inbox-chime';
 const lockHoldMs = 3000;
 
-let memoryValue = true;
-let memoryOnly = false;
 let context: AudioContext | null = null;
 let armed = false;
 
-function getSnapshot(): boolean {
-  if (memoryOnly) return memoryValue;
-  try {
-    memoryValue = localStorage.getItem(storageKey) !== 'off';
-  } catch {
-    // Storage may be unavailable; keep the current session's preference.
-  }
-  return memoryValue;
-}
-
-function subscribe(notify: () => void): () => void {
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === storageKey || event.key === null) notify();
+/**
+ * The viewer's inbox chime preference. `enabled` is the server default (on) until the preference has loaded, or when
+ * it cannot be read; `loaded` says whether it came from the server.
+ */
+export function useInboxChimePreference(): {
+  readonly enabled: boolean;
+  readonly loaded: boolean;
+} {
+  const api = useApiClient();
+  const preferences = useQuery({
+    queryKey: npKeys.myPreferences,
+    queryFn: ({ signal }) => fetchMyPreferences(api, signal),
+    retry: false,
+    staleTime: 60_000,
+  });
+  return {
+    enabled: preferences.data?.inboxChime ?? true,
+    loaded: preferences.isSuccess,
   };
-  window.addEventListener('storage', onStorage);
-  window.addEventListener(changeEvent, notify);
-  return () => {
-    window.removeEventListener('storage', onStorage);
-    window.removeEventListener(changeEvent, notify);
-  };
-}
-
-function setEnabled(enabled: boolean): void {
-  memoryValue = enabled;
-  try {
-    localStorage.setItem(storageKey, enabled ? 'on' : 'off');
-  } catch {
-    memoryOnly = true;
-  }
-  window.dispatchEvent(new Event(changeEvent));
-}
-
-/** Whether the inbox chime is on for this browser (default on), and a setter. */
-export function useInboxChimePreference(): readonly [
-  boolean,
-  (enabled: boolean) => void,
-] {
-  const enabled = useSyncExternalStore(subscribe, getSnapshot, () => true);
-  return [enabled, setEnabled];
 }
 
 function audioContext(): AudioContext | null {

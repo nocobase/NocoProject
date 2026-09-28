@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type ChimeModule = typeof import('../../client/pages/np/inbox/inbox-chime.js');
@@ -48,7 +47,6 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
   FakeAudioContext.instances = [];
   vi.stubGlobal('AudioContext', FakeAudioContext);
-  localStorage.clear();
 });
 
 afterEach(() => {
@@ -110,18 +108,5 @@ describe('inbox chime', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it('keeps the on/off preference in localStorage, on by default', async () => {
-    const chime = await load();
-    const { result } = renderHook(() => chime.useInboxChimePreference());
-    expect(result.current[0]).toBe(true);
-
-    act(() => result.current[1](false));
-    expect(result.current[0]).toBe(false);
-    expect(localStorage.getItem('np:inbox:chime')).toBe('off');
-
-    act(() => result.current[1](true));
-    expect(result.current[0]).toBe(true);
   });
 });

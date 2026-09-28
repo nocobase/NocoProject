@@ -12,6 +12,7 @@ import type { Actor } from '../shared/activity.js';
 import { forbid, isAdmin, isMemberRole, viewerOf } from '../shared/authz.js';
 import type { Conn, Tx, TxRunner } from '../shared/db.js';
 import {
+  bool,
   isPostgres,
   isUniqueViolation,
   knexOf,
@@ -21,13 +22,44 @@ import {
 } from '../shared/db.js';
 import { conflict, invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
-import type { Member, MemberRole } from '../shared/protocol.js';
+import type {
+  Member,
+  MemberPreferences,
+  MemberRole,
+} from '../shared/protocol.js';
 
 export interface MemberService {
   /** Makes sure the signed-in user has a members row; returns the role. */
   ensure(userId: string): Promise<MemberRole>;
   list(actor: Actor): Promise<Member[]>;
   updateRole(actor: Actor, userId: string, role: unknown): Promise<Member>;
+  /** The member's own preferences (NP-108); the row exists, `ensureMember` runs before every browser route. */
+  preferences(userId: string): Promise<MemberPreferences>;
+  /** Changes only the fields given; anything but a boolean `inboxChime` is 400 `INVALID_PREFERENCES`. */
+  updatePreferences(userId: string, input: unknown): Promise<MemberPreferences>;
+}
+
+function preferencesPatch(input: unknown): Partial<MemberPreferences> {
+  if (typeof input !== 'object' || input === null || Array.isArray(input))
+    throw invalid('INVALID_PREFERENCES', 'Preferences must be an object.');
+  const { inboxChime } = input as { inboxChime?: unknown };
+  if (inboxChime === undefined) return {};
+  if (typeof inboxChime !== 'boolean')
+    throw invalid('INVALID_PREFERENCES', 'inboxChime must be a boolean.');
+  return { inboxChime };
+}
+
+async function preferencesOf(
+  conn: Conn,
+  userId: string,
+): Promise<MemberPreferences> {
+  const row = await conn.query
+    .selectFrom('members')
+    .select('inboxChime')
+    .where('userId', '=', userId)
+    .executeTakeFirst();
+  if (!row) throw notFound('Member');
+  return { inboxChime: row.inboxChime == null ? true : bool(row.inboxChime) };
 }
 
 async function insertMember(
@@ -200,6 +232,24 @@ export function createMemberService(deps: {
       });
       known.set(userId, result.role);
       return result;
+    },
+
+    preferences(userId) {
+      return preferencesOf(deps.tx.read(), userId);
+    },
+
+    async updatePreferences(userId, input) {
+      const patch = preferencesPatch(input);
+      return deps.tx.run(async (tx) => {
+        if (Object.keys(patch).length > 0) {
+          await tx.conn.query
+            .updateTable('members')
+            .set({ ...patch, updatedAt: now() })
+            .where('userId', '=', userId)
+            .execute();
+        }
+        return preferencesOf(tx.conn, userId);
+      });
     },
   };
 }

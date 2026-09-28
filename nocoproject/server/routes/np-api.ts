@@ -60,7 +60,12 @@ import { createRunRoutes } from '../modules/run/run.routes.js';
 import { createRuntimeRoutes } from '../modules/runtime/runtime.routes.js';
 import { createSubtaskRoutes } from '../modules/subtask/subtask.routes.js';
 import { createWorkflowRoutes } from '../modules/workflow/workflow.routes.js';
-import { guarded, npRouter, rejectRunTokens } from '../modules/shared/http.js';
+import {
+  guarded,
+  npRouter,
+  readJson,
+  rejectRunTokens,
+} from '../modules/shared/http.js';
 import type { MeResponse } from '../modules/shared/protocol.js';
 import {
   npAgentEnvServiceToken,
@@ -118,6 +123,20 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
       };
       return context.json({ data });
     });
+    // NP-108: the member's own preferences (the inbox chime), always about the signed-in user.
+    me.get('/preferences', async (context) =>
+      context.json({
+        data: await members.preferences(context.get('auth')!.user.id),
+      }),
+    );
+    me.patch('/preferences', async (context) =>
+      context.json({
+        data: await members.updatePreferences(
+          context.get('auth')!.user.id,
+          await readJson<unknown>(context),
+        ),
+      }),
+    );
 
     router.route('/np/me', guarded(guard, me));
     router.route('/np/members', guarded(guard, createMemberRoutes(members)));

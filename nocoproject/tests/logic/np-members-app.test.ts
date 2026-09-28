@@ -3,7 +3,8 @@
  * The whole application (isolated SQLite, real authentication and authorization plugins): a freshly registered normal
  * user holds the NocoProject page grants through the default `member` permission set (seed
  * 2026092800003_np_member_page_grants), can call `/np/issues`, is bootstrapped as a plain member (the first user is
- * the owner), cannot change roles, and cannot see a private project it is not a member of.
+ * the owner), cannot change roles, cannot see a private project it is not a member of, and keeps its own inbox chime
+ * preference (NP-108).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -160,6 +161,31 @@ describe('NocoProject members through the application', () => {
         }),
       ]),
     );
+
+    // NP-108: the inbox chime preference is per account, on by default, and only the member's own.
+    const chime = async (who: Client) =>
+      (
+        (await (await who.get('/np/me/preferences')).json()) as {
+          data: { inboxChime: boolean };
+        }
+      ).data.inboxChime;
+    expect(await chime(member)).toBe(true);
+    const muted = await member.send('PATCH', '/np/me/preferences', {
+      inboxChime: false,
+    });
+    expect(muted.status).toBe(200);
+    await expect(muted.json()).resolves.toEqual({
+      data: { inboxChime: false },
+    });
+    expect(await chime(member)).toBe(false);
+    expect(await chime(admin)).toBe(true);
+    const bad = await member.send('PATCH', '/np/me/preferences', {
+      inboxChime: 'no',
+    });
+    expect(bad.status).toBe(400);
+    await expect(bad.json()).resolves.toMatchObject({
+      code: 'INVALID_PREFERENCES',
+    });
 
     const demote = await member.send(
       'PATCH',

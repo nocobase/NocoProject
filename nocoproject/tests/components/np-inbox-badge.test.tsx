@@ -28,7 +28,6 @@ vi.mock('../../client/pages/np/inbox/inbox-chime.js', async (original) => ({
 afterEach(() => {
   api.request.mockReset();
   chime.play.mockReset();
-  localStorage.clear();
   realtime.listeners.clear();
 });
 
@@ -93,15 +92,22 @@ describe('inbox navigation badge', () => {
 
     api.request.mockRejectedValue(new Error('forbidden'));
     await renderNp(<NpInboxNavIcon />);
-    await waitFor(() => expect(api.request).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        api.request.mock.calls.filter(
+          ([options]) => options.path === 'np/inbox/pending-count',
+        ),
+      ).toHaveLength(2),
+    );
     expect(screen.queryByTestId('np-inbox-badge')).toBeNull();
   });
 
-  it('chimes when the count goes up after the first load, unless muted', async () => {
+  it('chimes when the count goes up after the first load', async () => {
     let decision = 2;
     api.request.mockImplementation(
       answer({
         'GET np/inbox/pending-count': () => ({ data: { decision } }),
+        'GET np/me/preferences': { data: { inboxChime: true } },
       }),
     );
     await renderNp(<NpInboxNavIcon />);
@@ -125,16 +131,31 @@ describe('inbox navigation badge', () => {
       expect(screen.getByTestId('np-inbox-badge')).toHaveTextContent('1'),
     );
     expect(chime.play).toHaveBeenCalledTimes(1);
+  });
 
-    localStorage.setItem('np:inbox:chime', 'off');
-    window.dispatchEvent(
-      new StorageEvent('storage', { key: 'np:inbox:chime' }),
+  it('stays quiet when the member turned the chime off', async () => {
+    let decision = 2;
+    api.request.mockImplementation(
+      answer({
+        'GET np/inbox/pending-count': () => ({ data: { decision } }),
+        'GET np/me/preferences': { data: { inboxChime: false } },
+      }),
     );
-    decision = 4;
-    push();
+    await renderNp(<NpInboxNavIcon />);
+    expect(await screen.findByTestId('np-inbox-badge')).toHaveTextContent('2');
     await waitFor(() =>
-      expect(screen.getByTestId('np-inbox-badge')).toHaveTextContent('4'),
+      expect(api.request).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'np/me/preferences' }),
+      ),
     );
-    expect(chime.play).toHaveBeenCalledTimes(1);
+
+    decision = 3;
+    realtime.listeners.get('np:inbox')?.({
+      payload: { kind: 'inbox.changed' },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('np-inbox-badge')).toHaveTextContent('3'),
+    );
+    expect(chime.play).not.toHaveBeenCalled();
   });
 });
