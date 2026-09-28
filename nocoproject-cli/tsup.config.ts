@@ -15,6 +15,8 @@ export default defineConfig({
   dts: false,
   // Bundle everything so dist/cli.js is a single self-contained file.
   noExternal: [/.*/],
+  // The `nocoproject-user` skill (skills/) is bundled as text for `nocoproject user skill install`.
+  loader: { '.md': 'text' },
   banner: {
     js: [
       '#!/usr/bin/env node',

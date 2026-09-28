@@ -181,3 +181,7 @@ PM 在运行里用普通 Agent 接口写 `/note` 评论（Agent 的 `/note` 不�
 - 类型：`IssueAttachment`、`AttachFilesRequest`、`IntakeBatchAttachment`、`AttachmentReadState`、`IntakeAttachmentReadStatus`、`IntakeBatchAttachmentsField`、`CreateIssueAttachmentFields`、`AgentAttachmentInfo`、`IssueForAgentAttachmentFields`、`MAX_ATTACHMENTS_PER_REQUEST`、`ERROR_INVALID_ATTACHMENT`；`ActivityActionPhase1Iter4` 追加 `'attachment_added' | 'attachment_removed'`。
 - 配置：`NOCOPROJECT_ATTACHMENT_DISK`、`NOCOPROJECT_ATTACHMENT_MAX_FILE_SIZE`（字节）。单次挂载上限是常量 10（`MAX_ATTACHMENTS_PER_REQUEST`）。前端的单文件大小检查按默认 20 MiB，改了服务端上限时服务端仍以 413 为准。
 - 未实现：评论附件、富文本内嵌图片、Agent 下载内容、Range/206、内容嗅探与病毒扫描；AI 整理不读图片与扫描版 PDF（不做 OCR），「AI 拆解」批次不读父任务的附件。
+
+## 9. 活动来源 `details.via`（NP-86，迭代 4 之后追加）
+
+浏览器接口（`/api/np/*`）用 API Key（`x-api-key`）鉴权时，`sessionActor` 给操作人加 `via`，活动记录器把它写进 `activities.details.via`（与运行令牌的 `details.runId` 同一处）：请求头 `x-np-client` 以 `nocoproject-cli/` 开头为 `'cli'`（CLI 用户模式 `nocoproject user …`），否则为 `'api_key'`；浏览器会话不写。`via` 只用于追溯，不参与任何权限判断；操作人仍是 Key 的主人。无迁移（`details` 是 JSON），协议类型不变。

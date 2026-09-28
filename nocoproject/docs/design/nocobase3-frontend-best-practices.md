@@ -2,7 +2,7 @@
 
 适用于在 NocoBase 3 上构建的任何应用（业务系统、Solution、内部工具）的前端页面：信息架构、页面框架、密度与主题、颜色、表格、看板、表单与弹窗、状态、文案、动效、键盘、多语言、可访问性与验收。
 
-**优先级**：用户或产品自己的设计规范优先于本文；本文优先于个人习惯。本文与应用模板自带的 `.agents/skills/nocobase-app-development/references/frontend/ui-guidelines.md`（规则编号 F / L / T / I / R / S / C / A）一致，并在其上细化；那份文档已写清的规则这里只点到为止。
+**优先级**：用户或产品负责人明确提出的要求（哪怕只是一句话、一张截图，没有写成文档）永远最高，本文让路；其次是用户或产品自己写成文档的设计规范；本文优先于个人习惯。按明确要求改完页面后，回来更新本文对应的条目，不要让文档继续说一套、页面做另一套。本文与应用模板自带的 `.agents/skills/nocobase-app-development/references/frontend/ui-guidelines.md`（规则编号 F / L / T / I / R / S / C / A）一致，并在其上细化；那份文档已写清的规则这里只点到为止。
 
 组件名均为 NocoBase 3 应用模板里的真实组件（`client/components/`）。标注"应用自建"的组件由各应用按本文约定实现一次、全应用共用，括号里给出 NocoProject 的实现作参照。
 
@@ -38,16 +38,18 @@
 
 ### 2.1 侧边栏
 
-- **平铺分区，分组永不折叠。** 没有自己页面的顶层分组渲染为一行小号分组标签，入口始终列在下面：
+- **分组是否可折叠，按菜单条目总数决定，不是固定平铺或固定可折叠。** 条目不多、一屏放得下时，没有自己页面的顶层分组渲染为一行小号分组标签，永远展开、不需要多点一次：
 
   ```tsx
-  // 分组标签：没有 componentLoader、有 children 的顶层路由
+  // 分组标签：没有 componentLoader、有 children 的顶层路由，且条目总数不需要折叠时
   <div className='px-3 pt-1 pb-1.5 text-xs font-medium tracking-wider text-muted-foreground uppercase'>
     {label}
   </div>
   ```
 
-  分区之间 `gap-5`，入口之间 `gap-1`。侧栏折叠为图标模式时分组标签变为一条 `bg-sidebar-border` 细线。参照 NocoProject 的 `client/layouts/components/navigation-sections.tsx`；设置区与开发区仍用模板的可折叠树。
+  分区之间 `gap-5`，入口之间 `gap-1`。侧栏折叠为图标模式时分组标签变为一条 `bg-sidebar-border` 细线。参照 NocoProject 的 `client/layouts/components/navigation-sections.tsx`（NocoProject 目前条目少，采用这种平铺展开）。
+
+  条目多到会撑出侧栏可视高度、需要收纳空间时，改用模板自带的可折叠树（默认展开，记住用户上次的折叠状态），不要为了"看着统一"硬套平铺展开——那样只会把侧栏拉得比内容区还长。设置区与开发区始终用模板的可折叠树，不受这条影响。
 
 - **入口沿用模板行尺寸**（`px-3 py-2 gap-3`，图标 16px），不另行压缩。未选中图标 `text-muted-foreground`；选中项底色 `bg-sidebar-primary`、文字加粗、图标变主色。
 - **顺序按使用频率**：个人入口（收件箱、我的…）在最上，业务分区居中，报表与设置在最下。
@@ -229,7 +231,7 @@ NocoBase 3 模板有两个预设，只在密度上不同：
 
 所有状态、优先级、类型、角色标记都用**同一个标签组件**（应用自建，NocoProject 为 `NpTag`）：
 
-- 圆角胶囊 `rounded-full px-2.5 py-0.5`，13px `font-medium`；
+- 圆角胶囊 `rounded-full px-2 py-0`，13px `font-medium`、行高收到 1rem（`badge-text` 的 `line-height`），整个胶囊比一般按钮矮一截，贴着文字高度，不靠内边距撑高；
 - 底色是该色相的低饱和淡色，文字是**同色相的深色**；深色模式下底色为半透明的暗淡色、文字提亮，不发光；
 - 状态类标签带一个同色小圆点（`bg-current`）；
 - **不用实心填充，不用"中性胶囊 + 彩色小圆点"，不在这些位置用 shadcn `Badge`。**

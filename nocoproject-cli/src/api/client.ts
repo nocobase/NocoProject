@@ -87,6 +87,8 @@ export class HttpClient {
     serverUrl: string,
     private readonly credentials: Credentials,
     private readonly defaultTimeoutMs = 30_000,
+    /** Sent with every request (the CLI user mode names itself in `x-np-client`). Never credentials. */
+    private readonly extraHeaders: Readonly<Record<string, string>> = {},
   ) {
     this.apiBase = `${serverUrl.replace(/\/+$/, '')}/api`;
   }
@@ -100,7 +102,7 @@ export class HttpClient {
   async request<T = unknown>(method: string, path: string, opts: RequestOptions = {}): Promise<{ status: number; json: T }> {
     const url = new URL(`${this.apiBase}${path}`);
     for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
-    const headers: Record<string, string> = { accept: 'application/json' };
+    const headers: Record<string, string> = { ...this.extraHeaders, accept: 'application/json' };
     if (this.credentials.kind === 'apiKey') headers['x-api-key'] = this.credentials.apiKey;
     else headers.authorization = `Bearer ${this.credentials.token}`;
     if (opts.body !== undefined) headers['content-type'] = 'application/json';

@@ -58,8 +58,9 @@
   --np-ink-orange: oklch(0.82 0.12 60);
 }
 
-/* Badge text: 13px (the tag reference), between the xs caption and the sm body sizes. */
+/* Badge text: 13px (the tag reference), between the xs caption and the sm body sizes. Line height stays tight
+   (1rem) so a tag's pill hugs the glyph height instead of the padding stretching it into a button-sized pill. */
 @utility badge-text {
   font-size: 0.8125rem;
-  line-height: 1.25rem;
+  line-height: 1rem;
 }

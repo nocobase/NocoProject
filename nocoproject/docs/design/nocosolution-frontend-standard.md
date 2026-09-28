@@ -2,7 +2,7 @@
 
 适用于所有 NocoSolution（NocoProject、NocoSupport、NocoCRM、NocoReach、NocoITAM 及后续 Solution）的前端。目标：用户在任何一个 Solution 里都认得出是一家的，"谁在做、AI 做到哪一步、哪里等我决定"的表达完全一致。
 
-**优先级**：Solution 自己的产品设计决定 > 本标准 > 《NocoBase 3 应用前端交互最佳实践》（`docs/design/nocobase3-frontend-best-practices.md`，下称《最佳实践》）。偏离本标准的决定写进该 Solution 方案的"偏离总纲"一节。
+**优先级**：用户或产品负责人明确提出的要求（哪怕没有写成文档）> Solution 自己写成文档的产品设计决定 > 本标准 > 《NocoBase 3 应用前端交互最佳实践》（`docs/design/nocobase3-frontend-best-practices.md`，下称《最佳实践》）。按明确要求改完之后，把这条决定和理由记回 Solution 自己的产品设计决定里，不要只改代码不改文档；如果和总纲的骨架级约定冲突，按总纲 14.2 走汇报流程，不要私自绕过。
 
 本标准建立在《最佳实践》之上，那里已有的规则（页面框架、密度与预设、标签、表格、看板、表单、状态、文案、动效、键盘、多语言、可访问性）不在这里重复，只写 Solution 特有的部分。它是《NocoSolution 总纲》第 3 章（八条原则）、第 5 章（AI 产出五种形态）、第 8 章（界面规范）、第 10.2 节（六类指标）的前端落地。
 
