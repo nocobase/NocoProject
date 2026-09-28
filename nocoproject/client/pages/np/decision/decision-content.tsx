@@ -19,7 +19,7 @@ function text(value: unknown): string | null {
 }
 
 /**
- * The thing being decided, in full (docs/design/ui-design.md §8.2, the lesson taken from NocoSupport): never an
+ * The thing being decided, in full (nocosolution/frontend/nocosolution-frontend-standard.md §3, the lesson taken from NocoSupport): never an
  * "accept" button without what is being accepted. Shared by the inbox's detail pane and the issue page's decision
  * card. `detail` is the issue (the same cached query the issue page reads); while it loads the blocks that need it
  * show skeletons, the ones that come from the item itself render at once.
@@ -257,7 +257,8 @@ function PrContent({
   if (pr && detail) {
     return (
       <ul aria-label={t('np.pullRequests.title')}>
-        <PullRequestCard issueId={detail.issue.id} pr={pr} />
+        {/* The decision's action bar carries the merge. */}
+        <PullRequestCard issueId={detail.issue.id} pr={pr} showMerge={false} />
       </ul>
     );
   }

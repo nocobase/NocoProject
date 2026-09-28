@@ -150,3 +150,40 @@ export function normalizeIssueDetail(raw: RawIssueDetail): IssueDetail {
 export function runTriggerType(run: RunSummary): string | null {
   return run.triggerType ?? run.triggers?.[0]?.type ?? null;
 }
+
+/**
+ * The detail with a just-posted comment in its thread, so the comment shows before the refetch returns. A comment
+ * the detail already holds is left as it is.
+ */
+export function withComment(
+  detail: IssueDetail,
+  comment: IssueComment,
+): IssueDetail {
+  const comments = detail.threads.flatMap((thread) => [
+    thread.root,
+    ...thread.replies,
+  ]);
+  if (comments.some((existing) => existing.id === comment.id)) return detail;
+  return { ...detail, threads: normalizeComments([...comments, comment]) };
+}
+
+/** How often to poll a detail whose run is waiting to start or working, so no realtime signal is needed. */
+export const DETAIL_POLL_MS = 5_000;
+const POLLED_RUN_STATUSES: ReadonlySet<string> = new Set([
+  'queued',
+  'dispatched',
+  'running',
+]);
+
+/**
+ * The detail's refetch interval: while a run is queued, dispatched or running, the detail polls, so the agent
+ * picking the work up and finishing it show even when the realtime connection has silently dropped. Deferred runs
+ * wait on something else and do not poll.
+ */
+export function detailRefetchInterval(
+  detail: IssueDetail | undefined,
+): number | false {
+  const active =
+    detail?.runs.some((run) => POLLED_RUN_STATUSES.has(run.status)) ?? false;
+  return active ? DETAIL_POLL_MS : false;
+}

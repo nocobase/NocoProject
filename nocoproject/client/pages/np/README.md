@@ -1,6 +1,6 @@
 # NocoProject pages: UI rules
 
-The design system is `docs/design/ui-design.md` (Chinese); these are its implementation rules. Every page under `client/pages/np/` follows them; a page that does not is a defect. Start from `client/pages/reference/examples` (orders, team-settings, inbox, dashboard) for structure and density, and from `client/pages/reference/components` for component APIs — copy structure, never import.
+The design system is `nocosolution/frontend/nocobase3-frontend-best-practices.md` (any NocoBase 3 app) plus `nocosolution/frontend/nocosolution-frontend-standard.md` (what every NocoSolution must share); this file is their implementation checklist for `client/pages/np/`. NocoProject used to keep a separate `docs/design/ui-design.md`; it has been folded into those two docs and this file (§11 keeps what was NocoProject-specific: the shell layout and the screenshot/token inventory) and no longer exists — do not recreate it. Every page under `client/pages/np/` follows the rules here, but a design decision the product owner or user states explicitly for a page — even a one-line request, not written down anywhere — outranks all of it; update this file afterward so it stops saying one thing while the page does another. Start from `client/pages/reference/examples` (orders, team-settings, inbox, dashboard) for structure and density, and from `client/pages/reference/components` for component APIs — copy structure, never import.
 
 ## 0. Styling under the compact preset
 
@@ -8,7 +8,7 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 
 - Never override `--spacing` or any preset token at page level, and never give one page its own density.
 - Size with the spacing scale and component size variants: buttons default / `sm` / `icon-sm`, the template's navigation row, the `DataTable` default row, cards `p-4` / `p-5`. No hand-picked tight values.
-- Body text `text-sm`; `text-xs` only for captions and metadata; tags use `NpTag` (13px).
+- Body text `text-sm`; `text-xs` only for captions and metadata; tags use `NpTag` (12px).
 - Hit targets never below `icon-sm`.
 - Layout widths that must not shrink are written in rem with a comment: side column `20rem`, inbox list `26rem`, board column `18rem`.
 - Check both presets (compact, default) and both modes (light, dark): `pnpm build && pnpm screenshots` writes all four combinations of every page to `output/screenshots/` from a throwaway preview of this checkout (`docs/dogfooding.md`); attach them to the delivery.
@@ -53,7 +53,7 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 - Identifiers, slugs, versions, branches: `font-mono text-xs`.
 - The process is marked only when it changes what happens next: `NpProcessBadge` ("先出方案", blue, compass icon) beside the status in the issue header and on board cards, nothing for direct issues. Timeline comments that are a design proposal or a retrospective note carry `NpCommentTag` ("方案" / "总结").
 - Executor pickers (`NpExecutorSelect`) never offer a project manager agent (`kind: 'manager'`), except one already set.
-- Every tag is `NpTag` (tinted pill: pale background, darker text of the same hue, 13px, dot for statuses) with its tone from one map. Status: `NpStatusBadge` (tone by meaning via `statusTone`: unstarted grey, started blue, in review violet, blocked amber, done green, cancelled slate). Priority: `NpPriorityLabel` (urgent red, high orange, medium blue, low grey). Runs: `NpRunStatusBadge`. Labels: `NpLabelChip`. Never a solid fill, never a dot on a neutral pill, never the shadcn `Badge` on these pages.
+- Every tag is `NpTag` (tinted pill: pale background, darker text of the same hue, 12px, dot for statuses) with its tone from one map. Status: `NpStatusBadge` (tone by meaning via `statusTone`: unstarted grey, started blue, in review violet, blocked amber, done green, cancelled slate). Priority: `NpPriorityLabel` (urgent red, high orange, medium blue, low grey). Runs: `NpRunStatusBadge`. Labels: `NpLabelChip`. Never a solid fill, never a dot on a neutral pill, never the shadcn `Badge` on these pages.
 - People, agents and the system: only `NpActorAvatar` (initials round / bot rounded-square in the agent hue / dashed cog; `live` for a working agent). `NpExecutor` builds on it.
 - Empty values (no priority, executor, owner, date, project) render a muted "—" with the word kept for screen readers. Editable controls keep their "none" option names in the list only.
 
@@ -85,3 +85,14 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 ## 10. Languages
 
 - Every string is a key in `client/locales/` with `en-US` and `zh-CN`; `tests/logic/locale-coverage.test.ts` fails on a missing key. New groups go in the latest `np-*-en-US.ts` (today `np-iter4-en-US.ts`); a key inside an existing group goes into the file that defines that group, since the spread into `np` is shallow; avoid i18next plural suffixes.
+
+## 11. Shell, screenshots and token inventory
+
+NocoProject-specific reference material that doesn't belong in the two shared design docs because no other Solution needs it verbatim:
+
+- **Shell**: brand mark, top bar (collapse toggle, workspace name, appearance, account) above a flat sidebar — 收件箱 → 我的任务 → 工作（任务、项目）→ AGENT 团队（Agent、运行时、技能、知识库）→ 报表 → 设置. Top bar and sidebar keep the template's own sizes (`h-16`, `size-10` / `size-9` icon buttons); they are already sized for the compact preset, so they are not compressed further.
+- **Screenshots**: 1360×900 desktop viewport, `docs/design/screenshots/` holds the last reviewed baseline (compact · dark as the primary shot, plus a light and a default-preset counterpart per page: inbox, issue detail, project detail, board, issue list, knowledge, reports, settings). Day-to-day verification doesn't update that baseline — `pnpm build && pnpm screenshots` regenerates the same four combinations (compact/default × light/dark) into `output/screenshots/` from a throwaway local preview (`docs/dogfooding.md` "看效果"); attach those to the delivery instead.
+- **Token and file inventory**:
+  - Theme presets (`client/theme/themes/{compact,default}.css`, identical except density): cool-toned neutrals, `--primary` indigo, `--chart-1..5` fixed hues, an independent sidebar background, selected nav text in the body color.
+  - App semantic colours (`client/np-tones.css`): `--agent`, `--attention` / `--attention-foreground`, `--success`, `--np-tint-*` / `--np-ink-*` (eight hues), plus the `badge-text` and `np-live-ring` utilities (the latter in `client/styles.css`).
+  - Flat sidebar sections: `client/layouts/components/navigation-sections.tsx` (the template's `navigation-tree.tsx` only gained the entry row styling and `relative`, and still owns the collapsible tree for Settings/Dev and for any group whose entry count needs it — see the best-practices doc §2.1 for when to switch).

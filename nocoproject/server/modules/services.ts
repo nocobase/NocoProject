@@ -102,6 +102,10 @@ import {
   type ChecklistService,
 } from './workflow/checklist.js';
 import {
+  createWorkflowProposalService,
+  type WorkflowProposalService,
+} from './workflow/workflow.proposals.js';
+import {
   createIssueQueries,
   type IssueQueries,
 } from './issue/issue.queries.js';
@@ -194,8 +198,10 @@ export interface NpServices {
   // Iteration 4.
   readonly design: Iteration4Services['design'];
   readonly pm: Iteration4Services['pm'];
+  readonly pullRequestMerges: Iteration4Services['pullRequestMerges'];
   // Phase 2 (NP-77).
   readonly checklists: ChecklistService;
+  readonly workflowProposals: WorkflowProposalService;
   // NP-78.
   readonly attachments: AttachmentService;
   // NP-88.
@@ -365,10 +371,17 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       services,
     ),
     ...createIteration4Services(
-      { tx, users, activity, settings, workflows },
+      { tx, ids, secrets, github, users, activity, settings, workflows },
       services,
     ),
     checklists: createChecklistService({ tx, ids, users, activity }),
+    workflowProposals: createWorkflowProposalService({
+      tx,
+      ids,
+      users,
+      activity,
+      workflows,
+    }),
     attachments: createAttachmentService({
       tx,
       users,

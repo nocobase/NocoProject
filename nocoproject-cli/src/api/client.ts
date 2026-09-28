@@ -19,6 +19,9 @@ import type {
   DaemonStartRequest,
   DependencyType,
   InboxItemV3,
+  AgentWorkflowListItem,
+  AgentWorkflowProposalRequest,
+  IssueChecklist,
   IssueForAgent,
   IssuePullRequestView,
   KnowledgeDoc,
@@ -31,6 +34,7 @@ import type {
   PmProjectList,
   StatusChangePendingResponse,
   SubtaskSummary,
+  WorkflowProposal,
 } from '../protocol.js';
 import { redactText } from '../util/redact.js';
 
@@ -41,6 +45,8 @@ export class HttpError extends Error {
     message: string,
     readonly method: string,
     readonly path: string,
+    /** Structured error detail (Phase 2: `INVALID_WORKFLOW` field issues, `WORKFLOW_STATUS_CONFLICT` counts). */
+    readonly details?: Readonly<Record<string, unknown>>,
   ) {
     super(`${method} ${path} → ${status} ${code}: ${message}`);
     this.name = 'HttpError';
@@ -125,11 +131,12 @@ export class HttpClient {
       }
     }
     if (!response.ok) {
-      const body = (json ?? {}) as { code?: unknown; message?: unknown; error?: unknown };
+      const body = (json ?? {}) as { code?: unknown; message?: unknown; error?: unknown; details?: unknown };
       const code = typeof body.code === 'string' ? body.code : `HTTP_${response.status}`;
       const message =
         typeof body.message === 'string' ? body.message : typeof body.error === 'string' ? body.error : text.slice(0, 300);
-      throw new HttpError(response.status, code, redactText(message || response.statusText), method, path);
+      const details = body.details && typeof body.details === 'object' ? (body.details as Record<string, unknown>) : undefined;
+      throw new HttpError(response.status, code, redactText(message || response.statusText), method, path, details);
     }
     return { status: response.status, json: json as T };
   }
@@ -259,6 +266,26 @@ export class AgentApi {
   /** POST /np/agent/knowledge/proposals → 201 KnowledgeProposal; 409 KNOWLEDGE_PROPOSAL_PENDING. */
   proposeKnowledge(body: KnowledgeProposalBody): Promise<KnowledgeProposal> {
     return this.http.data('POST', '/np/agent/knowledge/proposals', { body });
+  }
+  /** GET /np/agent/workflows → every template; `usedByRunProject` marks the run project's (NP-77 stage 2). */
+  workflows(): Promise<AgentWorkflowListItem[]> {
+    return this.http.data('GET', '/np/agent/workflows');
+  }
+  /** GET /np/agent/workflows/:id → the whole template with its definition and revision. */
+  workflow(id: string): Promise<AgentWorkflowListItem> {
+    return this.http.data('GET', `/np/agent/workflows/${enc(id)}`);
+  }
+  /** POST /np/agent/workflows/proposals → 201 WorkflowProposal; 400 INVALID_WORKFLOW (details.issues), 409 WORKFLOW_*. */
+  proposeWorkflow(body: AgentWorkflowProposalRequest): Promise<WorkflowProposal> {
+    return this.http.data('POST', '/np/agent/workflows/proposals', { body });
+  }
+  /** GET /np/agent/issues/:id/checklists → the issue's checklists, the current status first (NP-77 §6). */
+  checklists(id: string): Promise<IssueChecklist[]> {
+    return this.http.data('GET', `/np/agent/issues/${enc(id)}/checklists`);
+  }
+  /** PATCH /np/agent/issues/:id/checklists/:statusKey/items/:itemKey { checked } → that status's checklist. */
+  setChecklistItem(id: string, statusKey: string, itemKey: string, checked: boolean): Promise<IssueChecklist> {
+    return this.http.data('PATCH', `/np/agent/issues/${enc(id)}/checklists/${enc(statusKey)}/items/${enc(itemKey)}`, { body: { checked } });
   }
   /** POST /np/agent/issues/:id/design-proposal { content } → the `kind='proposal'` comment (iteration 4 §B). */
   async designProposal(id: string, content: string): Promise<unknown> {

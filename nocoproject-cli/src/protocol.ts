@@ -332,6 +332,8 @@ export type CommentKind = 'comment' | 'system';
 export interface ApiErrorBody {
   readonly code: string;
   readonly message: string;
+  /** Machine-readable extras for some codes (e.g. `PR_NOT_MERGEABLE` → `{ blocker }`) */
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface MeResponse {
@@ -1136,6 +1138,10 @@ export * from './protocol.phase1-iter4.js';
 
 export * from './protocol.phase2-workflow.js';
 // 服务端专用的组合类型（CLI 的 sync-protocol 去掉这一行）
+
+// ---------- Phase 2 工作流模板提议（NP-77 stage 2） ----------
+
+export * from './protocol.phase2-workflow-proposals.js';
 
 // ---------- 邮箱邀请（NP-88） ----------
 

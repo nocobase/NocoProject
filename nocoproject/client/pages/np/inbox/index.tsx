@@ -67,7 +67,7 @@ function itemsOf(data: InboxPages | undefined): InboxItem[] | undefined {
 }
 
 /**
- * Route `/inbox` (docs/design/ui-design.md §8.1): a master–detail inbox. The left column lists the viewer's items in
+ * Route `/inbox` (nocosolution/frontend/nocosolution-frontend-standard.md §2): a master–detail inbox. The left column lists the viewer's items in
  * two groups — 待我决定 first, then 通知 — with unread and "needs you" states; the right pane shows the selected item
  * with everything needed to decide (the issue, the delivery or proposal in full, the latest activity) under a sticky
  * action bar. The filter (`?tab=` all / decision / info), "show archived" (`?archived=1`) and the selection

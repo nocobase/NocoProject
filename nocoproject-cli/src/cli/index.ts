@@ -11,6 +11,7 @@ import { registerPmCommands } from './pm.js';
 import { registerPrCommands } from './pr.js';
 import { registerProjectCommands } from './project.js';
 import { registerRepoCommands } from './repo.js';
+import { registerWorkflowCommands } from './workflow.js';
 import { registerUserCommands } from './user.js';
 import { EXIT, printJson, printLine } from './output.js';
 
@@ -42,6 +43,7 @@ export function buildProgram(): Command {
   registerPrCommands(program);
   registerKbCommands(program);
   registerPmCommands(program);
+  registerWorkflowCommands(program);
   registerUserCommands(program);
   return program;
 }

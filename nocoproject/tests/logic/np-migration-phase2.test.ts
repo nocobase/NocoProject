@@ -1,8 +1,9 @@
 // @vitest-environment node
 /**
- * The Phase 2 migrations against a real PostgreSQL (NP-77 stage actions): up (the checklist table and its unique index,
- * the new proposal columns, a nullable proposing agent) and down (workflow suggestions removed, NOT NULL again), and
- * the NP-88 invitations table with its unique token index.
+ * The Phase 2 migrations against a real PostgreSQL. NP-77 stage actions: up (the checklist table and its unique index,
+ * the new proposal columns, a nullable proposing agent) and down (workflow suggestions removed, NOT NULL again).
+ * NP-77 stage 2 workflow proposals: up (template `revision` / `isSystem` with their defaults, the revision and proposal
+ * tables and indexes) and down (tables and columns gone). NP-88: the invitations table with its unique token index.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { createMigrator } from '@nocobase/db';
@@ -10,6 +11,7 @@ import { createMigrator } from '@nocobase/db';
 import {
   MIGRATIONS_DIR,
   NP_INVITATION_TABLES,
+  NP_PHASE2_PROPOSAL_TABLES,
   NP_PHASE2_WORKFLOW_TABLES,
   openNpTestDatabase,
   type NpTestDatabase,
@@ -147,6 +149,59 @@ describe.skipIf(!db)('NocoProject Phase 2 migrations (PostgreSQL)', () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual(['2026100500001_np_invitations']);
     expect(await tables()).not.toContain('np_invitations');
+    await migrator().latest();
+  });
+
+  it('rolls back the Phase 2 workflow proposals batch alone', async () => {
+    while ((await migrator().rollback()).rolledBack.length > 0);
+    await migrator().upTo('2026100400001_np_attachments');
+    await db!.knex.raw(
+      `INSERT INTO "${db!.schema}".workflow_templates (id, name, is_default, definition, created_at, updated_at)
+       VALUES ('t1', 'T', false, '{}', now(), now())`,
+    );
+    const applied = await migrator().upTo(
+      '2026100400001_np_phase2_workflow_proposals',
+    );
+    expect(applied.executed).toEqual([
+      '2026100400001_np_phase2_workflow_proposals',
+    ]);
+    expect(await tables()).toEqual(
+      expect.arrayContaining([...NP_PHASE2_PROPOSAL_TABLES]),
+    );
+    const defaults = await db!.knex.raw(
+      `SELECT revision, is_system FROM "${db!.schema}".workflow_templates WHERE id = 't1'`,
+    );
+    expect((defaults as { rows: unknown[] }).rows).toEqual([
+      { revision: 1, is_system: false },
+    ]);
+    const defs = await indexes();
+    expect(defs.get('np_workflow_template_revisions_unique')).toMatch(
+      /UNIQUE.*\(template_id, revision\)/u,
+    );
+    expect(defs.get('np_workflow_proposals_status_template_idx')).toContain(
+      '(status, template_id)',
+    );
+    expect(await columns(db!, 'workflow_proposals')).toEqual(
+      expect.arrayContaining([
+        'template_id',
+        'copy_from_id',
+        'base_definition',
+        'base_revision',
+        'result_revision',
+      ]),
+    );
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual([
+      '2026100400001_np_phase2_workflow_proposals',
+    ]);
+    for (const table of NP_PHASE2_PROPOSAL_TABLES)
+      expect(await tables()).not.toContain(table);
+    const templateColumns = await columns(db!, 'workflow_templates');
+    expect(templateColumns).not.toContain('revision');
+    expect(templateColumns).not.toContain('is_system');
+    await db!.knex.raw(
+      `DELETE FROM "${db!.schema}".workflow_templates WHERE id = 't1'`,
+    );
     await migrator().latest();
   });
 });

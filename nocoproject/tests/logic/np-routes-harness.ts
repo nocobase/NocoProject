@@ -27,8 +27,10 @@ import {
   npWorkspaceSettingsServiceToken,
   npDeliveryServiceToken,
   npChecklistServiceToken,
+  npWorkflowProposalServiceToken,
   npDesignServiceToken,
   npPmServiceToken,
+  npPullRequestMergeServiceToken,
   npKnowledgeServiceToken,
   npMetricsServiceToken,
   npClaimServiceToken,
@@ -252,7 +254,9 @@ export async function build(
   container.instance(npDeliveryServiceToken, {} as never);
   container.instance(npDesignServiceToken, {} as never);
   container.instance(npPmServiceToken, {} as never);
+  container.instance(npPullRequestMergeServiceToken, {} as never);
   container.instance(npChecklistServiceToken, {} as never);
+  container.instance(npWorkflowProposalServiceToken, {} as never);
   container.instance(npAttachmentServiceToken, {} as never);
   container.instance(npInvitationServiceToken, {} as never);
   const router = await contribution.createRouter({

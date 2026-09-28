@@ -138,11 +138,13 @@ PM 在运行里用普通 Agent 接口写 `/note` 评论（Agent 的 `/note` 不�
 
 `protocol.phase1-iter4-server.ts`：`IssueV4`、`IssueListItemV4`、`IssueDetailV4`、`IssueDetailV4Paged`、`CreateIssueRequestV4`、`UpdateIssueRequestV4`、`IssueForAgentV4`、`AgentListItemV4`、`CreateAgentRequestV4`、`UpdateAgentRequestV4`、`DesignDecisionResultV4`、`PmIssueDetailV4`。
 
-`ActivityActionPhase1Iter4 = 'process_selected' | 'design_skipped' | 'design_proposed' | 'design_approved' | 'design_changes_requested' | 'retrospective_done'`。
+`ActivityActionPhase1Iter4 = 'process_selected' | 'design_skipped' | 'design_proposed' | 'design_approved' | 'design_changes_requested' | 'retrospective_done' | 'pr_merge_requested'`。
+
+NP-85 追加（§10）：`PullRequestMergeBlocker`、`PullRequestMergeKeepReason`、`PullRequestMergeOutcome`、`PullRequestMergePreflight`、`MergePullRequestRequest`、`MergePullRequestResponse`、`IssuePullRequestPhase4Fields`、`IssuePullRequestViewV4`、`InboxActionV4`、`ERROR_PR_NOT_MERGEABLE`、`ERROR_PR_CHANGED`、`ERROR_GITHUB_MERGE_FORBIDDEN`。
 
 ## 6. 错误码一览（本轮新增）
 
-`INVALID_PROCESS`（400）、`PROCESS_LOCKED`（409）、`DESIGN_NOT_APPROVED`（403）、`PROPOSAL_REQUIRED`（409）、`NOT_DESIGN_FIRST`（409）、`DESIGN_ALREADY_APPROVED`（409）、`INVALID_CONTENT`（400）、`ISSUE_NOT_IN_RUN`（403，design-proposal 指向别的任务）、`INVALID_KIND` / `INVALID_REASONING_EFFORT`（400）、`MANAGER_NOT_EXECUTOR`（400）、`MANAGER_ONLY`（403）、`PM_NOT_CONFIGURED`（409）、`INVALID_PM_AGENT`（400）。
+`INVALID_PROCESS`（400）、`PROCESS_LOCKED`（409）、`DESIGN_NOT_APPROVED`（403）、`PROPOSAL_REQUIRED`（409）、`NOT_DESIGN_FIRST`（409）、`DESIGN_ALREADY_APPROVED`（409）、`INVALID_CONTENT`（400）、`ISSUE_NOT_IN_RUN`（403，design-proposal 指向别的任务）、`INVALID_KIND` / `INVALID_REASONING_EFFORT`（400）、`MANAGER_NOT_EXECUTOR`（400）、`MANAGER_ONLY`（403）、`PM_NOT_CONFIGURED`（409）、`INVALID_PM_AGENT`（400）；NP-85：`INVALID_EXPECTED_HEAD`（400）、`PR_NOT_MERGEABLE` / `PR_CHANGED` / `GITHUB_MERGE_FORBIDDEN`（409）。
 
 ## 7. 与契约的出入
 
@@ -185,3 +187,29 @@ PM 在运行里用普通 Agent 接口写 `/note` 评论（Agent 的 `/note` 不�
 ## 9. 活动来源 `details.via`（NP-86，迭代 4 之后追加）
 
 浏览器接口（`/api/np/*`）用 API Key（`x-api-key`）鉴权时，`sessionActor` 给操作人加 `via`，活动记录器把它写进 `activities.details.via`（与运行令牌的 `details.runId` 同一处）：请求头 `x-np-client` 以 `nocoproject-cli/` 开头为 `'cli'`（CLI 用户模式 `nocoproject user …`），否则为 `'api_key'`；浏览器会话不写。`via` 只用于追溯，不参与任何权限判断；操作人仍是 Key 的主人。无迁移（`details` 是 JSON），协议类型不变。
+
+## 10. 在任务页与收件箱合并 PR（NP-85）
+
+迁移 `2026100200001_np_pr_merge`：`pullRequests` 加 `ciRunUrl`、`screenshotsUrl`（text，可空）。
+
+### 10.1 权限
+
+任务负责人、项目负责人（`leadUserId` 或 `projectMembers.role = lead`）、owner/admin（`authz.canMergePullRequest`，与写终态同一组人）。其他成员 403 `FORBIDDEN`；看不到的任务 404；未登录 401；运行令牌在 `/np/*` 上一律 403 `RUN_TOKEN_FORBIDDEN`（`rejectRunTokens`），服务层对非 user actor 也返回 403。
+
+### 10.2 接口
+
+- `GET /np/issues/:id/pull-requests/:prId/merge` → `PullRequestMergePreflight`：`{ blocker, method: 'squash', headSha, baseRef, commitTitle, statusAfter: { statusKey, statusName, keepReason } }`。每次都向 GitHub 取 PR 与检查的最新状态并写回快照。`blocker` 为 null 表示可以合并，否则按顺序取第一个：`merged` / `closed` / `draft` / `conflicts`（`mergeable === false` 或 `mergeable_state = dirty`）/ `computing`（`mergeable === null`）/ `ciPending` / `ciFailed` / `ciMissing`（没有任何 commit status 或 check suite）/ `notConfigured`（没有令牌）。`statusAfter.keepReason`：`terminal`（任务已是终态）/ `setting`（`prMergedStatus = none`）/ `optedOut`（本 PR 关闭了自动完成）/ `otherPrs`（还有未合并的计数 PR）。
+- `POST /np/issues/:id/pull-requests/:prId/merge`，请求体 `{ expectedHeadSha }`（缺省 400 `INVALID_EXPECTED_HEAD`）→ `{ merged: true, sha }`。重做一遍 preflight 检查（GitHub 最新状态）；有 blocker 时 409 `PR_NOT_MERGEABLE`，`details.blocker` 写明原因；head 与 `expectedHeadSha` 不同时 409 `PR_CHANGED`。然后 `PUT /repos/{repo}/pulls/{n}/merge`（`merge_method: squash`、`sha: head`、`commit_title: "<标题> (#<编号>)"`），令牌取自“设置 → GitHub”。GitHub 的返回：403 / 404 → 409 `GITHUB_MERGE_FORBIDDEN`（令牌缺少 Contents 与 Pull requests 写权限）；401 → 409 `GITHUB_AUTH_FAILED`；405 → 409 `PR_NOT_MERGEABLE`（`blocker: 'protected'`，分支保护）；409 → 409 `PR_CHANGED`；其他 → 502 `GITHUB_REQUEST_FAILED`。错误不带 GitHub 的原文与令牌。
+- 成功时记活动 `pr_merge_requested`（actor = 当前用户，`details: { pullRequestId, repo, number, url, sha, method: 'squash' }`），emit `issue.changed`。**不改任务状态，也不改 PR 行的 state**：任务由 GitHub 的 `pull_request closed` webhook 走现有合并流程（§C `merge-flow.ts`）改为 `settings.prMergedStatus`。
+- 错误体新增可选字段 `details`（`ApiErrorBody.details`），目前只有 `PR_NOT_MERGEABLE` 使用。
+
+### 10.3 列表与收件箱
+
+- `GET /np/issues/:id/pull-requests`、任务详情 `pullRequests[]`、link / refresh / PATCH 的返回每项追加（`IssuePullRequestViewV4`）：`viewerCanMerge`（当前用户能否合并；Agent 与 PM 读接口恒为 false）、`ciRunUrl`（head 提交最新一次 Actions 运行）、`screenshotsUrl`（该运行名为 `screenshots` 且未过期的 artifact 的网页地址）。两个链接由 REST 刷新（link、refresh、preflight）写入；`check_suite` completed 的 webhook 处理完成后，在事务外用令牌补取一次（失败忽略）；`pull_request` webhook 带来新 head 时清空。
+- 未解决的 `pr_review` 卡片，收件人能合并时 `payload.actions` 在 `openPr` 前加 `merge`（kind primary，POST 上面的合并路径，`confirm: 'prMerge'`、`pullRequestId`，按已存快照给 `disabledReason`），此时 `openPr` 降为 secondary。客户端遇到 `confirm: 'prMerge'` 打开确认框（先 GET preflight），不直接 POST。`InboxActionV4` 描述这几个字段。
+
+### 10.4 与方案的出入
+
+1. **REST 刷新不再把打开的 PR 写成 merged / closed**（refresh 与 preflight 调 `upsertPullRequest(…, { keepOpenState: true })`）：webhook 以“状态从 open 变为 merged”为触发，若在 webhook 之前先被刷新写成 merged，任务就不会自动完成。代价：没有配置 webhook 时，刷新也看不到合并 / 关闭（preflight 仍会返回 `merged` / `closed`）。
+2. `statusAfter` 多 `statusName`（工作流模板里的状态名，前端优先用本地化状态名）。
+3. PR 卡片上的置灰原因只按快照判断，不含 `computing`（快照没有 `mergeable`）。

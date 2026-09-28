@@ -35,6 +35,20 @@ export interface GitHubPullRequestPayload {
   readonly deletions?: number;
   readonly changed_files?: number;
   readonly mergeable_state?: string | null;
+  /** null while GitHub computes it */
+  readonly mergeable?: boolean | null;
+}
+
+/** The latest GitHub Actions run of a commit and its `screenshots` artifact (web URLs). */
+export interface CiRunLinks {
+  readonly runUrl: string;
+  readonly screenshotsUrl: string | null;
+}
+
+export interface MergePullRequestInput {
+  /** GitHub refuses with 409 when the head moved past this commit. */
+  readonly sha: string;
+  readonly commitTitle: string;
 }
 
 export interface GitHubClient {
@@ -52,6 +66,19 @@ export interface GitHubClient {
     repo: string,
     sha: string,
   ): Promise<PullRequestCiState | null>;
+  /** Squash-merges the pull request; returns the merge commit SHA. */
+  mergePullRequest(
+    credentials: GitHubCredentials,
+    repo: string,
+    number: number,
+    input: MergePullRequestInput,
+  ): Promise<{ sha: string }>;
+  /** The latest Actions run for a commit; null when there is none. */
+  getLatestCiRun(
+    credentials: GitHubCredentials,
+    repo: string,
+    sha: string,
+  ): Promise<CiRunLinks | null>;
 }
 
 export class GitHubApiError extends Error {
@@ -84,6 +111,9 @@ export interface PullRequestSnapshot {
   readonly closedAt: string | null;
   /** Only the REST refresh knows it; webhooks keep the stored value. */
   readonly ciState?: PullRequestCiState | null;
+  /** Only the REST refresh knows them; webhooks keep the stored values. */
+  readonly ciRunUrl?: string | null;
+  readonly screenshotsUrl?: string | null;
   readonly body: string | null;
 }
 
@@ -163,6 +193,9 @@ export function ciStateOfCheckSuite(
   return 'failure';
 }
 
+/** The artifact `.github/workflows/ci.yml` uploads from `pnpm screenshots`. */
+export const SCREENSHOTS_ARTIFACT = 'screenshots';
+
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
 export function createFetchGitHubClient(
@@ -171,17 +204,23 @@ export function createFetchGitHubClient(
   async function request(
     credentials: GitHubCredentials,
     path: string,
+    init: { method?: 'GET' | 'PUT'; body?: unknown } = {},
   ): Promise<{ body: unknown; headers: Headers }> {
     const base = credentials.apiBaseUrl.replace(/\/+$/u, '');
     let response: Response;
     try {
       response = await fetchImpl(`${base}${path}`, {
+        method: init.method ?? 'GET',
         headers: {
           accept: 'application/vnd.github+json',
           authorization: `Bearer ${credentials.token}`,
           'x-github-api-version': '2022-11-28',
           'user-agent': 'nocoproject',
+          ...(init.body !== undefined
+            ? { 'content-type': 'application/json' }
+            : {}),
         },
+        ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
         signal: AbortSignal.timeout(15_000),
       });
     } catch {
@@ -240,5 +279,59 @@ export function createFetchGitHubClient(
         ),
       ]);
     },
+    async mergePullRequest(credentials, repo, number, input) {
+      const { body } = await request(
+        credentials,
+        `/repos/${repo}/pulls/${number}/merge`,
+        {
+          method: 'PUT',
+          body: {
+            merge_method: 'squash',
+            sha: input.sha,
+            commit_title: input.commitTitle,
+          },
+        },
+      );
+      const sha = (body as { sha?: unknown }).sha;
+      return { sha: typeof sha === 'string' ? sha : '' };
+    },
+    async getLatestCiRun(credentials, repo, sha) {
+      const runs = await request(
+        credentials,
+        `/repos/${repo}/actions/runs?head_sha=${encodeURIComponent(sha)}&per_page=1`,
+      );
+      const run = (
+        runs.body as { workflow_runs?: { id?: unknown; html_url?: unknown }[] }
+      ).workflow_runs?.[0];
+      if (!run || typeof run.html_url !== 'string') return null;
+      const artifacts = await request(
+        credentials,
+        `/repos/${repo}/actions/runs/${String(run.id)}/artifacts`,
+      );
+      return ciRunLinksOf(
+        run.html_url,
+        (artifacts.body as { artifacts?: unknown[] }).artifacts ?? [],
+      );
+    },
+  };
+}
+
+/** The run page and its unexpired `screenshots` artifact (`<run page>/artifacts/<id>`). */
+export function ciRunLinksOf(
+  runUrl: string,
+  artifacts: readonly unknown[],
+): CiRunLinks {
+  const screenshots = artifacts.find(
+    (item): item is { id: number } =>
+      !!item &&
+      typeof item === 'object' &&
+      (item as { name?: unknown }).name === SCREENSHOTS_ARTIFACT &&
+      (item as { expired?: unknown }).expired !== true &&
+      typeof (item as { id?: unknown }).id === 'number',
+  );
+  const base = runUrl.replace(/\/+$/u, '');
+  return {
+    runUrl: base,
+    screenshotsUrl: screenshots ? `${base}/artifacts/${screenshots.id}` : null,
   };
 }

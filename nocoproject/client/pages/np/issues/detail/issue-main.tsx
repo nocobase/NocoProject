@@ -63,7 +63,7 @@ function coveredByDecisions(decisions: readonly InboxItem[]): {
 }
 
 /**
- * The main column (docs/design/ui-design.md §8.2): parent link, title, the meta line (identifier, status, project, the
+ * The main column (nocosolution/frontend/nocosolution-frontend-standard.md §3): parent link, title, the meta line (identifier, status, project, the
  * live run), "等你决定", description, attachments (NP-78; only with files or once revealed), pending approvals and executor proposals not already in a decision, then pull
  * requests,
  * sub-issues and dependencies as cards, the activity timeline (older activities on demand, virtualized when long,
@@ -219,7 +219,7 @@ export function IssueMain({
               agents={agents}
             />
           )}
-          {/* Optional blocks take no room while empty (docs/design/ui-design.md §8.2): sub-issues fold into one
+          {/* Optional blocks take no room while empty (nocosolution/frontend/nocobase3-frontend-best-practices.md §3.4): sub-issues fold into one
               row, pull requests and blockers appear from the "添加" chips or once they have content. */}
           {showPrs ? (
             <div className='rounded-lg border bg-card p-4 text-card-foreground'>

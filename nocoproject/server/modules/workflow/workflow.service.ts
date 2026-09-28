@@ -5,16 +5,17 @@
  *
  * Compiled views are cached in memory per template id, and the project → template mapping per project id. The
  * project service invalidates a project's entry when its `workflowId` changes; `invalidate()` drops everything
- * (template edits arrive in iteration 3). The cache is per process, like the rest of the in-process state. Iteration 3
- * §F: list and get report `projectCount`; the definition is returned as stored (read-only visualization).
+ * (after a template edit: NP-77 stage 2, `workflow.proposals.ts`). The cache is per process, like the rest of the
+ * in-process state. Iteration 3 §F: list and get report `projectCount`; the definition is returned as stored. NP-77
+ * stage 2 adds `revision` and `isSystem`.
  */
 import type { Conn, TxRunner } from '../shared/db.js';
 import { bool, fromJson, iso, num, str, unique } from '../shared/db.js';
 import { conflict, notFound } from '../shared/errors.js';
 import type {
-  Workflow,
-  WorkflowDefinition,
-  WorkflowListItem,
+  WorkflowDefinitionV5,
+  WorkflowListItemV5,
+  WorkflowV5,
 } from '../shared/protocol.js';
 import {
   BUILTIN_DEFINITION,
@@ -25,8 +26,8 @@ import {
 
 export interface WorkflowService {
   /** Iteration 3 §F: each row carries `projectCount` (the default template counts projects without a template). */
-  list(): Promise<WorkflowListItem[]>;
-  get(id: string): Promise<WorkflowListItem>;
+  list(): Promise<WorkflowListItemV5[]>;
+  get(id: string): Promise<WorkflowListItemV5>;
   /** The view for a project (its template, or the default one); `null` means "no project". */
   forProject(conn: Conn, projectId: string | null): Promise<WorkflowView>;
   forIssue(
@@ -47,8 +48,8 @@ export interface WorkflowService {
   ): Promise<void>;
 }
 
-function isDefinition(value: unknown): value is WorkflowDefinition {
-  const candidate = value as Partial<WorkflowDefinition> | null;
+function isDefinition(value: unknown): value is WorkflowDefinitionV5 {
+  const candidate = value as Partial<WorkflowDefinitionV5> | null;
   return (
     !!candidate &&
     Array.isArray(candidate.statuses) &&
@@ -56,7 +57,7 @@ function isDefinition(value: unknown): value is WorkflowDefinition {
   );
 }
 
-export function mapWorkflow(row: Record<string, unknown>): Workflow {
+export function mapWorkflow(row: Record<string, unknown>): WorkflowV5 {
   const definition = fromJson<unknown>(row.definition);
   return {
     id: str(row.id) ?? '',
@@ -69,6 +70,8 @@ export function mapWorkflow(row: Record<string, unknown>): Workflow {
             definition.childBatchDoneWakesParentExecutor !== false,
         }
       : BUILTIN_DEFINITION,
+    revision: num(row.revision, 1),
+    isSystem: bool(row.isSystem),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
@@ -85,9 +88,9 @@ async function projectCounts(conn: Conn): Promise<Map<string | null, number>> {
 }
 
 function withCount(
-  workflow: Workflow,
+  workflow: WorkflowV5,
   counts: Map<string | null, number>,
-): WorkflowListItem {
+): WorkflowListItemV5 {
   return {
     ...workflow,
     projectCount:
@@ -168,10 +171,13 @@ export function createWorkflowService(deps: { tx: TxRunner }): WorkflowService {
     },
     async get(id) {
       const conn = deps.tx.read();
-      return withCount(
-        (await loadView(conn, id)).workflow,
-        await projectCounts(conn),
-      );
+      const row = await conn.query
+        .selectFrom('workflowTemplates')
+        .selectAll()
+        .where('id', '=', id)
+        .executeTakeFirst();
+      if (!row) throw notFound('Workflow');
+      return withCount(mapWorkflow(row), await projectCounts(conn));
     },
     forProject,
     forIssue: (conn, issue) => forProject(conn, issue.projectId),

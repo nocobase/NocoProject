@@ -248,6 +248,7 @@ const npIter3ZhCN: NpIter3Resource = {
     reject: '驳回',
     openDoc: '打开文档',
     openPr: '打开 PR',
+    merge: '合并',
     commentPlaceholder: '写点什么…',
     commentFor: '{{action}}：{{title}}',
     done: '已{{action}}：{{title}}',

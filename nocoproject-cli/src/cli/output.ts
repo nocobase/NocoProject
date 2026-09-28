@@ -41,12 +41,23 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Field-level lines of an error's `details` (`INVALID_WORKFLOW` issues, `WORKFLOW_STATUS_CONFLICT` counts). */
+function detailLines(details: Readonly<Record<string, unknown>> | undefined): string[] {
+  const issues = Array.isArray(details?.issues) ? (details.issues as { path?: unknown; message?: unknown }[]) : [];
+  const statuses = Array.isArray(details?.statuses) ? (details.statuses as { statusKey?: unknown; projects?: { projectName?: unknown; count?: unknown }[] }[]) : [];
+  return [
+    ...issues.map((i) => `  - ${String(i.path ?? '')}: ${String(i.message ?? '')}`),
+    ...statuses.map((s) => `  - ${String(s.statusKey ?? '')}: ${(s.projects ?? []).map((p) => `${String(p.projectName ?? '')} ${String(p.count ?? 0)}`).join(', ')}`),
+  ];
+}
+
 /** Prints an error (JSON on stdout with --json, text on stderr otherwise) and exits. */
 export function failAndExit(error: unknown, json: boolean): never {
   const code = exitCodeFor(error);
   const message = redactText(errorMessage(error));
-  if (json) process.stdout.write(`${JSON.stringify({ error: { code: errorCode(error), message, exitCode: code } })}\n`);
-  else process.stderr.write(`error: ${message}\n`);
+  const details = error instanceof HttpError ? error.details : undefined;
+  if (json) process.stdout.write(`${JSON.stringify({ error: { code: errorCode(error), message, exitCode: code, ...(details ? { details } : {}) } })}\n`);
+  else process.stderr.write(`error: ${message}\n${detailLines(details).map((line) => `${redactText(line)}\n`).join('')}`);
   process.exit(code);
 }
 

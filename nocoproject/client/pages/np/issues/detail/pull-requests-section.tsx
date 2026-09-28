@@ -3,7 +3,9 @@ import { useTranslation } from '@nocobase/i18n/client';
 import {
   CheckCircle2Icon,
   CircleDashedIcon,
+  ExternalLinkIcon,
   GitBranchIcon,
+  GitMergeIcon,
   GitPullRequestIcon,
   LinkIcon,
   RefreshCwIcon,
@@ -35,9 +37,14 @@ import {
 } from '../../api-iter2.js';
 import type { IssuePullRequestView } from '../../types.js';
 import {
+  MergePullRequestDialog,
+  type MergeTarget,
+} from './merge-pull-request-dialog.js';
+import {
   PR_TONE,
   ciReading,
   looksLikePullRequestUrl,
+  mergeBlockerOf,
   mergeableReading,
   prBadgeState,
 } from './pr-model.js';
@@ -54,7 +61,9 @@ const CI_ICON = {
  * Pull requests linked to the issue (iteration 2 §C), above the sub-issues: number and title linking to GitHub, the
  * state, the size, CI and mergeability, author and branch. "Auto-complete" is the per-link opt-out of the merge rule
  * (when every counted PR is merged the issue moves to the configured status). PRs link themselves through the branch
- * name or the identifier in the title; "Link PR by URL" covers the rest.
+ * name or the identifier in the title; "Link PR by URL" covers the rest. NP-85: whoever may merge (`viewerCanMerge`)
+ * gets "Merge" on an open PR, greyed out with the reason the snapshot gives; the CI item links to the run and its
+ * screenshots.
  */
 export function PullRequestsSection({
   issueId,
@@ -108,9 +117,12 @@ export function PullRequestsSection({
 export function PullRequestCard({
   issueId,
   pr,
+  showMerge = true,
 }: {
   readonly issueId: string;
   readonly pr: IssuePullRequestView;
+  /** false where the surrounding decision already offers the merge (the inbox's `pr_review` action bar). */
+  readonly showMerge?: boolean;
 }): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
@@ -136,6 +148,12 @@ export function PullRequestCard({
     setPullRequestAutoComplete(api, issueId, pr.id, !enabled),
   );
   const busy = refresh.isPending || unlink.isPending || autoComplete.isPending;
+  const [merging, setMerging] = useState<MergeTarget | null>(null);
+  const canOfferMerge =
+    showMerge &&
+    pr.viewerCanMerge === true &&
+    (state === 'open' || state === 'draft');
+  const blocker = canOfferMerge ? mergeBlockerOf(pr) : null;
 
   return (
     <li
@@ -185,6 +203,19 @@ export function PullRequestCard({
           >
             <CiIcon className='size-3.5' aria-hidden='true' />
             {t(`np.pullRequests.ciState.${ci}`)}
+            {pr.screenshotsUrl || pr.ciRunUrl ? (
+              <a
+                href={pr.screenshotsUrl ?? pr.ciRunUrl ?? undefined}
+                target='_blank'
+                rel='noreferrer'
+                className='ml-1 inline-flex items-center gap-0.5 text-foreground underline-offset-4 hover:underline'
+              >
+                {pr.screenshotsUrl
+                  ? t('np.prMerge.screenshots')
+                  : t('np.prMerge.ciRun')}
+                <ExternalLinkIcon className='size-3' aria-hidden='true' />
+              </a>
+            ) : null}
           </dd>
         </div>
         <div className='flex items-center gap-1'>
@@ -233,7 +264,34 @@ export function PullRequestCard({
           />
           {t('np.pullRequests.autoComplete')}
         </label>
-        <div className='ml-auto flex gap-1'>
+        <div className='ml-auto flex flex-wrap items-center justify-end gap-1'>
+          {canOfferMerge && blocker ? (
+            <span
+              className='text-xs text-muted-foreground'
+              data-testid='np-pr-merge-reason'
+            >
+              {t(`np.prMerge.blocker.${blocker}`)}
+            </span>
+          ) : null}
+          {canOfferMerge ? (
+            <Button
+              size='xs'
+              disabled={busy || blocker !== null}
+              aria-label={t('np.prMerge.mergeFor', {
+                pr: `${pr.repo}#${pr.number}`,
+              })}
+              onClick={() =>
+                setMerging({
+                  issueId,
+                  pullRequestId: pr.id,
+                  label: `${pr.repo}#${pr.number}`,
+                })
+              }
+            >
+              <GitMergeIcon data-icon='inline-start' />
+              {t('np.prMerge.merge')}
+            </Button>
+          ) : null}
           <Button
             variant='ghost'
             size='xs'
@@ -258,6 +316,12 @@ export function PullRequestCard({
           </Button>
         </div>
       </div>
+      {canOfferMerge ? (
+        <MergePullRequestDialog
+          target={merging}
+          onClose={() => setMerging(null)}
+        />
+      ) : null}
     </li>
   );
 }

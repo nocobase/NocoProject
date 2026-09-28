@@ -24,10 +24,12 @@
  * | knowledge_decided   | info     | source issue owner | the proposal was accepted or rejected                     |
  * | design_review       | decision | owner              | the issue enters proposal_review (iteration 4, `design-notices.ts`) |
  * | stage_entered, stage_action_problem, approval_stale | info | owner / approvers | workflow stage actions (Phase 2, `stage-notices.ts`) |
+ * | workflow_proposal   | decision | owner/admin        | an agent proposed a workflow template change (Phase 2, `workflow-notices.ts`) |
+ * | workflow_decided    | info     | source issue owner | the template proposal was accepted, rejected or found stale |
  *
  * Nobody is notified of their own action. Decision items resolve when the matching action is done (status leaves
  * in_review / blocked; every proposal on the parent decided; the approval request decided or cancelled; the PR merged
- * or closed; the knowledge proposal decided; a delivery accepted or sent back — iteration 3; the design approved or
+ * or closed; the knowledge or workflow proposal decided; a delivery accepted or sent back — iteration 3; the design approved or
  * sent back, or the status leaving proposal_review — iteration 4). An agent's `/note` notifies nobody (the project
  * manager's retrospective notes). `agent_blocked` also
  * resolves for a member who replies on the issue (not a `/note`) and for everyone when the executor changes. `run_failed` items are archived when the issue reaches in_review or a terminal status. Every recipient
@@ -68,6 +70,7 @@ import {
   onStageActionReported,
   onStageEntered,
 } from './stage-notices.js';
+import { onWorkflowDecided, onWorkflowProposed } from './workflow-notices.js';
 
 export type { NotificationDeps } from './round.js';
 
@@ -431,6 +434,10 @@ async function handle(round: Round, event: DomainEvent): Promise<void> {
       return onStageActionReported(round, event);
     case 'approval.stale':
       return onApprovalStale(round, event);
+    case 'workflow.proposed':
+      return onWorkflowProposed(round, event);
+    case 'workflow.decided':
+      return onWorkflowDecided(round, event);
     default:
       return;
   }

@@ -4,7 +4,8 @@
  * `/api/np/{integrations,approvals,intake,comments,skills,usage,settings}` and, from iteration 3,
  * `/api/np/{knowledge,metrics}` (plus the delivery, activity and comment pages under `/api/np/issues/:id`) and, from
  * iteration 4, `/api/np/pm` (plus the design decisions under `/api/np/issues/:id/design`); Phase 2 the checklists
- * under `/api/np/issues/:id/checklists`.
+ * under `/api/np/issues/:id/checklists` and the workflow template proposals, revisions and admin write under
+ * `/api/np/workflows`.
  *
  * Every prefix is mounted behind its own guard: a run token is refused with 403 before the session lookup,
  * `auth.required()` answers 401 for anonymous callers, and `ensureMember` bootstraps the caller's members row. The
@@ -70,12 +71,14 @@ import {
   npGitConnectionServiceToken,
   npIntakeServiceToken,
   npPullRequestServiceToken,
+  npPullRequestMergeServiceToken,
   npReactionServiceToken,
   npSkillServiceToken,
   npUsageServiceToken,
   npWorkspaceSettingsServiceToken,
   npDeliveryServiceToken,
   npChecklistServiceToken,
+  npWorkflowProposalServiceToken,
   npDesignServiceToken,
   npKnowledgeServiceToken,
   npPmServiceToken,
@@ -132,7 +135,10 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
       '/np/workflows',
       guarded(
         guard,
-        createWorkflowRoutes(container.resolve(npWorkflowServiceToken)),
+        createWorkflowRoutes(
+          container.resolve(npWorkflowServiceToken),
+          container.resolve(npWorkflowProposalServiceToken),
+        ),
       ),
     );
     router.route(
@@ -169,6 +175,7 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
         createSubscriptionRoutes(inbox),
         createIssuePullRequestRoutes(
           container.resolve(npPullRequestServiceToken),
+          container.resolve(npPullRequestMergeServiceToken),
         ),
         createDesignRoutes(container.resolve(npDesignServiceToken)),
         createChecklistRoutes(container.resolve(npChecklistServiceToken)),

@@ -31,6 +31,15 @@ describe('Phase 2 brief: workflow stages', () => {
     expect(brief).toContain('- Docs updated (`docs`)');
     expect(brief).not.toContain('Lint clean');
     expect(brief).toContain('`CHECKLIST_INCOMPLETE`');
+    expect(brief).toContain(`\`nocoproject issue checklist ${run.issue.identifier} check <itemKey>\``);
+  });
+
+  it('tells coding agents how to change a workflow template (propose, a human decides), not managers', () => {
+    const brief = buildBrief(iter4Run({ process: 'direct' }));
+    expect(brief).toContain('## Changing a workflow template');
+    expect(brief).toContain('`nocoproject workflow get <template> --definition > wf.json`');
+    expect(brief).toContain('- `nocoproject workflow propose (<template> | --copy-from <template> --name "...")');
+    expect(brief).toContain('`INVALID_WORKFLOW` lists every problem with its path');
   });
 
   it('adds nothing without a checklist, when everything is checked, or for another status', () => {

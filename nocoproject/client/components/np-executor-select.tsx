@@ -107,7 +107,7 @@ export function NpExecutorSelect({
         aria-label={ariaLabel}
         className={cn('w-full', className)}
       >
-        {/* The trigger shows who executes as the shared avatar and name, and a muted dash for nobody (ui-design.md §9). */}
+        {/* The trigger shows who executes as the shared avatar and name, and a muted dash for nobody (nocosolution/frontend/nocobase3-frontend-best-practices.md §6). */}
         <SelectValue>
           {(current: string) => {
             const item = items.find((entry) => entry.value === current);

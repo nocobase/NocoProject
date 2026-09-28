@@ -75,3 +75,48 @@ export const ERROR_PROCESS_LOCKED = 'PROCESS_LOCKED';
 export const ERROR_MANAGER_NOT_EXECUTOR = 'MANAGER_NOT_EXECUTOR';
 export const ERROR_DESIGN_NOT_APPROVED = 'DESIGN_NOT_APPROVED';
 export const ERROR_PM_NOT_CONFIGURED = 'PM_NOT_CONFIGURED';
+
+// ---------- NP-85: merging a pull request ----------
+
+/** Why a PR cannot be merged (server `PullRequestMergeBlocker`). */
+export type MergeBlocker =
+  | 'closed'
+  | 'merged'
+  | 'draft'
+  | 'conflicts'
+  | 'computing'
+  | 'ciPending'
+  | 'ciFailed'
+  | 'ciMissing'
+  | 'notConfigured'
+  | 'protected';
+
+export const MERGE_BLOCKERS: readonly MergeBlocker[] = [
+  'closed',
+  'merged',
+  'draft',
+  'conflicts',
+  'computing',
+  'ciPending',
+  'ciFailed',
+  'ciMissing',
+  'notConfigured',
+  'protected',
+];
+
+/** Why merging leaves the issue as it is. */
+export type MergeKeepReason = 'setting' | 'otherPrs' | 'optedOut' | 'terminal';
+
+/** `GET /np/issues/:id/pull-requests/:prId/merge`, read fresh from GitHub. */
+export interface MergePreflight {
+  readonly blocker: MergeBlocker | null;
+  readonly method: 'squash';
+  readonly headSha: string;
+  readonly baseRef: string;
+  readonly commitTitle: string;
+  readonly statusAfter: {
+    readonly statusKey: string | null;
+    readonly statusName: string | null;
+    readonly keepReason: MergeKeepReason | null;
+  };
+}

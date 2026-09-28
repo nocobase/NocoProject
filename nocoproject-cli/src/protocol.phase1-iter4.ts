@@ -26,6 +26,7 @@ import type {
   UsageRow,
 } from './protocol.phase1-iter2.js';
 import type {
+  InboxAction,
   InboxItemTypeV3,
   InboxItemV3,
   IssueListRow,
@@ -250,6 +251,79 @@ export type CreateIntakeBatchRequestV4 = CreateIntakeBatchRequest & {
   readonly attachmentIds?: readonly string[];
 };
 
+// ---------- 在任务页与收件箱合并 PR（NP-85） ----------
+
+/**
+ * 不能合并的原因。`closed` / `merged` / `draft`：PR 状态；`conflicts`：GitHub `mergeable === false` 或
+ * `mergeable_state = dirty`；`computing`：`mergeable === null`（GitHub 还在计算）；`ciPending` / `ciFailed` /
+ * `ciMissing`：提交的检查运行中 / 失败 / 一个都没有；`notConfigured`：没有保存 GitHub 令牌；`protected`：GitHub
+ * 拒绝合并（分支保护要求评审或分支最新，只在合并时出现）。
+ */
+export type PullRequestMergeBlocker =
+  | 'closed'
+  | 'merged'
+  | 'draft'
+  | 'conflicts'
+  | 'computing'
+  | 'ciPending'
+  | 'ciFailed'
+  | 'ciMissing'
+  | 'notConfigured'
+  | 'protected';
+
+/** 合并后任务为什么不变：设置为不改 / 还有未合并的 PR / 本 PR 关闭了自动完成 / 任务已是终态 */
+export type PullRequestMergeKeepReason =
+  'setting' | 'otherPrs' | 'optedOut' | 'terminal';
+
+/** 合并后任务会怎样：`statusKey` 非空时改为该状态，否则按 `keepReason` 不变 */
+export interface PullRequestMergeOutcome {
+  readonly statusKey: string | null;
+  readonly statusName: string | null;
+  readonly keepReason: PullRequestMergeKeepReason | null;
+}
+
+/** `GET /np/issues/:id/pull-requests/:prId/merge` 的 data（取自 GitHub 最新状态） */
+export interface PullRequestMergePreflight {
+  readonly blocker: PullRequestMergeBlocker | null;
+  readonly method: 'squash';
+  readonly headSha: string;
+  readonly baseRef: string;
+  /** `<PR 标题> (#<编号>)` */
+  readonly commitTitle: string;
+  readonly statusAfter: PullRequestMergeOutcome;
+}
+
+/** `POST /np/issues/:id/pull-requests/:prId/merge` */
+export interface MergePullRequestRequest {
+  /** 确认框里看到的 head；与 GitHub 最新 head 不一致时 409 PR_CHANGED */
+  readonly expectedHeadSha: string;
+}
+
+export interface MergePullRequestResponse {
+  readonly merged: true;
+  readonly sha: string;
+}
+
+/** PR 列表 / 任务详情 `pullRequests[]` 每项追加的字段 */
+export interface IssuePullRequestPhase4Fields {
+  /** 当前用户能否合并（任务负责人、项目负责人、owner/admin） */
+  readonly viewerCanMerge: boolean;
+  /** head 提交最新一次 GitHub Actions 运行 */
+  readonly ciRunUrl: string | null;
+  /** 该运行的 `screenshots` artifact（网页地址，登录 GitHub 后下载） */
+  readonly screenshotsUrl: string | null;
+}
+
+export type IssuePullRequestViewV4 = IssuePullRequestView &
+  IssuePullRequestPhase4Fields;
+
+/** 收件箱动作追加：`confirm` = 先打开确认框（`prMerge`：合并确认框），`disabledReason` = 置灰并说明原因 */
+export type InboxActionV4 = InboxAction & {
+  readonly confirm?: 'prMerge';
+  readonly disabledReason?: PullRequestMergeBlocker;
+  /** `confirm: 'prMerge'` 时：要合并的 PR */
+  readonly pullRequestId?: string;
+};
 // ---------- 任务附件（NP-78） ----------
 
 /**
@@ -351,6 +425,7 @@ export type ActivityActionPhase1Iter4 =
   | 'design_approved'
   | 'design_changes_requested'
   | 'retrospective_done'
+  | 'pr_merge_requested'
   | 'attachment_added'
   | 'attachment_removed';
 
@@ -364,4 +439,10 @@ export const ERROR_DESIGN_ALREADY_APPROVED = 'DESIGN_ALREADY_APPROVED';
 export const ERROR_MANAGER_NOT_EXECUTOR = 'MANAGER_NOT_EXECUTOR';
 export const ERROR_MANAGER_ONLY = 'MANAGER_ONLY';
 export const ERROR_PM_NOT_CONFIGURED = 'PM_NOT_CONFIGURED';
+/** 409：PR 当前不能合并（`details.blocker`） */
+export const ERROR_PR_NOT_MERGEABLE = 'PR_NOT_MERGEABLE';
+/** 409：确认之后 PR 有了新提交 */
+export const ERROR_PR_CHANGED = 'PR_CHANGED';
+/** 409：令牌缺少 Contents 与 Pull requests 的写权限 */
+export const ERROR_GITHUB_MERGE_FORBIDDEN = 'GITHUB_MERGE_FORBIDDEN';
 export const ERROR_INVALID_ATTACHMENT = 'INVALID_ATTACHMENT';

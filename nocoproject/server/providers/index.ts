@@ -28,6 +28,7 @@ export {
   npApprovalGatewayToken,
   npGitConnectionServiceToken,
   npPullRequestServiceToken,
+  npPullRequestMergeServiceToken,
   npWebhookServiceToken,
   npIntakeServiceToken,
   npReactionServiceToken,

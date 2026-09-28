@@ -75,14 +75,19 @@ async function setup(options: NpTestOptions = {}) {
 }
 
 /** An unattached upload of `uploader` whose stored key is a fixture file. */
+/** Uploads are listed by time, then by (random) id: give each one its own millisecond so the order is the upload order. */
+let lastUploadAt = 0;
+
 async function upload(uploader: string, fixture: string): Promise<string> {
   const id = randomUUID();
   const ext = fixture.split('.').pop() ?? '';
+  lastUploadAt = Math.max(Date.now(), lastUploadAt + 1);
+  const createdAt = new Date(lastUploadAt);
   await db!.knex.raw(
     `INSERT INTO "${db!.schema}".np_files
        (id, disk, key, filename, ext, mime_type, size, uploaded_by_id, created_at, updated_at)
-     VALUES (?, 'local', ?, ?, ?, 'application/octet-stream', 1, ?, now(), now())`,
-    [id, fixture, fixture, ext, uploader],
+     VALUES (?, 'local', ?, ?, ?, 'application/octet-stream', 1, ?, ?, ?)`,
+    [id, fixture, fixture, ext, uploader, createdAt, createdAt],
   );
   return id;
 }

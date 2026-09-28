@@ -46,6 +46,7 @@ import {
 import type { AgentEnvService } from '../modules/agent/env.service.js';
 import type { ReactionService } from '../modules/collaboration/reaction.service.js';
 import type { GitConnectionService } from '../modules/git/connection.service.js';
+import type { PullRequestMergeService } from '../modules/git/merge.service.js';
 import type { PullRequestService } from '../modules/git/pull-request.service.js';
 import type { WebhookService } from '../modules/git/webhook.service.js';
 import {
@@ -56,6 +57,7 @@ import { createAiProcessClassifier } from '../modules/intake/process-classifier.
 import type { DesignService } from '../modules/issue/design.service.js';
 import type { PmService } from '../modules/pm/pm.service.js';
 import type { ChecklistService } from '../modules/workflow/checklist.js';
+import type { WorkflowProposalService } from '../modules/workflow/workflow.proposals.js';
 import type { IntakeService } from '../modules/intake/intake.service.js';
 import type { DeliveryService } from '../modules/issue/delivery.service.js';
 import type { KnowledgeService } from '../modules/knowledge/knowledge.service.js';
@@ -183,8 +185,16 @@ export const npDesignServiceToken: ServiceToken<DesignService> =
   createServiceToken<DesignService>('nocoproject/design-service');
 export const npPmServiceToken: ServiceToken<PmService> =
   createServiceToken<PmService>('nocoproject/pm-service');
+export const npPullRequestMergeServiceToken: ServiceToken<PullRequestMergeService> =
+  createServiceToken<PullRequestMergeService>(
+    'nocoproject/pull-request-merge-service',
+  );
 export const npChecklistServiceToken: ServiceToken<ChecklistService> =
   createServiceToken<ChecklistService>('nocoproject/checklist-service');
+export const npWorkflowProposalServiceToken: ServiceToken<WorkflowProposalService> =
+  createServiceToken<WorkflowProposalService>(
+    'nocoproject/workflow-proposal-service',
+  );
 export const npAttachmentServiceToken: ServiceToken<AttachmentService> =
   createServiceToken<AttachmentService>('nocoproject/attachment-service');
 export const npInvitationServiceToken: ServiceToken<InvitationService> =
@@ -269,7 +279,9 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npDeliveryServiceToken, 'deliveries');
     bindModule(container, npDesignServiceToken, 'design');
     bindModule(container, npPmServiceToken, 'pm');
+    bindModule(container, npPullRequestMergeServiceToken, 'pullRequestMerges');
     bindModule(container, npChecklistServiceToken, 'checklists');
+    bindModule(container, npWorkflowProposalServiceToken, 'workflowProposals');
     bindModule(container, npAttachmentServiceToken, 'attachments');
     bindModule(container, npInvitationServiceToken, 'invitations');
   }
