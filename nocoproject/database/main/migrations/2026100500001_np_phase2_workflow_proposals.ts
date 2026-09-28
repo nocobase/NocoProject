@@ -1,7 +1,7 @@
 // NocoProject Phase 2 workflow template proposals (NP-77 方案 §4, stage 2).
 //
 // workflowTemplates: `revision` (starts at 1, + 1 each time a new definition takes effect) and `isSystem` (the seeded
-// templates, which may only be copied; the seed `2026100400002_np_system_workflows` sets it).
+// templates, which may only be copied; the seed `2026100500002_np_system_workflows` sets it).
 // workflowTemplateRevisions: a snapshot of every definition that took effect, unique per (template, revision).
 // workflowProposals: an agent's proposed definition for an existing template (`templateId`) or for a copy of one
 // (`copyFromId`; `templateId` is filled with the new template once accepted), decided by an owner/admin.
@@ -68,7 +68,7 @@ async function createProposals(builder: Builder): Promise<void> {
 }
 
 const migration: MigrationDefinition = defineMigration({
-  name: '2026100400001_np_phase2_workflow_proposals',
+  name: '2026100500001_np_phase2_workflow_proposals',
 
   async up({ builder }) {
     await builder.alterCollection('workflowTemplates', (table) => {

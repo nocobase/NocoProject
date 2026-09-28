@@ -4,7 +4,8 @@
  * the batch, activity `issue_created` with `intakeBatchId`). Only after all of them exist do the trigger rules run for
  * those executed by an agent, so a later stage sees its earlier siblings and is deferred as blocked. Iteration 4: each
  * issue's process comes from the draft's `process` (else `settings.defaultProcess`; `auto` = the heuristic, no model
- * call per draft) and is recorded as `process_selected`.
+ * call per draft) and is recorded as `process_selected`. NP-78: the batch's files are attached to the issues created
+ * (`attachment/attachment.intake.ts`) before any trigger runs, so an agent sees them in its claim payload.
  */
 import type { Actor } from '../shared/activity.js';
 import {
@@ -32,6 +33,7 @@ import { issueRef } from '../issue/issue.records.js';
 import { processActivity, selectProcess } from '../issue/process.js';
 import { DEFAULT_STATUS } from '../issue/status.js';
 import { ensureLabelsByName } from '../label/label.service.js';
+import { attachBatchFiles } from '../attachment/attachment.intake.js';
 import { draftsOf, setBatchStatus } from './intake.records.js';
 import type { IntakeDeps } from './intake.service.js';
 import { validateDrafts } from './intake.validation.js';
@@ -150,6 +152,17 @@ export async function confirmBatch(
       .where('position', '=', draft.position)
       .execute();
   }
+  await attachBatchFiles(
+    tx,
+    deps.activity,
+    creator,
+    batch.id,
+    validated.flatMap((draft) => {
+      const issue = created.get(draft.position);
+      const ids = (draft.fields as IntakeDraftFieldsV4).attachmentIds;
+      return issue ? [{ issueId: issue.id, attachmentIds: ids ?? [] }] : [];
+    }),
+  );
   for (const issue of created.values())
     if (issue.executorType === 'agent')
       await deps

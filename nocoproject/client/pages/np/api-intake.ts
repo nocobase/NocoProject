@@ -26,6 +26,7 @@ export function normalizeBatchDetail(body: unknown): IntakeBatchDetail {
     },
     drafts: [...(inner.drafts ?? [])].sort((a, b) => a.position - b.position),
     parser: inner.parser ?? batch.parser,
+    attachments: inner.attachments ?? [],
   };
 }
 
@@ -34,6 +35,8 @@ export type CreateIntakeInput =
       readonly source: 'paste';
       readonly rawContent: string;
       readonly projectId?: string;
+      /** NP-78: the member's own uploads, which travel with the batch. */
+      readonly attachmentIds?: readonly string[];
     }
   | { readonly source: 'issue'; readonly issueId: string };
 

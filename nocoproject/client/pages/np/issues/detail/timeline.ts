@@ -116,6 +116,9 @@ export type ActivityLabel =
   | 'designChangesRequested'
   | 'designSkipped'
   | 'retrospectiveDone'
+  // NP-78
+  | 'attachmentAdded'
+  | 'attachmentRemoved'
   | 'updated';
 
 /** Iteration 2 actions are matched exactly (snake case, as the contract spells them) before the keyword rules. */
@@ -145,6 +148,8 @@ const EXACT_LABELS: Readonly<Record<string, ActivityLabel>> = {
   design_changes_requested: 'designChangesRequested',
   design_skipped: 'designSkipped',
   retrospective_done: 'retrospectiveDone',
+  attachment_added: 'attachmentAdded',
+  attachment_removed: 'attachmentRemoved',
 };
 
 /** Labels whose details carry a status change to show as badges. */

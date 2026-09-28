@@ -2,7 +2,14 @@ import { ApiClientError, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircleIcon, WandSparklesIcon } from 'lucide-react';
-import { type ReactElement, useState } from 'react';
+import type { FileRecord } from '@nocobase/app-plugin-file/client';
+import { type ReactElement, useRef, useState } from 'react';
+
+import {
+  FileUploadField,
+  type FileUploadFieldHandle,
+  type FileUploadStatus,
+} from '@/extensions/nocobase-file-component-ui';
 
 import { NpDetailSkeleton } from '@/components/np-states';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -12,16 +19,28 @@ import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 
+import {
+  ATTACHMENT_MAX_FILES,
+  ATTACHMENT_MAX_FILE_SIZE,
+} from '../api-attachments.js';
 import { createIntakeBatch, fetchIntakeBatch } from '../api-intake.js';
 import { fetchProjects } from '../api.js';
 import { npKeys } from '../constants.js';
 import { PropertySelect } from '../issues/detail/property-fields.js';
+import {
+  usePasteDrop,
+  uploadErrorTitle,
+  useAttachmentRepository,
+  useFileLabels,
+} from '../issues/detail/use-attachments.js';
 import { BatchEditor } from './batch-editor.js';
 
 /**
  * The two panels of batch entry (iteration 2 §E), now the AI 整理 tab of "新建任务" (iteration 4 §D): the composer that
  * sends the description or pasted list to the parser, and the editor of one parsed batch. The dialog
- * (`issues/new.tsx`) switches between them by `?batch=`.
+ * (`issues/new.tsx`) switches between them by `?batch=`. NP-78: the composer takes attachments (choose, drop, or paste
+ * files into the description) that travel with the batch and end up on the issues it creates; the AI parser reads
+ * their text, so the description may stay empty when files are attached.
  */
 export function IntakeComposer({
   initialProjectId,
@@ -36,6 +55,12 @@ export function IntakeComposer({
   const [rawContent, setRawContent] = useState('');
   const [projectId, setProjectId] = useState<string | null>(initialProjectId);
   const [error, setError] = useState<string>();
+  const repository = useAttachmentRepository();
+  const fileLabels = useFileLabels();
+  const uploadRef = useRef<FileUploadFieldHandle>(null);
+  const pasteDrop = usePasteDrop(uploadRef);
+  const [files, setFiles] = useState<readonly FileRecord[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<FileUploadStatus>('idle');
   const projects = useQuery({
     queryKey: npKeys.projects,
     queryFn: () => fetchProjects(api),
@@ -46,6 +71,8 @@ export function IntakeComposer({
         source: 'paste',
         rawContent,
         projectId: projectId ?? undefined,
+        attachmentIds:
+          files.length > 0 ? files.map((file) => file.id) : undefined,
       }),
     onSuccess: (detail) => {
       toast.add({
@@ -60,7 +87,14 @@ export function IntakeComposer({
       setError(
         failure instanceof ApiClientError && failure.status === 403
           ? t('np.common.forbidden')
-          : t('np.intake.parseFailed'),
+          : failure instanceof ApiClientError &&
+              failure.code === 'INVALID_ATTACHMENT'
+            ? t('np.attachments.invalid')
+            : failure instanceof ApiClientError &&
+                failure.code === 'INVALID_FIELD' &&
+                !rawContent.trim()
+              ? t('np.attachments.needText')
+              : t('np.intake.parseFailed'),
       ),
   });
 
@@ -85,8 +119,30 @@ export function IntakeComposer({
           autoFocus
           placeholder={t('np.newIssue.requirementPlaceholder')}
           onChange={(event) => setRawContent(event.target.value)}
+          {...pasteDrop}
         />
         {tooLong ? <FieldError>{t('np.intake.rawTooLong')}</FieldError> : null}
+      </Field>
+      <Field>
+        <FieldLabel>{t('np.attachments.title')}</FieldLabel>
+        <FileUploadField
+          ref={uploadRef}
+          repository={repository}
+          value={files}
+          onChange={setFiles}
+          onStatusChange={setUploadStatus}
+          multiple
+          maxFiles={ATTACHMENT_MAX_FILES}
+          maxSize={ATTACHMENT_MAX_FILE_SIZE}
+          labels={fileLabels}
+          onError={(failure) =>
+            toast.add({
+              type: 'error',
+              priority: 'high',
+              title: uploadErrorTitle(t, failure),
+            })
+          }
+        />
       </Field>
       <div className='flex flex-wrap items-end gap-3'>
         <Field className='max-w-xs flex-1'>
@@ -107,7 +163,12 @@ export function IntakeComposer({
         </Field>
         <Button
           className='ml-auto'
-          disabled={parse.isPending || !rawContent.trim() || tooLong}
+          disabled={
+            parse.isPending ||
+            (!rawContent.trim() && files.length === 0) ||
+            tooLong ||
+            uploadStatus !== 'idle'
+          }
           onClick={() => {
             setError(undefined);
             parse.mutate();

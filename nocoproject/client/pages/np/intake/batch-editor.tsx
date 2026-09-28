@@ -38,6 +38,7 @@ import { fetchAgents, fetchMe, fetchProjects } from '../api.js';
 import { npKeys } from '../constants.js';
 import { PropertySelect } from '../issues/detail/property-fields.js';
 import type { ExecutorRef, IntakeBatchDetail, IssueRef } from '../types.js';
+import { IntakeAttachments } from './intake-attachments.js';
 import {
   type DraftRow,
   addRow,
@@ -45,6 +46,7 @@ import {
   draftInputs,
   hasProblems,
   indentRow,
+  moveAttachment,
   outdentRow,
   removeRow,
   rowProblems,
@@ -68,7 +70,8 @@ const COLUMNS = [
 /**
  * The drafts of one batch as an editable table (iteration 2 §E). Edits stay local until "Save" or "Create issues";
  * both replace the drafts on the server, which validates them again. Creating runs only when neither the browser
- * nor the server reports a problem, then lists the new issues.
+ * nor the server reports a problem, then lists the new issues. NP-78: the batch's files are listed above the table
+ * with the draft each one goes to (`fields.attachmentIds`).
  */
 export function BatchEditor({
   detail,
@@ -244,6 +247,16 @@ export function BatchEditor({
         <p className='text-sm text-muted-foreground'>
           {t('np.intake.issueSourceHint')}
         </p>
+      ) : null}
+      {detail.attachments && detail.attachments.length > 0 ? (
+        <IntakeAttachments
+          attachments={detail.attachments}
+          rows={rows}
+          readOnly={readOnly || busy}
+          onMove={(fileId, index) =>
+            setRows((current) => moveAttachment(current, fileId, index))
+          }
+        />
       ) : null}
       <Table>
         <TableHeader>

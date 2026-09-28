@@ -1,7 +1,7 @@
 import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery } from '@tanstack/react-query';
-import { CornerLeftUpIcon, PlusIcon } from 'lucide-react';
+import { CornerLeftUpIcon, PaperclipIcon, PlusIcon } from 'lucide-react';
 import { type ReactElement, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
@@ -12,6 +12,7 @@ import type { NpRichTextHandle } from '@/components/np-rich-text-editor';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
+import { fetchAttachments } from '../../api-attachments.js';
 import { fetchMembers } from '../../api-collab.js';
 import { ACTIVE_RUN_STATUSES, npKeys } from '../../constants.js';
 import type {
@@ -23,6 +24,7 @@ import type {
 } from '../../types.js';
 import { ActivityTimeline } from './activity-timeline.js';
 import { ApprovalsCard } from './approvals-card.js';
+import { AttachmentsSection } from './attachments-section.js';
 import { CommentComposer } from './comment-composer.js';
 import { DecisionSection } from './decision-section.js';
 import { DependenciesSection } from './dependencies-section.js';
@@ -62,7 +64,7 @@ function coveredByDecisions(decisions: readonly InboxItem[]): {
 
 /**
  * The main column (docs/design/ui-design.md §8.2): parent link, title, the meta line (identifier, status, project, the
- * live run), "等你决定", description, pending approvals and executor proposals not already in a decision, then pull
+ * live run), "等你决定", description, attachments (NP-78; only with files or once revealed), pending approvals and executor proposals not already in a decision, then pull
  * requests,
  * sub-issues and dependencies as cards, the activity timeline (older activities on demand, virtualized when long,
  * iteration 3 §D / §H 8) and the comment composer pinned under it (⌘Enter sends).
@@ -110,11 +112,18 @@ export function IssueMain({
       (replyTo.authorType === 'agent' ? agentName(replyTo.authorId) : null))
     : null;
 
-  const [revealed, setRevealed] = useState<ReadonlySet<'prs' | 'dependencies'>>(
-    () => new Set(),
-  );
-  const reveal = (section: 'prs' | 'dependencies') =>
+  const [revealed, setRevealed] = useState<
+    ReadonlySet<'prs' | 'dependencies' | 'attachments'>
+  >(() => new Set());
+  const reveal = (section: 'prs' | 'dependencies' | 'attachments') =>
     setRevealed((current) => new Set(current).add(section));
+  const attachments = useQuery({
+    queryKey: npKeys.issueAttachments(issue.id),
+    queryFn: () => fetchAttachments(api, issue.id),
+  });
+  const attachmentList = attachments.data ?? [];
+  const showAttachments =
+    attachmentList.length > 0 || revealed.has('attachments');
   const showPrs = detail.pullRequests.length > 0 || revealed.has('prs');
   const showDependencies =
     detail.blockedBy.length > 0 ||
@@ -188,6 +197,13 @@ export function IssueMain({
             decisions={decisions}
           />
           <IssueDescription issue={issue} agents={agents} />
+          {showAttachments ? (
+            <AttachmentsSection
+              issueId={issue.id}
+              attachments={attachmentList}
+              initialUploading={attachmentList.length === 0}
+            />
+          ) : null}
           <ApprovalsCard
             issueId={issue.id}
             approvals={detail.approvals.filter(
@@ -236,9 +252,21 @@ export function IssueMain({
               <DependenciesSection detail={detail} />
             </div>
           ) : null}
-          {!showPrs || !showDependencies ? (
+          {!showPrs || !showDependencies || !showAttachments ? (
             <div className='flex flex-wrap items-center gap-2 text-sm text-muted-foreground'>
               <span>{t('np.issueAdd.label')}</span>
+              {!showAttachments ? (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='rounded-full'
+                  disabled={attachments.isPending}
+                  onClick={() => reveal('attachments')}
+                >
+                  <PaperclipIcon data-icon='inline-start' />
+                  {t('np.issueAdd.attachment')}
+                </Button>
+              ) : null}
               {!showDependencies ? (
                 <Button
                   variant='outline'

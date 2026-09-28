@@ -4,14 +4,14 @@
 
 ## 1. 数据模型
 
-迁移 `2026100400001_np_phase2_workflow_proposals`：
+迁移 `2026100500001_np_phase2_workflow_proposals`：
 
 - `workflowTemplates` 加 `revision`（int，非空，默认 1；每次生效 + 1）与 `isSystem`（bool，非空，默认 false）。
 - 新表 `workflowTemplateRevisions`：`id`、`templateId`、`revision`、`name`、`definition`（json）、`proposalId`（可空）、`note`（text，可空）、`createdByType`（`user` / `agent` / `system`）、`createdById`、`createdAt`；唯一索引 `np_workflow_template_revisions_unique (templateId, revision)`。
 - 新表 `workflowProposals`：`id`、`templateId`（改现有：目标模板；复制：接受后填新模板 id）、`copyFromId`（复制的来源，改现有为 null）、`name`（可空）、`definition`、`baseDefinition`、`baseName`、`baseRevision`（提交时的快照，差异摘要按它计算）、`reason`、`proposedByAgentId`、`sourceRunId`、`sourceIssueId`、`status`（`pending` / `accepted` / `rejected` / `stale`）、`decidedById`、`decidedAt`、`comment`、`resultRevision`、`createdAt`、`updatedAt`；索引 `(status, templateId)`、`(sourceRunId, status)`。
 - `down`：删两张表与两列。
 
-种子 `2026100400002_np_system_workflows` 把 `default`、`software-with-approval` 标为 `isSystem = true`（幂等）。
+种子 `2026100500002_np_system_workflows` 把 `default`、`software-with-approval` 标为 `isSystem = true`（幂等）。
 
 ## 2. 模板形状
 

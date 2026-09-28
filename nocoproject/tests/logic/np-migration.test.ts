@@ -2,13 +2,14 @@
 /**
  * The NocoProject migrations and seeds against a real PostgreSQL: up, indexes (including the partial pending-run
  * index), seed idempotency (iteration 4: the design-first statuses on both templates), down, and up again; each
- * iteration's batch rolls back alone (the Phase 2 batches: `np-migration-phase2.test.ts`).
+ * iteration's batch rolls back alone (the Phase 2 batches: `np-migration-phase2.test.ts`; NP-78's attachments table at the end).
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { createMigrator, createSeeder } from '@nocobase/db';
 
 import {
   MIGRATIONS_DIR,
+  NP_ATTACHMENT_TABLES,
   NP_PHASE1_ITER2_TABLES,
   NP_PHASE1_ITER3_TABLES,
   NP_PHASE1_TABLES,
@@ -383,7 +384,9 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
   it('rolls back completely and applies again', async () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
-      '2026100400001_np_phase2_workflow_proposals',
+      '2026100500001_np_phase2_workflow_proposals',
+      '2026100400002_np_file_intake_batch',
+      '2026100400001_np_attachments',
       '2026100200001_np_phase2_stage_actions',
       '2026100100001_np_phase1_iter4',
       '2026093000001_np_phase1_iter3',
@@ -399,6 +402,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
       ...NP_PHASE1_ITER3_TABLES,
       ...NP_PHASE2_WORKFLOW_TABLES,
       ...NP_PHASE2_PROPOSAL_TABLES,
+      ...NP_ATTACHMENT_TABLES,
     ])
       expect(remaining).not.toContain(table);
     const defs = await indexes(db!);
@@ -488,6 +492,63 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     expect(issueColumns).not.toContain('deleted_at');
     expect(issueColumns).toContain('stage');
     expect(await columns(db!, 'comments')).not.toContain('resolved_at');
+    await migrator().latest();
+  });
+
+  it('adds the attachments table and rolls it back alone', async () => {
+    while ((await migrator().rollback()).rolledBack.length > 0);
+    await migrator().upTo('2026100200001_np_phase2_stage_actions');
+    const applied = await migrator().upTo('2026100400001_np_attachments');
+    expect(applied.executed).toEqual(['2026100400001_np_attachments']);
+    expect(await tables(db!)).toEqual(
+      expect.arrayContaining([...NP_ATTACHMENT_TABLES]),
+    );
+    expect(await columns(db!, 'np_files')).toEqual(
+      expect.arrayContaining([
+        'id',
+        'disk',
+        'key',
+        'filename',
+        'ext',
+        'mime_type',
+        'size',
+        'uploaded_by_id',
+        'issue_id',
+        'created_at',
+        'updated_at',
+      ]),
+    );
+    expect((await indexes(db!)).get('np_files_issue_idx')).toContain(
+      '(issue_id)',
+    );
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual(['2026100400001_np_attachments']);
+    expect(await tables(db!)).not.toContain('np_files');
+    expect(await tables(db!)).toEqual(
+      expect.arrayContaining([...NP_PHASE1_ITER3_TABLES]),
+    );
+    await migrator().latest();
+  });
+
+  it('adds the intake batch columns to the attachments table and rolls them back alone', async () => {
+    while ((await migrator().rollback()).rolledBack.length > 0);
+    await migrator().upTo('2026100400001_np_attachments');
+    const applied = await migrator().upTo('2026100400002_np_file_intake_batch');
+    expect(applied.executed).toEqual(['2026100400002_np_file_intake_batch']);
+    expect(await columns(db!, 'np_files')).toEqual(
+      expect.arrayContaining(['intake_batch_id', 'intake_read_status']),
+    );
+    expect((await indexes(db!)).get('np_files_intake_batch_idx')).toContain(
+      '(intake_batch_id)',
+    );
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual([
+      '2026100400002_np_file_intake_batch',
+    ]);
+    const after = await columns(db!, 'np_files');
+    expect(after).not.toContain('intake_batch_id');
+    expect(after).not.toContain('intake_read_status');
+    expect((await indexes(db!)).has('np_files_intake_batch_idx')).toBe(false);
     await migrator().latest();
   });
 });

@@ -15,6 +15,7 @@ import {
   npAgentEnvServiceToken,
   npAgentIssueServiceToken,
   npAgentServiceToken,
+  npAttachmentServiceToken,
   npApprovalGatewayToken,
   npGitConnectionServiceToken,
   npIntakeServiceToken,
@@ -253,6 +254,7 @@ export async function build(
   container.instance(npPmServiceToken, {} as never);
   container.instance(npChecklistServiceToken, {} as never);
   container.instance(npWorkflowProposalServiceToken, {} as never);
+  container.instance(npAttachmentServiceToken, {} as never);
   const router = await contribution.createRouter({
     container,
     publicBasePath: '/main',

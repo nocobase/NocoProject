@@ -3,6 +3,7 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { LoaderCircle, RotateCcw, Trash2, UploadCloud, X } from 'lucide-react';
 import {
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type ChangeEvent,
@@ -53,6 +54,7 @@ export function FileUploadField(
     disabled = false,
     removeOnDelete = false,
     labels,
+    ref,
   } = inputProps;
 
   const [items, setItems] = useState<UploadItem[]>([]);
@@ -207,6 +209,10 @@ export function FileUploadField(
     setItems((current) => [...current, ...nextItems]);
     nextItems.forEach((item) => void upload(item));
   };
+
+  // NocoProject addition (NP-78): see `FileUploadFieldHandle`. No dependency list, so the handle always calls the
+  // current `addFiles`.
+  useImperativeHandle(ref, () => ({ addFiles }));
 
   const removeRecord = async (record: FileRecord): Promise<void> => {
     if (removeOnDelete) {

@@ -34,6 +34,10 @@ import type { UserDirectory } from '../shared/users.js';
 import type { SettingsService } from '../system/settings.service.js';
 import type { TriggerService } from '../trigger/trigger.service.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
+import {
+  attachFiles,
+  validateFileIds,
+} from '../attachment/attachment.service.js';
 import { parseUserMentions } from '../collaboration/mentions.js';
 import type { ProcessClassifier } from '../intake/process-classifier.js';
 import { setIssueLabels } from '../label/label.service.js';
@@ -267,6 +271,14 @@ async function create(
       action: 'process_selected',
       details: processActivity(selection),
     });
+    if (input.attachmentIds !== undefined)
+      await attachFiles(
+        tx,
+        deps.activity,
+        actor,
+        issue.id,
+        validateFileIds(input.attachmentIds, 'attachmentIds'),
+      );
     for (const target of input.blockedBy ?? []) {
       let dependsOn: IssueV1;
       try {

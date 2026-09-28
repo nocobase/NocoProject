@@ -172,6 +172,13 @@ import {
   type TriggerService,
 } from './trigger/trigger.service.js';
 
+import type { AttachmentTextReader } from './intake/attachment-text.js';
+import {
+  createAttachmentService,
+  type AttachmentService,
+  type FileObjectStore,
+} from './attachment/attachment.service.js';
+
 export interface NpServices {
   readonly bus: DomainEventBus;
   readonly tx: TxRunner;
@@ -219,6 +226,8 @@ export interface NpServices {
   // Phase 2 (NP-77).
   readonly checklists: ChecklistService;
   readonly workflowProposals: WorkflowProposalService;
+  // NP-78.
+  readonly attachments: AttachmentService;
 }
 
 /** What an alternative approval gateway gets to build itself (tests: the in-memory double). */
@@ -241,6 +250,11 @@ export interface NpServiceDeps {
   readonly aiConfigured?: () => boolean;
   /** Iteration 4: the AI process classifier; null or absent = heuristic only. */
   readonly aiProcess?: AiProcessClassifier | null;
+  /** NP-78: deletes stored attachment objects; the provider backs it with Drive. Absent = objects are kept (tests). */
+  readonly fileObjects?: FileObjectStore;
+  readonly onFileObjectError?: (error: unknown) => void;
+  /** NP-78: reads files attached on the AI 整理 tab for the AI parser; absent = files are not read. */
+  readonly attachmentText?: AttachmentTextReader | null;
   /** Replaces the database approval gateway (the replacement checklist test). */
   readonly approvalGateway?: (
     context: ApprovalGatewayContext,
@@ -387,6 +401,13 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       activity,
       workflows,
     }),
+    attachments: createAttachmentService({
+      tx,
+      users,
+      activity,
+      objects: deps.fileObjects ?? { remove: async () => undefined },
+      onObjectError: deps.onFileObjectError,
+    }),
   } satisfies NpServices);
 
   return services;
@@ -449,6 +470,7 @@ function createIteration2Services(
       ai: deps.aiIntake ?? null,
       aiConfigured: deps.aiConfigured ?? (() => false),
       classifier: buildProcessClassifier(null, undefined),
+      attachmentText: deps.attachmentText ?? null,
     }),
     reactions: createReactionService({ tx, ids, activity }),
     agentEnv: createAgentEnvService({ tx, ids, users, secrets }),
