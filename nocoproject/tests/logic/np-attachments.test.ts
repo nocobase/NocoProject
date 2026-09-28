@@ -52,10 +52,17 @@ beforeEach(async () => {
 });
 
 /** An unattached upload of `uploader`, as the plugin stores it. */
+/** Uploads are listed by time, then by (random) id: by default each one gets its own millisecond, in call order. */
+let lastUploadAt = 0;
+function nextUploadAt(): Date {
+  lastUploadAt = Math.max(Date.now(), lastUploadAt + 1);
+  return new Date(lastUploadAt);
+}
+
 async function upload(
   uploader: string,
   filename = 'notes.txt',
-  createdAt = new Date(),
+  createdAt = nextUploadAt(),
 ): Promise<string> {
   const id = randomUUID();
   await db!.knex.raw(
