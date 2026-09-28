@@ -10,7 +10,7 @@ import type {
   RunSummary,
 } from '../types.js';
 
-/** Reading a decision (docs/design/ui-design.md §8): its title, its sentence, and what explains it on the issue. */
+/** Reading a decision (nocosolution/frontend/nocosolution-frontend-standard.md §3): its title, its sentence, and what explains it on the issue. */
 
 /** The newest comment an agent wrote on the issue: its delivery note, or why it is blocked. */
 export function latestAgentComment(

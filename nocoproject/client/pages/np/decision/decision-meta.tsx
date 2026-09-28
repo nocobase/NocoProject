@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
 
 import type { InboxItem } from '../types.js';
 
-/** One icon per inbox type (docs/design/ui-design.md §5), so a card is recognisable before it is read. */
+/** One icon per inbox type, so a card is recognisable before it is read. */
 const TYPE_ICON: Readonly<Record<string, LucideIcon>> = {
   review_requested: PackageCheckIcon,
   agent_blocked: OctagonPauseIcon,

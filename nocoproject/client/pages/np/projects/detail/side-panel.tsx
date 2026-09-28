@@ -93,7 +93,7 @@ export function ProjectDescription({
 }
 
 /**
- * The project's properties (§J 4, docs/design/ui-design.md §8.3): status, priority, lead, workflow and dates, each
+ * The project's properties (§J 4, client/pages/np/README.md §3): status, priority, lead, workflow and dates, each
  * editable in place for whoever may edit the project.
  */
 export function ProjectProperties({

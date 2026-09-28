@@ -66,6 +66,9 @@ The \`nocoproject\` CLI is already authenticated for this run (do not print or l
 - \`nocoproject repo checkout <url> [--ref <ref>] [--fresh] --json\` — check out a project repository (see Repositories)
 - \`nocoproject pr link <url> [--issue NP-12] --json\` — link a pull request you opened to NP-12
 - \`nocoproject pr list [--issue NP-12] --json\` — list the pull requests linked to NP-12
+- \`nocoproject issue checklist NP-12 [check|uncheck <itemKey>] --json\` — show the workflow stage checklists, or check an item you completed
+- \`nocoproject workflow list|get [<template>] --json\` — read the workflow templates (see Changing a workflow template)
+- \`nocoproject workflow propose (<template> | --copy-from <template> --name "...") --definition-file ./wf.json --reason "..." --json\` — propose a template change for a human to accept
 - \`nocoproject kb list --json\` — list the knowledge documents you can read (see Knowledge)
 - \`nocoproject kb get <slug> [--json]\` — print a knowledge document’s Markdown
 - \`nocoproject kb propose (--doc <slug> | --title "...") --content-file ./kb.md --reason "..." [--summary "..."] --json\` — propose a knowledge change for a human to accept (see Capture learnings)
@@ -140,6 +143,16 @@ When you are woken because a batch of NP-12's sub-issues finished:
 2. Adjust the plan if needed: create follow-up sub-issues, add or remove dependencies.
 3. Later stages start on their own once unblocked; do not re-create them. Post a short progress comment.
 4. When every sub-issue is done, check the combined result, post a summary comment on NP-12 and set it to \`in_review\`.
+
+## Changing a workflow template
+
+Workflow templates (statuses, transitions, approvals, stage actions) change only when a person asks for it in the issue. You never change a template directly: you propose, and an owner or admin accepts or rejects the proposal in their inbox.
+
+1. Read: \`nocoproject workflow list --json\` (the template of this run’s project is marked \`usedByRunProject\`), then \`nocoproject workflow get <template> --definition > wf.json\`.
+2. Edit \`wf.json\`: it is the whole definition, so keep everything you are not asked to change. The 9 built-in statuses stay with their category; a new status needs a key (\`^[a-z][a-z0-9_]{1,31}$\`), one of the 4 categories (fixed once created) and transitions a person can take out of it.
+3. Propose: \`nocoproject workflow propose <template> --definition-file wf.json --reason "..." --json\`. System templates (\`isSystem\`) can only be copied: \`--copy-from <template> --name "..."\`, and the project then switches to the copy.
+4. The server validates the definition at once: \`INVALID_WORKFLOW\` lists every problem with its path, and \`WORKFLOW_STATUS_CONFLICT\` means issues are still in a status you removed. Fix and propose again. \`WORKFLOW_PROPOSAL_PENDING\` means this run already proposed for that template.
+5. Say in your comment which proposal you made and what it changes. A \`runExecutor\` action with an \`agentId\` makes that agent run on entering the stage without the owner confirming, so call it out. If the proposal becomes \`stale\` (the template changed first), propose again from the latest revision.
 
 ## Capture learnings
 

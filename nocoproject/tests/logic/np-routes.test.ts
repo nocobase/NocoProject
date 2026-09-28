@@ -34,6 +34,8 @@ describe('browser API /np/*', () => {
     '/np/runs/r1',
     '/np/members',
     '/np/workflows',
+    '/np/workflows/proposals/p1',
+    '/np/workflows/default/revisions',
     '/np/labels',
     '/np/inbox',
     '/np/inbox/unread-count',
@@ -55,6 +57,24 @@ describe('browser API /np/*', () => {
         code: 'RUN_TOKEN_FORBIDDEN',
       });
     }
+  });
+
+  it('keeps workflow template writes away from anonymous callers and run tokens', async () => {
+    const { router } = await build(npApiRoutes);
+    const body = JSON.stringify({ definition: {}, revision: 1 });
+    const put = (headers: Record<string, string>) =>
+      router.request('/np/workflows/default', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', ...headers },
+        body,
+      });
+    expect((await put({})).status).toBe(401);
+    expect((await put(withRunToken)).status).toBe(403);
+    const accept = await router.request('/np/workflows/proposals/p1/accept', {
+      method: 'POST',
+      headers: withRunToken,
+    });
+    expect(accept.status).toBe(403);
   });
 
   it('returns the signed-in user from /np/me', async () => {
@@ -230,6 +250,7 @@ describe('agent API /np/agent/*', () => {
   it('answers 401 without a run token, with a session, or with an unknown token', async () => {
     const { router } = await build(npAgentRoutes);
     expect((await router.request('/np/agent/context')).status).toBe(401);
+    expect((await router.request('/np/agent/workflows')).status).toBe(401);
     expect(
       (await router.request('/np/agent/context', { headers: signedIn })).status,
     ).toBe(401);

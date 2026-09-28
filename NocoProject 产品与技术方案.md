@@ -761,7 +761,7 @@ src/
 - 路由层只做参数校验、鉴权、调用服务；业务规则在服务；跨模块只走服务接口或事件。
 - 文件超过 500 行、函数超过 120 行视为需要拆分，lint 里配硬阈值（已有三处历史超标待拆）。
 - 迁移不可变；不加跨模块外键，用应用层删除图。
-- 前端：NocoBase 应用默认 `compact` 密度预设，页面级不覆盖任何预设 token，compact 与 default、浅色与深色四种组合都要正常。九条界面规则维护在应用仓库 `client/pages/np/README.md`，设计系统在 `docs/design/ui-design.md`；另有《NocoBase 3 应用前端交互最佳实践》与《NocoSolution 前端标准》两份可供系列复用的文档。
+- 前端：NocoBase 应用默认 `compact` 密度预设，页面级不覆盖任何预设 token，compact 与 default、浅色与深色四种组合都要正常。十一条界面规则维护在应用仓库 `client/pages/np/README.md`；设计系统是《NocoBase 3 应用前端交互最佳实践》与《NocoSolution 前端标准》两份文档，现收在 `nocosolution/` 子模块的 `frontend/` 下（总纲第 8 章的完整规范），各 Solution 直接遵守，NocoProject 不再各自保留一份副本；README 只保留 NocoProject 特有、不适合放进系列文档的部分（外壳线框、截图基线、令牌与文件清单）。用户或产品负责人对某个页面明确提出的要求，优先于这三份文档。
 
 ### 5.2 测试分层
 - 单元：简报组装（快照）、触发规则、状态机与阶段动作、模板定义校验、评论 @ 解析、失败分类、流程分类器。

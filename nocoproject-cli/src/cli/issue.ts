@@ -1,6 +1,7 @@
 /**
  * Agent-facing commands (run-token mode): issue get / comment list / comment add / status,
- * plus the Phase 1 sub-issue commands registered from ./subissue.ts.
+ * plus the Phase 1 sub-issue commands registered from ./subissue.ts and the Phase 2 stage
+ * checklist command from ./checklist.ts.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -9,6 +10,7 @@ import { z } from 'zod';
 import type { CommentForAgent, IssueForAgent } from '../protocol.js';
 import { CliError, EXIT, printJson, printLine } from './output.js';
 import { action, type JsonOpt, resolveIssueId, runTokenContext } from './run-token.js';
+import { registerChecklistCommand } from './checklist.js';
 import { registerSubIssueCommands } from './subissue.js';
 
 export { resolveIssueId, runTokenContext, type RunTokenContext } from './run-token.js';
@@ -141,4 +143,5 @@ export function registerIssueCommands(program: Command): void {
     );
 
   registerSubIssueCommands(issue);
+  registerChecklistCommand(issue);
 }

@@ -310,7 +310,7 @@ function NavigationLink({
   const link = (
     <Link
       aria-current={isSelected ? 'page' : undefined}
-      // NocoProject (docs/design/ui-design.md §1.2): the template's row size, muted icons, the selected icon in
+      // NocoProject (nocosolution/frontend/nocobase3-frontend-best-practices.md §2.1): the template's row size, muted icons, the selected icon in
       // primary, and `relative` so an entry's trailing count (the inbox badge) can sit at the row's right end.
       className={`relative flex items-center text-sm outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring transition-colors ${
         inPopover

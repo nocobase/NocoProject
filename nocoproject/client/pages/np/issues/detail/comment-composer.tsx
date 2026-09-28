@@ -73,7 +73,7 @@ export function CommentComposer({
   });
   const candidates = useMentionCandidates(agents, members.data);
 
-  // "备注" posts the comment as a `/note`, which wakes nobody (docs/design/ui-design.md §8.2).
+  // "备注" posts the comment as a `/note`, which wakes nobody (nocosolution/frontend/nocosolution-frontend-standard.md §3).
   const outgoing =
     mode === 'note' && content.trim() && !/^\s*\/note\b/u.test(content)
       ? `/note ${content}`

@@ -10,6 +10,7 @@ import type { ClaimedKnowledgeDoc, ClaimedProject, CommentForAgent, IssueForAgen
 import type { ClaimedRunV1 as ClaimedRun } from '../../src/run-context.js';
 import { MockKnowledge } from './mock-knowledge.js';
 import { MockPm } from './mock-pm.js';
+import { MockWorkflow } from './mock-workflow.js';
 
 export const API_KEY = 'test-api-key-0123456789';
 export const BASE = '/main';
@@ -103,6 +104,7 @@ export class MockServer {
   readonly approvals: { id: string; issueId: string; fromStatus: string; toStatus: string }[] = [];
   readonly knowledge = new MockKnowledge();
   readonly pm = new MockPm(this);
+  readonly workflow = new MockWorkflow();
   private readonly sockets = new Set<WebSocket>();
   private server: Server;
   private wss: WebSocketServer;
@@ -322,6 +324,14 @@ export class MockServer {
     }
     if (path.startsWith('/np/agent/knowledge')) return this.knowledge.route(method, path, body, run.claimed, send);
     if (path.startsWith('/np/agent/pm/')) return this.pm.route(method, path, url, run.claimed, send);
+    if (path.startsWith('/np/agent/workflows')) return this.workflow.route(method, path, body, run.claimed, send);
+    const cl = path.match(/^\/np\/agent\/issues\/([^/]+)\/checklists(?:\/([^/]+)\/items\/([^/]+))?$/);
+    if (cl) {
+      const target = this.findIssue(decodeURIComponent(cl[1] as string));
+      if (!target) return send(404, { code: 'ISSUE_NOT_FOUND', message: path });
+      const [statusKey, itemKey] = [cl[2], cl[3]].map((v) => (v ? decodeURIComponent(v) : undefined));
+      return this.workflow.checklist(method, target.id, statusKey, itemKey, body, run.claimed, send);
+    }
     if (path === '/np/agent/issues' && method === 'POST') return this.createIssue(body, run.claimed, send);
     const m = path.match(/^\/np\/agent\/issues\/([^/]+)(?:\/(comments|status|children|dependencies|pull-requests|design-proposal))?$/);
     const issue = m ? this.findIssue(decodeURIComponent(m[1] as string)) : undefined;
