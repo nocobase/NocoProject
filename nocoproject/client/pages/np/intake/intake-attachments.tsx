@@ -20,8 +20,8 @@ import type { IntakeBatchAttachment } from '../types.js';
 import { type DraftRow, attachmentHolder } from './intake-model.js';
 
 /**
- * NP-78: the files that travel with a batch, above its drafts. Each row shows the file (name opens the preview) and
- * the draft whose issue will receive it; while the batch is a draft the target can be changed.
+ * NP-78: the files that travel with a batch, above its drafts. Each row shows the file (name opens the preview), what
+ * AI 整理 read of it, and the draft whose issue will receive it; while the batch is a draft the target can be changed.
  */
 export function IntakeAttachments({
   attachments,
@@ -85,7 +85,14 @@ export function IntakeAttachments({
                 {file.filename}
               </button>
               <div className='text-xs text-muted-foreground'>
-                {formatFileSize(file.size)}
+                {[
+                  formatFileSize(file.size),
+                  file.readStatus
+                    ? t(`np.attachments.readStatus.${file.readStatus.state}`)
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </div>
             </div>
             {rows.length > 0 ? (

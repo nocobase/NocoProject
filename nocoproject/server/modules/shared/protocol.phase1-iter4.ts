@@ -307,6 +307,27 @@ export interface IntakeBatchAttachment {
   readonly contentUrl: string;
   /** 已挂到的任务（批次确认后） */
   readonly issueId: string | null;
+  /** AI 整理读取这个文件的结果（批次创建时写入；旧批次为 null） */
+  readonly readStatus: IntakeAttachmentReadStatus | null;
+}
+
+/**
+ * AI 整理读附件的结果：`read` 已读、`truncated` 已读但截断、`empty` 没读到文字（如扫描版 PDF）、`unsupported`
+ * 不支持的格式（图片等，只把文件名给模型）、`legacy` 老 Office 格式（doc / xls / ppt）、`failed` 读取失败、
+ * `skipped` 合计字数已满未读。
+ */
+export type AttachmentReadState =
+  | 'read'
+  | 'truncated'
+  | 'empty'
+  | 'unsupported'
+  | 'legacy'
+  | 'failed'
+  | 'skipped';
+export interface IntakeAttachmentReadStatus {
+  readonly state: AttachmentReadState;
+  /** 交给模型的字数 */
+  readonly chars: number;
 }
 export interface IntakeBatchAttachmentsField {
   readonly attachments: readonly IntakeBatchAttachment[];

@@ -221,6 +221,7 @@ export type NpTestOptions = Partial<
     | 'secrets'
     | 'aiProcess'
     | 'fileObjects'
+    | 'attachmentText'
   >
 >;
 

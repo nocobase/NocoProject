@@ -4,8 +4,11 @@
  * when the extension is empty); the route layer prefixes the application's base path.
  */
 import type { Conn } from '../shared/db.js';
-import { iso, num, str } from '../shared/db.js';
-import type { AgentAttachmentInfo } from '../shared/protocol.js';
+import { fromJson, iso, num, str } from '../shared/db.js';
+import type {
+  AgentAttachmentInfo,
+  IntakeAttachmentReadStatus,
+} from '../shared/protocol.js';
 
 export const FILE_COLLECTION = 'npFiles';
 export const FILE_ACCESS_PATH = '/uploads/np';
@@ -24,6 +27,8 @@ export interface FileRow {
   readonly issueId: string | null;
   /** Set while the file travels with an intake batch (AI 整理 tab). */
   readonly intakeBatchId: string | null;
+  /** What the AI intake parser read of the file. */
+  readonly intakeReadStatus: IntakeAttachmentReadStatus | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -40,6 +45,9 @@ export function toFileRow(row: Record<string, unknown>): FileRow {
     uploadedById: str(row.uploadedById),
     issueId: str(row.issueId),
     intakeBatchId: str(row.intakeBatchId),
+    intakeReadStatus: fromJson<IntakeAttachmentReadStatus>(
+      row.intakeReadStatus,
+    ),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };

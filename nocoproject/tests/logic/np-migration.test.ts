@@ -527,12 +527,14 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     await migrator().latest();
   });
 
-  it('adds the intake batch column to the attachments table and rolls it back alone', async () => {
+  it('adds the intake batch columns to the attachments table and rolls them back alone', async () => {
     while ((await migrator().rollback()).rolledBack.length > 0);
     await migrator().upTo('2026100400001_np_attachments');
     const applied = await migrator().latest();
     expect(applied.executed).toEqual(['2026100400002_np_file_intake_batch']);
-    expect(await columns(db!, 'np_files')).toContain('intake_batch_id');
+    expect(await columns(db!, 'np_files')).toEqual(
+      expect.arrayContaining(['intake_batch_id', 'intake_read_status']),
+    );
     expect((await indexes(db!)).get('np_files_intake_batch_idx')).toContain(
       '(intake_batch_id)',
     );
@@ -540,7 +542,9 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     expect(rolledBack.rolledBack).toEqual([
       '2026100400002_np_file_intake_batch',
     ]);
-    expect(await columns(db!, 'np_files')).not.toContain('intake_batch_id');
+    const after = await columns(db!, 'np_files');
+    expect(after).not.toContain('intake_batch_id');
+    expect(after).not.toContain('intake_read_status');
     expect((await indexes(db!)).has('np_files_intake_batch_idx')).toBe(false);
     await migrator().latest();
   });

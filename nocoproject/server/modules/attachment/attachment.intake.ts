@@ -5,9 +5,12 @@
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import type { Conn, Tx } from '../shared/db.js';
-import { now } from '../shared/db.js';
+import { now, toJson } from '../shared/db.js';
 import { invalid } from '../shared/errors.js';
-import type { IntakeBatchAttachment } from '../shared/protocol.js';
+import type {
+  IntakeAttachmentReadStatus,
+  IntakeBatchAttachment,
+} from '../shared/protocol.js';
 import { ERROR_INVALID_ATTACHMENT } from '../shared/protocol.js';
 import {
   contentPath,
@@ -40,24 +43,27 @@ export async function intakeBatchAttachments(
     size: file.size,
     contentUrl: contentPath(file),
     issueId: file.issueId,
+    readStatus: file.intakeReadStatus,
   }));
 }
 
-/** Hands the actor's own unattached uploads to a new batch; any other id is 400 `INVALID_ATTACHMENT`. */
-export async function claimFilesForBatch(
-  tx: Tx,
+/**
+ * The actor's own uploads that are neither attached nor in a batch, in the order named; any other id is 400
+ * `INVALID_ATTACHMENT`. Checked before a file's content is read for the parser, and again when it is claimed.
+ */
+export async function ownLooseFiles(
+  conn: Conn,
   actor: Actor,
-  batchId: string,
   fileIds: readonly string[],
-): Promise<void> {
-  if (fileIds.length === 0) return;
-  const rows = await tx.conn.query
+): Promise<FileRow[]> {
+  if (fileIds.length === 0) return [];
+  const rows = await conn.query
     .selectFrom(FILE_COLLECTION)
     .selectAll()
     .where('id', 'in', [...fileIds])
     .execute();
   const files = rows.map(toFileRow);
-  for (const id of fileIds) {
+  return fileIds.map((id) => {
     const file = files.find((candidate) => candidate.id === id);
     if (
       !file ||
@@ -69,12 +75,31 @@ export async function claimFilesForBatch(
         ERROR_INVALID_ATTACHMENT,
         `File ${id} is not an unattached upload of yours.`,
       );
+    return file;
+  });
+}
+
+/** Hands the actor's own unattached uploads to a new batch, with what the parser read of each. */
+export async function claimFilesForBatch(
+  tx: Tx,
+  actor: Actor,
+  batchId: string,
+  fileIds: readonly string[],
+  readStatuses: ReadonlyMap<string, IntakeAttachmentReadStatus> = new Map(),
+): Promise<void> {
+  await ownLooseFiles(tx.conn, actor, fileIds);
+  for (const id of fileIds) {
+    const status = readStatuses.get(id);
+    await tx.conn.query
+      .updateTable(FILE_COLLECTION)
+      .set({
+        intakeBatchId: batchId,
+        intakeReadStatus: toJson(status ?? null),
+        updatedAt: now(),
+      })
+      .where('id', '=', id)
+      .execute();
   }
-  await tx.conn.query
-    .updateTable(FILE_COLLECTION)
-    .set({ intakeBatchId: batchId, updatedAt: now() })
-    .where('id', 'in', [...fileIds])
-    .execute();
 }
 
 export interface ConfirmedDraft {

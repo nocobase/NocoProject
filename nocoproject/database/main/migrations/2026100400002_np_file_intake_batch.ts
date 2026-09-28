@@ -2,6 +2,7 @@
 //
 // npFiles.intakeBatchId: set when a batch is created with `attachmentIds`; the file stays unattached (`issueId`
 // null) until the batch is confirmed, and the orphan purge leaves it alone while the batch is still a draft.
+// npFiles.intakeReadStatus: what the AI intake parser read of the file (`{ state, chars }`), shown with the batch.
 //
 // Self-contained on purpose: every field is spelled out here and nothing is imported from server/modules, so the
 // meaning of this migration never changes after it has run.
@@ -15,6 +16,7 @@ const migration: MigrationDefinition = defineMigration({
   async up({ builder }) {
     await builder.alterCollection('npFiles', (table) => {
       table.string('intakeBatchId', ID).nullable();
+      table.json('intakeReadStatus').nullable();
       table.index('intakeBatchId', { name: 'np_files_intake_batch_idx' });
     });
   },
@@ -25,7 +27,7 @@ const migration: MigrationDefinition = defineMigration({
       table.dropIndex('np_files_intake_batch_idx');
     });
     await builder.alterCollection('npFiles', (table) => {
-      table.dropFields('intakeBatchId');
+      table.dropFields('intakeBatchId', 'intakeReadStatus');
     });
   },
 });

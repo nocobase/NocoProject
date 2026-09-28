@@ -7,7 +7,13 @@
  * else's upload cannot be attached (400), removal only for the uploader / owner / lead / admin (403), the body
  * limit (413) and the orphan purge.
  */
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -456,5 +462,50 @@ describe('NocoProject issue attachments through the application', () => {
       firstIssue.id,
       secondIssue.id,
     ]);
+  });
+
+  it('reads an uploaded document for AI 整理 through the Drive-backed reader', async () => {
+    const storage = mkdtempSync(path.join(tmpdir(), 'np-attachments-store-'));
+    cleanups.push(() => rmSync(storage, { recursive: true, force: true }));
+    const app = await startNpApp(cleanups, 'nocoproject-attachments-read-', {
+      storageDir: storage,
+    });
+    const admin = await session(
+      app,
+      await post(app, '/auth/sign-in/username', {
+        username: 'nocobase',
+        password: 'admin123',
+      }),
+    );
+    const bytes = readFileSync(
+      path.resolve(import.meta.dirname, '../fixtures/attachments/spec.docx'),
+    );
+    const response = await admin.upload(
+      new File([bytes], 'spec.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+    );
+    const { data } = (await response.json()) as {
+      data: { record: { id: string } };
+    };
+    // No LLM in this application: the rule-based parser names one draft after the file, which was still read.
+    const created = await json<{
+      drafts: { fields: { title: string } }[];
+      attachments: { readStatus: { state: string; chars: number } | null }[];
+    }>(
+      await admin.send('POST', '/np/intake/batches', {
+        source: 'paste',
+        rawContent: '',
+        attachmentIds: [data.record.id],
+      }),
+      201,
+    );
+    expect(created.drafts.map((draft) => draft.fields.title)).toEqual([
+      'spec.docx',
+    ]);
+    expect(created.attachments[0].readStatus).toEqual({
+      state: 'read',
+      chars: 16,
+    });
   });
 });

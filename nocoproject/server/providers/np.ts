@@ -39,6 +39,10 @@ import type {
   AttachmentService,
   FileObjectStore,
 } from '../modules/attachment/attachment.service.js';
+import {
+  createAttachmentTextReader,
+  type AttachmentTextReader,
+} from '../modules/intake/attachment-text.js';
 import type { AgentEnvService } from '../modules/agent/env.service.js';
 import type { ReactionService } from '../modules/collaboration/reaction.service.js';
 import type { GitConnectionService } from '../modules/git/connection.service.js';
@@ -210,6 +214,7 @@ export default class NpProvider extends ServiceProvider<Application> {
         ),
         secrets: this.secretBox(),
         fileObjects: this.fileObjects(),
+        attachmentText: this.attachmentText(),
         onFileObjectError: (error) =>
           this.logError(error, 'NocoProject attachment object delete failed.'),
         aiIntake: ai ? createAiIntakeParser(ai) : null,
@@ -257,6 +262,15 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npPmServiceToken, 'pm');
     bindModule(container, npChecklistServiceToken, 'checklists');
     bindModule(container, npAttachmentServiceToken, 'attachments');
+  }
+
+  /** NP-78: the AI 整理 tab's files are read through the Drive manager, on the row's own disk, for the AI parser. */
+  private attachmentText(): AttachmentTextReader | null {
+    const { container } = this.app;
+    if (!container.has(driveManagerToken)) return null;
+    return createAttachmentTextReader((disk, key) =>
+      container.resolve(driveManagerToken).use(disk).getBytes(key),
+    );
   }
 
   /** NP-78: stored attachment objects are deleted through the application's Drive manager, on the row's own disk. */

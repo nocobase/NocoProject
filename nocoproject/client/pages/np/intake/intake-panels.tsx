@@ -39,7 +39,8 @@ import { BatchEditor } from './batch-editor.js';
  * The two panels of batch entry (iteration 2 §E), now the AI 整理 tab of "新建任务" (iteration 4 §D): the composer that
  * sends the description or pasted list to the parser, and the editor of one parsed batch. The dialog
  * (`issues/new.tsx`) switches between them by `?batch=`. NP-78: the composer takes attachments (choose, drop, or paste
- * files into the description) that travel with the batch and end up on the issues it creates.
+ * files into the description) that travel with the batch and end up on the issues it creates; the AI parser reads
+ * their text, so the description may stay empty when files are attached.
  */
 export function IntakeComposer({
   initialProjectId,
@@ -89,7 +90,11 @@ export function IntakeComposer({
           : failure instanceof ApiClientError &&
               failure.code === 'INVALID_ATTACHMENT'
             ? t('np.attachments.invalid')
-            : t('np.intake.parseFailed'),
+            : failure instanceof ApiClientError &&
+                failure.code === 'INVALID_FIELD' &&
+                !rawContent.trim()
+              ? t('np.attachments.needText')
+              : t('np.intake.parseFailed'),
       ),
   });
 
@@ -160,7 +165,7 @@ export function IntakeComposer({
           className='ml-auto'
           disabled={
             parse.isPending ||
-            !rawContent.trim() ||
+            (!rawContent.trim() && files.length === 0) ||
             tooLong ||
             uploadStatus !== 'idle'
           }

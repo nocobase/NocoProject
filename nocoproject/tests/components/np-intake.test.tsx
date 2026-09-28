@@ -376,7 +376,13 @@ describe('AI draft tab attachments (NP-78)', () => {
               },
               { position: 2, parentPosition: null, fields: { title: 'Docs' } },
             ],
-            attachments: [{ ...record('f1', 'shot.png'), issueId: null }],
+            attachments: [
+              {
+                ...record('f1', 'shot.png'),
+                issueId: null,
+                readStatus: { state: 'unsupported', chars: 0 },
+              },
+            ],
           },
         },
         'PUT np/intake/batches/b1/drafts': (options: RequestOptions) => {
@@ -390,6 +396,10 @@ describe('AI draft tab attachments (NP-78)', () => {
       url: '/issues/new?batch=b1',
       path: '/issues/new',
     });
+    // What AI 整理 read of the file is shown beside it.
+    expect(
+      await screen.findByText(/Not read: format not supported/u),
+    ).toBeVisible();
     const target = await screen.findByRole('combobox', { name: 'Attach to' });
     expect(target).toHaveTextContent('1. Login');
     await user.click(target);
@@ -411,5 +421,48 @@ describe('AI draft tab attachments (NP-78)', () => {
         ],
       ]),
     );
+  });
+
+  it('drafts from attached files alone, with an empty description', async () => {
+    const user = userEvent.setup();
+    const posted: Record<string, unknown>[] = [];
+    fileRepository.uploadOne.mockResolvedValue({
+      record: record('f1', 'spec.png'),
+      createdTargets: [],
+    });
+    api.request.mockImplementation(
+      answer({
+        ...COMMON,
+        'POST np/intake/batches': (options: RequestOptions) => {
+          posted.push(options.json as Record<string, unknown>);
+          return {
+            data: {
+              batch: BATCH,
+              parser: 'ai',
+              drafts: [
+                { position: 1, parentPosition: null, fields: { title: 'X' } },
+              ],
+              attachments: [],
+            },
+          };
+        },
+      }),
+    );
+    await renderNp(<NewIssuePage />, {
+      url: '/issues/new',
+      path: '/issues/new',
+    });
+    const draft = await screen.findByRole('button', { name: 'Draft issues' });
+    expect(draft).toBeDisabled();
+    fireEvent.paste(screen.getByRole('textbox', { name: 'Requirements' }), {
+      clipboardData: {
+        files: [new File(['x'], 'spec.png', { type: 'image/png' })],
+        types: ['Files'],
+      },
+    });
+    await waitFor(() => expect(draft).toBeEnabled());
+    await user.click(draft);
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ rawContent: '', attachmentIds: ['f1'] });
   });
 });

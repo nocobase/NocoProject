@@ -247,6 +247,18 @@ export interface IntakeBatchAttachment {
   readonly size: number;
   readonly contentUrl: string;
   readonly issueId: string | null;
+  /** What AI 整理 read of the file; null on batches from before it was recorded. */
+  readonly readStatus?: {
+    readonly state:
+      | 'read'
+      | 'truncated'
+      | 'empty'
+      | 'unsupported'
+      | 'legacy'
+      | 'failed'
+      | 'skipped';
+    readonly chars: number;
+  } | null;
 }
 
 export interface IntakeBatchDetail {
