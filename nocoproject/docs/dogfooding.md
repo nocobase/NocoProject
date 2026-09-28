@@ -46,7 +46,7 @@ Agent 跑在谁的电脑上，就在那台电脑的检出里看效果；服务�
 
 | 内容                                           | 位置                                                                                                                                                              |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 代码规范、模块结构、界面规则                   | 仓库：`AGENTS.md`、`client/pages/np/README.md`、`docs/design/ui-design.md`                                                                                        |
+| 代码规范、模块结构、界面规则                   | 仓库：`AGENTS.md`、`client/pages/np/README.md`、`nocosolution/frontend/nocobase3-frontend-best-practices.md`、`nocosolution/frontend/nocosolution-frontend-standard.md`              |
 | 方案、阶段文档、ADR                            | 仓库：根目录方案 md、`docs/phase*`、`docs/adr`                                                                                                                    |
 | 环境事实、工作约定、坑与决策、验收标准、路线图 | NocoProject 知识库：系统级《团队工作约定》；项目级《开发环境与命令》《已知坑与决策》《验收标准》《路线图与已知缺口》                                              |
 | 一类事怎么做                                   | NocoProject 技能：《NocoProject 交付流程》《前端页面开发》《服务端模块开发》《文档同步》，挂给所有 Agent                                                          |

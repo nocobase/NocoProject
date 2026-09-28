@@ -25,7 +25,7 @@ export function NpLabelDot({
   );
 }
 
-/** A label as a tag in its colour's tint (docs/design/ui-design.md §2.4). */
+/** A label as a tag in its colour's tint (nocosolution/frontend/nocobase3-frontend-best-practices.md §5.3). */
 export function NpLabelChip({
   label,
 }: {

@@ -15,7 +15,7 @@ import { useActionLabel } from './use-action-label.js';
 
 /**
  * The buttons of a decision (§E), shared by the inbox's detail pane and the issue page's "等你决定" card
- * (docs/design/ui-design.md §7). The hierarchy is fixed: the primary action is the one filled button and comes
+ * (nocosolution/frontend/nocosolution-frontend-standard.md §15). The hierarchy is fixed: the primary action is the one filled button and comes
  * first, the other requests are outlined, a rejection is red, and navigation (open the issue, reassign) is a plain
  * text button. An action that `needsComment` opens an inline text field first (⌘Enter sends); an external link
  * (`openPr`) opens a new tab. `pendingKey` is the action in flight.

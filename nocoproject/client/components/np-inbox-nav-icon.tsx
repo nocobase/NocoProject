@@ -38,7 +38,7 @@ export function NpInboxNavIcon({
   const text = inboxBadgeText(unread.data?.decision ?? 0);
 
   // The count is a pill at the right end of the navigation row (the row is `relative`), amber because it means
-  // "needs you" (docs/design/ui-design.md §1.2); in the desktop icon mode it moves to the icon's corner.
+  // "needs you" (nocosolution/frontend/nocobase3-frontend-best-practices.md §2.1); in the desktop icon mode it moves to the icon's corner.
   return (
     <span className='inline-flex'>
       <InboxIcon className={className} aria-hidden='true' />

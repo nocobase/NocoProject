@@ -47,7 +47,7 @@ export function ProposalsCard({
   readonly proposals: readonly ExecutorProposal[];
   readonly agents: readonly AgentListItem[];
   /**
-   * Inside a decision card (docs/design/ui-design.md §8): only the list, with per-proposal buttons; the card's own
+   * Inside a decision card (nocosolution/frontend/nocosolution-frontend-standard.md §3): only the list, with per-proposal buttons; the card's own
    * action row carries "accept all".
    */
   readonly embedded?: boolean;
