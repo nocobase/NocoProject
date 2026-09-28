@@ -1,7 +1,8 @@
 /**
  * The single `systemSettings` row: the issue prefix, the issue counter and (iteration 1) the `settings` json.
  * Iteration 2 adds `modelPrices` and `intakeParser` to the json, iteration 3 `metricThresholds`, iteration 4
- * `defaultProcess`, `pmAgentId` and `retrospectiveOnDone`; missing keys read as their defaults.
+ * `defaultProcess`, `pmAgentId` and `retrospectiveOnDone`, Phase 2 (NP-77) `stageRunLimit` and `stageRunWindowHours`;
+ * missing keys read as their defaults.
  */
 import type { Conn } from '../shared/db.js';
 import {
@@ -21,6 +22,8 @@ import type {
 } from '../shared/protocol.js';
 import {
   DEFAULT_METRIC_THRESHOLDS,
+  DEFAULT_STAGE_RUN_LIMIT,
+  DEFAULT_STAGE_RUN_WINDOW_HOURS,
   METRIC_THRESHOLD_KEYS,
 } from '../shared/protocol.js';
 
@@ -47,6 +50,9 @@ export interface WorkspaceSettings {
   readonly pmAgentId: string | null;
   /** Iteration 4: a done issue an agent worked on gets a retrospective run of the project manager. */
   readonly retrospectiveOnDone: boolean;
+  /** Phase 2: at most this many `runExecutor` stage runs per issue and status within `stageRunWindowHours`. */
+  readonly stageRunLimit: number;
+  readonly stageRunWindowHours: number;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -58,7 +64,15 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   defaultProcess: 'auto',
   pmAgentId: null,
   retrospectiveOnDone: true,
+  stageRunLimit: DEFAULT_STAGE_RUN_LIMIT,
+  stageRunWindowHours: DEFAULT_STAGE_RUN_WINDOW_HOURS,
 };
+
+function positiveInt(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : fallback;
+}
 
 function normalizeThresholds(value: unknown): MetricThresholds {
   const stored = (value && typeof value === 'object' ? value : {}) as Partial<
@@ -155,6 +169,14 @@ function normalize(stored: Partial<WorkspaceSettings>): WorkspaceSettings {
       typeof stored.retrospectiveOnDone === 'boolean'
         ? stored.retrospectiveOnDone
         : DEFAULT_WORKSPACE_SETTINGS.retrospectiveOnDone,
+    stageRunLimit: positiveInt(
+      stored.stageRunLimit,
+      DEFAULT_WORKSPACE_SETTINGS.stageRunLimit,
+    ),
+    stageRunWindowHours: positiveInt(
+      stored.stageRunWindowHours,
+      DEFAULT_WORKSPACE_SETTINGS.stageRunWindowHours,
+    ),
   };
 }
 

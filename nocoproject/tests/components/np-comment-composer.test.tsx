@@ -277,4 +277,42 @@ describe('comment composer (rich text)', () => {
       true,
     );
   });
+
+  it.each([
+    ['Ctrl', '{Control>}{Enter}{/Control}'],
+    ['⌘', '{Meta>}{Enter}{/Meta}'],
+  ])('sends with %s + Enter', async (_name, keys) => {
+    const posted: unknown[] = [];
+    routeRequests((json) => {
+      posted.push(json);
+      return { data: { comment: { id: 'c9' }, triggered: [] } };
+    });
+    const user = userEvent.setup();
+    const { textbox, editorRef } = await renderComposer();
+
+    await user.click(textbox);
+    await user.keyboard('Hello');
+    await user.keyboard(keys);
+    await waitFor(() => expect(posted).toEqual([{ content: 'Hello' }]));
+    await waitFor(() => expect(editorRef.current?.getMarkdown()).toBe(''));
+  });
+
+  it('sends nothing on the shortcut while the box is empty or a mention is being picked', async () => {
+    routeRequests();
+    const user = userEvent.setup();
+    const { textbox, editorRef } = await renderComposer();
+
+    await user.click(textbox);
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    await user.keyboard('@Cla');
+    expect(await screen.findByRole('listbox')).toBeVisible();
+    await user.keyboard('{Control>}{Enter}{/Control}');
+
+    expect(editorRef.current?.getMarkdown()).toBe(
+      '[@Claude Coder](mention://agent/9001) ',
+    );
+    expect(api.request).not.toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
 });

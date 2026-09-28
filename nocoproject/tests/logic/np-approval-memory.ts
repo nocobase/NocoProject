@@ -105,14 +105,17 @@ export function createMemoryApprovalGateway(context: {
     };
     save(decided);
     if (status === 'approved') {
+      let applied;
       try {
-        await context.tx.run((tx) =>
+        applied = await context.tx.run((tx) =>
           context.hooks().applyTransition(tx, decided, actor),
         );
       } catch (error) {
         save(request);
         throw error;
       }
+      // Phase 2: the entry conditions no longer hold, so the request is cancelled as stale.
+      if (!applied.applied) return save({ ...decided, status: 'cancelled' });
     }
     return decided;
   }

@@ -22,19 +22,23 @@ import type {
   ClaimedRunPhase1Extras,
   ClaimedRunPhase2Extras,
   ClaimedRunPhase4Extras,
+  ClaimedRunWorkflowExtras,
   ClaimedTriggerComment,
   AgentKind,
   ExecutionMode,
   IssueProcess,
+  IssueChecklist,
   ReasoningEffort,
-  RunTriggerTypeV4,
+  RunTriggerTypeV5,
+  StageEnteredPayload,
 } from './protocol.js';
 import { REASONING_EFFORTS, RUN_ENV_PHASE1 } from './protocol.js';
 
 /**
  * A claimed run as the Phase 1 server sends it: the Phase 0 payload plus the iteration-1,
  * iteration-2, iteration-3 (`knowledge`) and iteration-4 (agent kind / reasoning effort, issue process)
- * extras. Every extra is optional so an older server (or mock) still type-checks and works.
+ * extras, and the Phase 2 workflow ones (`issue.checklist`, `triggers[].stage`). Every extra is optional
+ * so an older server (or mock) still type-checks and works.
  */
 export type ClaimedRunV1 = Omit<ClaimedRun, 'issue' | 'agent' | 'session' | 'triggers'> & {
   readonly project?: ClaimedProject | null;
@@ -42,13 +46,18 @@ export type ClaimedRunV1 = Omit<ClaimedRun, 'issue' | 'agent' | 'session' | 'tri
   readonly issue: ClaimedRun['issue'] &
     Partial<ClaimedRunPhase1Extras['issue']> &
     Partial<ClaimedRunPhase2Extras['issue']> &
-    Partial<ClaimedRunPhase4Extras['issue']>;
+    Partial<ClaimedRunPhase4Extras['issue']> &
+    Partial<ClaimedRunWorkflowExtras['issue']>;
   readonly agent: ClaimedRun['agent'] &
     Partial<ClaimedRunPhase1Extras['agent']> &
     Partial<ClaimedRunPhase2Extras['agent']> &
     Partial<ClaimedRunPhase4Extras['agent']>;
   readonly session: ClaimedRun['session'] & Partial<ClaimedRunPhase1Extras['session']>;
-  readonly triggers: readonly { readonly type: RunTriggerTypeV4; readonly comment?: ClaimedTriggerComment }[];
+  readonly triggers: readonly {
+    readonly type: RunTriggerTypeV5;
+    readonly comment?: ClaimedTriggerComment;
+    readonly stage?: StageEnteredPayload;
+  }[];
 };
 
 export interface RunContextFile {
@@ -109,6 +118,12 @@ export function reasoningEffortOf(claimed: Pick<ClaimedRunV1, 'agent'>): Reasoni
 /** True while a design-first issue waits for its design to be approved (§B). */
 export function designPendingOf(claimed: Pick<ClaimedRunV1, 'issue'>): boolean {
   return issueProcessOf(claimed) === 'design_first' && !claimed.issue.designApprovedAt;
+}
+
+/** Phase 2: the current status's checklist, or null (older servers, no checklist, malformed). */
+export function checklistOf(claimed: Pick<ClaimedRunV1, 'issue'>): IssueChecklist | null {
+  const list = claimed.issue.checklist;
+  return list && Array.isArray(list.items) ? list : null;
 }
 
 /** The claim's knowledge index, field by field, skipping malformed entries. */

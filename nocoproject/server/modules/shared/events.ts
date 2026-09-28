@@ -12,7 +12,13 @@
  * exist for it, and so do the iteration 2 `approval.*` and `pr.*` events. The inbox they feed is not temporary; only
  * this bus is.
  */
-import type { DependencyType, ExecutorType, RunStatus } from './protocol.js';
+import type {
+  DependencyType,
+  ExecutorType,
+  ProposalSource,
+  RunStatus,
+  StageActionType,
+} from './protocol.js';
 
 /** Who caused an event, in serializable form. */
 export interface EventActor {
@@ -90,9 +96,12 @@ export type DomainEvent =
       readonly type: 'proposal.created';
       readonly proposalId: string;
       readonly issueId: string;
+      /** The issue whose card lists the proposal's parent; null for workflow suggestions (their own issue). */
       readonly parentIssueId: string | null;
-      readonly proposedByAgentId: string;
+      /** Null for workflow suggestions (Phase 2). */
+      readonly proposedByAgentId: string | null;
       readonly proposedAgentId: string;
+      readonly source?: ProposalSource;
     }
   | {
       readonly type: 'proposal.decided';
@@ -214,6 +223,39 @@ export type DomainEvent =
       readonly type: 'design.decided';
       readonly issueId: string;
       readonly decision: 'approved' | 'changesRequested';
+      readonly actor: EventActor;
+    }
+  // Phase 2 workflow stage actions (NP-77).
+  | {
+      /** A `notifyOwner` stage action: the issue entered `to`. */
+      readonly type: 'issue.stageEntered';
+      readonly issueId: string;
+      readonly from: string;
+      readonly to: string;
+      readonly message: string | null;
+      readonly actor: EventActor;
+    }
+  | {
+      /** A stage action was skipped, failed or suppressed by the loop guard: the owner is told. */
+      readonly type: 'issue.stageActionReported';
+      readonly issueId: string;
+      readonly statusKey: string;
+      readonly action: StageActionType;
+      readonly outcome: 'skipped' | 'failed' | 'suppressed';
+      /** The skip reason or the error message. */
+      readonly reason: string | null;
+    }
+  | {
+      /** An approved transition no longer met its entry conditions: the request was cancelled as stale. */
+      readonly type: 'approval.stale';
+      readonly requestId: string;
+      readonly issueId: string;
+      readonly fromStatus: string;
+      readonly toStatus: string;
+      readonly approverUserIds: readonly string[];
+      readonly requestedBy: EventActor;
+      readonly code: string;
+      readonly message: string;
       readonly actor: EventActor;
     };
 

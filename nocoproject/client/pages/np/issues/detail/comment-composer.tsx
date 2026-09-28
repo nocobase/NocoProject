@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BotIcon, SendIcon, XIcon, ZapIcon } from 'lucide-react';
 import { type ReactElement, type RefObject, useState } from 'react';
 
+import { modifierKeyLabel } from '@/components/np-shortcut-keys';
 import {
   NpRichTextEditor,
   type NpRichTextHandle,
@@ -191,7 +192,7 @@ export function CommentComposer({
       </p>
       <div className='flex items-center gap-2'>
         <span className='mr-auto hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex'>
-          <Kbd>⌘</Kbd>
+          <Kbd>{modifierKeyLabel()}</Kbd>
           <Kbd>Enter</Kbd>
           {t('np.composer.quickSend')}
         </span>

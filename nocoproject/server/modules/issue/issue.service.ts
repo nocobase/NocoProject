@@ -8,7 +8,10 @@
  * gate when they change the status (iteration 2), and are handed to the trigger service in the same transaction.
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
-import type { ApprovalGateway } from '../shared/approval.js';
+import type {
+  ApprovalApplyResult,
+  ApprovalGateway,
+} from '../shared/approval.js';
 import { requireVisibleIssue, viewerOf } from '../shared/authz.js';
 import type { Tx, TxRunner } from '../shared/db.js';
 import { now } from '../shared/db.js';
@@ -31,6 +34,10 @@ import type { UserDirectory } from '../shared/users.js';
 import type { SettingsService } from '../system/settings.service.js';
 import type { TriggerService } from '../trigger/trigger.service.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
+import {
+  attachFiles,
+  validateFileIds,
+} from '../attachment/attachment.service.js';
 import { parseUserMentions } from '../collaboration/mentions.js';
 import type { ProcessClassifier } from '../intake/process-classifier.js';
 import { setIssueLabels } from '../label/label.service.js';
@@ -47,9 +54,9 @@ import { findIssue } from './issue.records.js';
 import {
   agentSetStatus,
   applyApprovedTransition,
-  gateTransition,
   resetAbandonedIssue,
   systemSetStatus,
+  transitionPipeline,
   writeStatus,
   type IssueStatusResult,
 } from './issue.status.js';
@@ -108,12 +115,12 @@ export interface IssueService {
     actor: Actor,
     details: Readonly<Record<string, unknown>>,
   ): Promise<IssueV4 | null>;
-  /** Applies an approved request inside `tx` on the approver's behalf. */
+  /** Applies an approved request inside `tx` on the approver's behalf (not when its entry conditions fail). */
   applyApprovedTransition(
     tx: Tx,
     request: ApprovalRequest,
     approver: Actor,
-  ): Promise<void>;
+  ): Promise<ApprovalApplyResult>;
   /** Inserts a validated issue (numbering, activity, labels) inside `tx`. */
   insertIssue(tx: Tx, actor: Actor, values: NewIssue): Promise<IssueV4>;
   /** Sets an agent executor inside `tx` and runs the assign rule with the given trigger type. */
@@ -264,6 +271,14 @@ async function create(
       action: 'process_selected',
       details: processActivity(selection),
     });
+    if (input.attachmentIds !== undefined)
+      await attachFiles(
+        tx,
+        deps.activity,
+        actor,
+        issue.id,
+        validateFileIds(input.attachmentIds, 'attachmentIds'),
+      );
     for (const target of input.blockedBy ?? []) {
       let dependsOn: IssueV1;
       try {
@@ -317,14 +332,12 @@ async function update(
       patch,
     );
     if (typeof values.statusKey === 'string') {
-      const pending = await gateTransition(
-        deps,
-        tx,
+      const pending = await transitionPipeline(deps, tx, {
         before,
-        values.statusKey,
+        target: values.statusKey,
         actor,
         view,
-      );
+      });
       if (pending) return { issue: before, pendingApproval: pending };
     }
     const labelChange = labelIds
@@ -373,7 +386,11 @@ async function update(
     );
     for (const parentId of [before.parentIssueId, after.parentIssueId])
       if (parentId) tx.emit({ type: 'issue.changed', issueId: parentId });
-    return { issue: after, pendingApproval: null };
+    // Stage effects may have written the issue again (a preset executor): answer its current revision.
+    return {
+      issue: (await findIssue(tx.conn, before.id)) ?? after,
+      pendingApproval: null,
+    };
   }, outer);
 }
 

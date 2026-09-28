@@ -257,3 +257,35 @@ export function parseStage(value: string): number | null | 'invalid' {
   if (!trimmed) return null;
   return /^\d{1,4}$/u.test(trimmed) ? Number(trimmed) : 'invalid';
 }
+
+/**
+ * NP-78: the row whose issue a batch file will be attached to — the row naming it in `fields.attachmentIds`, else the
+ * first row (the server attaches unassigned files to the first issue it creates, so removing a row loses nothing).
+ */
+export function attachmentHolder(
+  rows: readonly DraftRow[],
+  fileId: string,
+): number {
+  const index = rows.findIndex((row) =>
+    (row.fields.attachmentIds ?? []).includes(fileId),
+  );
+  return index === -1 ? 0 : index;
+}
+
+/** Moves a batch file to the row at `index` (taking it off every other row). */
+export function moveAttachment(
+  rows: readonly DraftRow[],
+  fileId: string,
+  index: number,
+): DraftRow[] {
+  return rows.map((row, at) => {
+    const ids = (row.fields.attachmentIds ?? []).filter((id) => id !== fileId);
+    const next = at === index ? [...ids, fileId] : ids;
+    const unchanged =
+      next.length === (row.fields.attachmentIds ?? []).length &&
+      next.every((id) => (row.fields.attachmentIds ?? []).includes(id));
+    return unchanged
+      ? row
+      : { ...row, fields: { ...row.fields, attachmentIds: next } };
+  });
+}

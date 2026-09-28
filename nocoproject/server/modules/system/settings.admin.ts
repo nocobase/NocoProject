@@ -3,7 +3,8 @@
  * owner/admin change them. `prMergedStatus` must be `'none'` or a status of the default workflow. Iteration 3 §C adds
  * `metricThresholds` (partial updates merge over the stored thresholds). Iteration 4 adds `defaultProcess`
  * (auto | direct | design_first), `pmAgentId` (null or an active agent of kind manager, 400 `INVALID_PM_AGENT`) and
- * `retrospectiveOnDone`.
+ * `retrospectiveOnDone`. Phase 2 (NP-77) adds `stageRunLimit` (1–100) and `stageRunWindowHours` (1–720), the loop guard
+ * of `runExecutor` stage actions.
  */
 import type { Actor } from '../shared/activity.js';
 import { forbid, isAdmin, viewerOf } from '../shared/authz.js';
@@ -12,8 +13,8 @@ import { invalid } from '../shared/errors.js';
 import type {
   MetricThresholds,
   ModelPrice,
-  UpdateWorkspaceSettingsRequestV4,
-  WorkspaceSettingsViewV4,
+  UpdateWorkspaceSettingsRequestV5,
+  WorkspaceSettingsViewV5,
 } from '../shared/protocol.js';
 import {
   DEFAULT_PROCESSES,
@@ -27,11 +28,11 @@ import type { SettingsService, WorkspaceSettings } from './settings.service.js';
 const MAX_PRICES = 100;
 
 export interface WorkspaceSettingsService {
-  view(actor: Actor): Promise<WorkspaceSettingsViewV4>;
+  view(actor: Actor): Promise<WorkspaceSettingsViewV5>;
   update(
     actor: Actor,
-    patch: UpdateWorkspaceSettingsRequestV4,
-  ): Promise<WorkspaceSettingsViewV4>;
+    patch: UpdateWorkspaceSettingsRequestV5,
+  ): Promise<WorkspaceSettingsViewV5>;
 }
 
 function priceNumber(value: unknown, field: string): number {
@@ -134,7 +135,7 @@ async function validatePmAgent(
 /** Iteration 4 keys. */
 async function phase4Values(
   conn: Conn,
-  patch: UpdateWorkspaceSettingsRequestV4,
+  patch: UpdateWorkspaceSettingsRequestV5,
   values: { -readonly [K in keyof WorkspaceSettings]?: WorkspaceSettings[K] },
 ): Promise<void> {
   if (patch.defaultProcess !== undefined) {
@@ -154,11 +155,41 @@ async function phase4Values(
     );
 }
 
+function boundedInt(value: unknown, field: string, max: number): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > max
+  )
+    throw invalid('INVALID_FIELD', `${field} must be an integer 1–${max}.`);
+  return value;
+}
+
+/** Phase 2 keys (the stage run loop guard). */
+function phase2Values(
+  patch: UpdateWorkspaceSettingsRequestV5,
+  values: { -readonly [K in keyof WorkspaceSettings]?: WorkspaceSettings[K] },
+): void {
+  if (patch.stageRunLimit !== undefined)
+    values.stageRunLimit = boundedInt(
+      patch.stageRunLimit,
+      'stageRunLimit',
+      100,
+    );
+  if (patch.stageRunWindowHours !== undefined)
+    values.stageRunWindowHours = boundedInt(
+      patch.stageRunWindowHours,
+      'stageRunWindowHours',
+      720,
+    );
+}
+
 async function patchValues(
   conn: Conn,
   settings: SettingsService,
   workflows: WorkflowService,
-  patch: UpdateWorkspaceSettingsRequestV4,
+  patch: UpdateWorkspaceSettingsRequestV5,
 ): Promise<Partial<WorkspaceSettings>> {
   const values: {
     -readonly [K in keyof WorkspaceSettings]?: WorkspaceSettings[K];
@@ -194,6 +225,7 @@ async function patchValues(
       (await settings.read(conn)).metricThresholds,
     );
   await phase4Values(conn, patch, values);
+  phase2Values(patch, values);
   return values;
 }
 
@@ -205,7 +237,7 @@ export function createWorkspaceSettingsService(deps: {
   async function view(
     conn: Conn,
     actor: Actor,
-  ): Promise<WorkspaceSettingsViewV4> {
+  ): Promise<WorkspaceSettingsViewV5> {
     const viewer = await viewerOf(conn, actor);
     return {
       ...(await deps.settings.read(conn)),
