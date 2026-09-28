@@ -22,7 +22,7 @@ export type LabelColor =
   'gray' | 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple';
 export type DependencyType = 'blockedBy' | 'relatedTo';
 export type ProposalStatus =
-  'pending' | 'accepted' | 'rejected' | 'autoAccepted';
+  'pending' | 'accepted' | 'rejected' | 'autoAccepted' | 'superseded';
 export type SubscriptionReason =
   'creator' | 'owner' | 'executor' | 'commenter' | 'mentioned' | 'manual';
 export type InboxKind = 'decision' | 'info';
@@ -104,6 +104,10 @@ export interface ExecutorProposal {
   readonly decidedAt: string | null;
   readonly reason: string | null;
   readonly createdAt: string;
+  /** Phase 2 stage 1 (NP-81): a workflow-generated suggestion has no proposing agent. */
+  readonly source?: 'agent' | 'workflow';
+  /** The status whose `suggestExecutor` action generated this proposal, when `source` is `workflow`. */
+  readonly stageStatusKey?: string | null;
 }
 
 export interface IssueSubscriber {

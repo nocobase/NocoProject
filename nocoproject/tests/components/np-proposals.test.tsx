@@ -161,6 +161,22 @@ describe('executor proposals card', () => {
     );
   });
 
+  it('credits the workflow, not an agent, for a stage-generated suggestion', async () => {
+    await renderCard([
+      proposal({
+        source: 'workflow',
+        stageStatusKey: 'in_review',
+        proposedByAgentId: null as never,
+        proposedByAgentName: null as never,
+      }),
+    ]);
+    expect(
+      screen.getByText(
+        'From the workflow: entering In review suggests Claude Coder',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('disables accepting a proposal for an agent the viewer cannot invoke', async () => {
     await renderCard([
       proposal({ proposedAgentId: 'a2', proposedAgentName: 'Private Bot' }),

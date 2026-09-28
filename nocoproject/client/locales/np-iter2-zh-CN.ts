@@ -404,6 +404,10 @@ const npIter2ZhCN: NpIter2Resource = {
     knowledge_accepted: '你对「{{doc}}」的知识库建议已被接受。',
     knowledge_rejected: '你对「{{doc}}」的知识库建议被驳回。',
     design_review: '{{actor}} 提交了设计方案，等你审核。',
+    workflow_proposal: '{{actor}} 提议修改工作流模板「{{template}}」。',
+    workflow_accepted: '对「{{template}}」的修改提议已被接受。',
+    workflow_rejected: '对「{{template}}」的修改提议被驳回。',
+    workflow_stale: '对「{{template}}」的修改提议已不基于当前修订，已失效。',
   },
   projectMore: {
     label: '更多项目操作',

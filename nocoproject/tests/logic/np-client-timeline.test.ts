@@ -121,6 +121,25 @@ describe('timeline', () => {
     });
     expect(activityChange(null)).toEqual({ from: null, to: null });
   });
+
+  it('matches Phase 2 stage action and workflow proposal actions exactly, not by keyword', () => {
+    // `stage_action_applied` contains "stage" and `workflow_proposed` almost contains "proposal": both must be
+    // matched by the exact table before the keyword rules mis-tag them as `stageChanged` / `proposalDecided`.
+    expect(activityLabel('stage_action_applied')).toBe('stageActionApplied');
+    expect(activityLabel('stage_action_skipped')).toBe('stageActionSkipped');
+    expect(activityLabel('stage_action_failed')).toBe('stageActionFailed');
+    expect(activityLabel('stage_action_suppressed')).toBe(
+      'stageActionSuppressed',
+    );
+    expect(activityLabel('checklist_item_checked')).toBe(
+      'checklistItemChecked',
+    );
+    expect(activityLabel('checklist_item_unchecked')).toBe(
+      'checklistItemUnchecked',
+    );
+    expect(activityLabel('workflow_proposed')).toBe('workflowProposed');
+    expect(activityLabel('workflow_updated')).toBe('workflowUpdated');
+  });
 });
 
 describe('mergeRunEvents', () => {

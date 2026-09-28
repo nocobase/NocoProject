@@ -111,6 +111,24 @@ export function inboxBodyText(
       }
       return key(`knowledge_${decision}`, { doc });
     }
+    // Phase 2 stage 2 (NP-82): a workflow template change proposed by an agent, and its outcome.
+    case 'workflow_proposal': {
+      const template = text(payload.templateName);
+      return template ? key('workflow_proposal', { template }) : null;
+    }
+    case 'workflow_decided': {
+      const template = text(payload.templateName);
+      const decision = text(payload.decision);
+      if (
+        !template ||
+        (decision !== 'accepted' &&
+          decision !== 'rejected' &&
+          decision !== 'stale')
+      ) {
+        return null;
+      }
+      return key(`workflow_${decision}`, { template });
+    }
     default:
       return null;
   }

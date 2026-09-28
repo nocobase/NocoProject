@@ -25,6 +25,7 @@ import type {
 import { ActivityTimeline } from './activity-timeline.js';
 import { ApprovalsCard } from './approvals-card.js';
 import { AttachmentsSection } from './attachments-section.js';
+import { ChecklistCard } from './checklist-card.js';
 import { CommentComposer } from './comment-composer.js';
 import { DecisionSection } from './decision-section.js';
 import { DependenciesSection } from './dependencies-section.js';
@@ -204,6 +205,7 @@ export function IssueMain({
               initialUploading={attachmentList.length === 0}
             />
           ) : null}
+          <ChecklistCard issueId={issue.id} />
           <ApprovalsCard
             issueId={issue.id}
             approvals={detail.approvals.filter(

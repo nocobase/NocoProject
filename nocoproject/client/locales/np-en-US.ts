@@ -123,6 +123,7 @@ const npCollabEnUS = {
       'Proposals accepted; {{count}} skipped because you cannot use the proposed agent.',
     rejected: 'Proposal rejected.',
     forbidden: 'You do not have access to the proposed agent.',
+    sourceWorkflow: 'From the workflow: entering {{status}} suggests {{agent}}',
   },
   inbox: {
     title: 'Inbox',
@@ -176,6 +177,11 @@ const npCollabEnUS = {
       knowledge_proposal: 'Knowledge proposal',
       knowledge_decided: 'Knowledge decided',
       design_review: 'Proposal to review',
+      workflow_proposal: 'Workflow template proposal',
+      workflow_decided: 'Workflow template decided',
+      stage_entered: 'Entered a stage',
+      stage_action_problem: 'Stage action problem',
+      approval_stale: 'Approval no longer applies',
     },
   },
   projects: {

@@ -163,6 +163,7 @@ export function useDecisionRunner(
       void queryClient.invalidateQueries({ queryKey: ['np', 'issue'] });
       void queryClient.invalidateQueries({ queryKey: npKeys.approvals });
       void queryClient.invalidateQueries({ queryKey: npKeys.knowledge });
+      void queryClient.invalidateQueries({ queryKey: npKeys.workflows });
     },
   });
 

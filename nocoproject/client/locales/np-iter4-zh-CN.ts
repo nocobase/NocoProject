@@ -231,6 +231,12 @@ const npIter4ZhCN: NpIter4Resource = {
       failed: '出错了，请重试。',
     },
   },
+  checklist: {
+    title: '检查清单',
+    complete: '必填项都已勾选。',
+    incomplete: '离开这个状态前需要勾完必填项。',
+    required: '必填',
+  },
 };
 
 export default npIter4ZhCN;

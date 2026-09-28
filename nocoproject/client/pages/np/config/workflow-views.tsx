@@ -2,6 +2,7 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { BotIcon, ChevronRightIcon, CogIcon, UserIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
 
+import { NpActorAvatar } from '@/components/np-actor-avatar';
 import { NpTag } from '@/components/np-tag';
 import {
   Table,
@@ -11,13 +12,25 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
+import { useNpFormatters } from '../format.js';
 import { statusLabelKey } from '../constants.js';
 import type { WorkflowStatusDefinition } from '../types.js';
 import type { WorkflowDefinitionV3 } from '../types-iter3.js';
+import type {
+  StageAction,
+  WorkflowDefinitionV5,
+  WorkflowRevision,
+} from '../types-phase2.js';
 import {
   CATEGORY_NODE_CLASS,
+  stageActionDetail,
   type TransitionActorKind,
   transitionMatrix,
   workflowFlow,
@@ -265,5 +278,163 @@ export function WorkflowRules({
         ),
       )}
     </ul>
+  );
+}
+
+/** One stage action as a tagged badge with its rendered detail sentence on hover (NP-77 stage 1 §2). */
+function StageActionBadge({
+  action,
+  agentName,
+}: {
+  readonly action: StageAction;
+  readonly agentName: (agentId: string) => string | null;
+}): ReactElement {
+  const { t } = useTranslation();
+  const detail = stageActionDetail(action, agentName);
+  return (
+    <Tooltip>
+      <TooltipTrigger className='inline-flex rounded-full focus-visible:outline-none'>
+        <NpTag tone={action.type === 'requirePrMerged' ? 'amber' : 'grey'}>
+          {t(`np.workflows.stageActions.${action.type}`)}
+        </NpTag>
+      </TooltipTrigger>
+      <TooltipContent>
+        {t(`np.workflows.stageActionDetail.${detail.key}`, detail.values)}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * The status table with its "on enter" column (§ workflow-detail): every status, its category, and the stage
+ * actions that run when an issue enters it — a badge per action with the rendered sentence on hover.
+ */
+export function WorkflowStatusActions({
+  definition,
+  agentName,
+}: {
+  readonly definition: WorkflowDefinitionV5;
+  readonly agentName: (agentId: string) => string | null;
+}): ReactElement {
+  const { t } = useTranslation();
+  const name = useStatusName(definition);
+  return (
+    <div className='overflow-x-auto rounded-lg border'>
+      <Table aria-label={t('np.workflows.statusesTitle')}>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('np.workflows.columns.status')}</TableHead>
+            <TableHead>{t('np.workflows.columns.category')}</TableHead>
+            <TableHead>{t('np.workflows.columns.onEnter')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {definition.statuses.map((status) => (
+            <TableRow key={status.key}>
+              <TableCell className='font-medium'>{name(status.key)}</TableCell>
+              <TableCell className='text-muted-foreground'>
+                {t(`np.workflows.categories.${status.category}`)}
+              </TableCell>
+              <TableCell>
+                {status.onEnter && status.onEnter.length > 0 ? (
+                  <div className='flex flex-wrap gap-1.5'>
+                    {status.onEnter.map((action, index) => (
+                      <StageActionBadge
+                        // Stage actions of the same status are not individually keyed by the server.
+                        // eslint-disable-next-line @eslint-react/no-array-index-key
+                        key={`${status.key}:${action.type}:${index}`}
+                        action={action}
+                        agentName={agentName}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <span className='text-muted-foreground'>
+                    {t('np.workflows.noActions')}
+                  </span>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+/** `revisionBaseline` / `revisionProposal` / `revisionAdmin`, by how the revision was recorded. */
+function revisionSourceKey(revision: WorkflowRevision): string {
+  if (revision.proposalId) return 'revisionProposal';
+  if (revision.createdByType === 'system') return 'revisionBaseline';
+  return 'revisionAdmin';
+}
+
+/** The template's revision history, newest first (NP-82 §4): when, from what (a proposal or a direct edit) and why. */
+export function WorkflowRevisionHistory({
+  revisions,
+}: {
+  readonly revisions: readonly WorkflowRevision[];
+}): ReactElement {
+  const { t } = useTranslation();
+  const format = useNpFormatters();
+  if (revisions.length === 0) {
+    return (
+      <p className='text-sm text-muted-foreground'>
+        {t('np.workflows.revisionsEmpty')}
+      </p>
+    );
+  }
+  return (
+    <div className='overflow-x-auto rounded-lg border'>
+      <Table aria-label={t('np.workflows.revisionsTitle')}>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('np.workflows.revisionColumns.revision')}</TableHead>
+            <TableHead>{t('np.workflows.revisionColumns.createdAt')}</TableHead>
+            <TableHead>{t('np.workflows.revisionColumns.source')}</TableHead>
+            <TableHead>{t('np.workflows.revisionColumns.note')}</TableHead>
+            <TableHead>{t('np.workflows.revisionColumns.author')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {revisions.map((revision) => (
+            <TableRow key={revision.revision}>
+              <TableCell className='font-mono text-xs'>
+                {revision.revision}
+              </TableCell>
+              <TableCell
+                className='text-xs text-muted-foreground'
+                title={format.dateTime(revision.createdAt)}
+              >
+                {format.relative(revision.createdAt)}
+              </TableCell>
+              <TableCell>
+                <NpTag tone='blue'>
+                  {t(`np.workflows.${revisionSourceKey(revision)}`)}
+                </NpTag>
+              </TableCell>
+              <TableCell
+                className='max-w-[24rem] truncate'
+                title={revision.note ?? undefined}
+              >
+                {revision.note ?? '—'}
+              </TableCell>
+              <TableCell>
+                {revision.createdByName ? (
+                  <NpActorAvatar
+                    type={revision.createdByType}
+                    name={revision.createdByName}
+                    size='xs'
+                    showName
+                  />
+                ) : (
+                  '—'
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

@@ -432,6 +432,12 @@ const npIter2EnUS = {
     knowledge_accepted: 'Your knowledge proposal “{{doc}}” was accepted.',
     knowledge_rejected: 'Your knowledge proposal “{{doc}}” was rejected.',
     design_review: '{{actor}} submitted a design proposal for your review.',
+    workflow_proposal:
+      '{{actor}} proposes a change to the “{{template}}” workflow template.',
+    workflow_accepted: 'The proposed change to “{{template}}” was accepted.',
+    workflow_rejected: 'The proposed change to “{{template}}” was rejected.',
+    workflow_stale:
+      'The proposed change to “{{template}}” is no longer based on its current revision.',
   },
   projectMore: {
     label: 'More project actions',
