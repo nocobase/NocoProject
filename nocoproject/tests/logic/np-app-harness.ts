@@ -13,9 +13,17 @@ import {
 
 process.env.AUTH_SECRET ??= 'test-auth-secret-at-least-32-characters';
 
+export interface NpAppOptions {
+  /** Storage directory (uploads, sessions); defaults to the application's own `storage/`. */
+  readonly storageDir?: string;
+  /** Extra top-level configuration sections merged into the test config file. */
+  readonly config?: Readonly<Record<string, unknown>>;
+}
+
 export async function startNpApp(
   cleanups: (() => Promise<void> | void)[],
   prefix = 'nocoproject-app-',
+  options: NpAppOptions = {},
 ): Promise<StandaloneServer> {
   const sourceRoot = path.resolve(import.meta.dirname, '../..');
   const directory = mkdtempSync(path.join(tmpdir(), prefix));
@@ -37,6 +45,7 @@ export async function startNpApp(
         seeds: { autoRun: true },
       },
       hub: { host: { enabled: false } },
+      ...options.config,
     }),
   );
   const app = await createStandaloneServer({
@@ -52,7 +61,7 @@ export async function startNpApp(
       serverDir: path.join(sourceRoot, 'server'),
       databaseDir: path.join(sourceRoot, 'database'),
       clientDir: path.join(sourceRoot, 'dist/client'),
-      storageDir: path.join(sourceRoot, 'storage'),
+      storageDir: options.storageDir ?? path.join(sourceRoot, 'storage'),
     },
   });
   cleanups.push(() => app.close());

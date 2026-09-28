@@ -27,6 +27,7 @@ import { loggingToken } from '@nocobase/app-server/logging';
 import { createAgentRoutes } from '../modules/agent/agent.routes.js';
 import { createAgentEnvRoutes } from '../modules/agent/env.routes.js';
 import { createApprovalRoutes } from '../modules/approval/approval.routes.js';
+import { createAttachmentRoutes } from '../modules/attachment/attachment.routes.js';
 import { createCommentRoutes } from '../modules/collaboration/comment.routes.js';
 import { createReactionRoutes } from '../modules/collaboration/reaction.routes.js';
 import {
@@ -61,6 +62,7 @@ import { guarded, npRouter, rejectRunTokens } from '../modules/shared/http.js';
 import type { MeResponse } from '../modules/shared/protocol.js';
 import {
   npAgentEnvServiceToken,
+  npAttachmentServiceToken,
   npAgentServiceToken,
   npApprovalGatewayToken,
   npGitConnectionServiceToken,
@@ -158,6 +160,10 @@ export const npApiRoutes: AppApiRouteContribution<Application> =
         ),
         createDesignRoutes(container.resolve(npDesignServiceToken)),
         createChecklistRoutes(container.resolve(npChecklistServiceToken)),
+        createAttachmentRoutes(
+          container.resolve(npAttachmentServiceToken),
+          app.publicBasePath,
+        ),
       ),
     );
     router.route('/np/inbox', guarded(guard, createInboxRoutes(inbox)));

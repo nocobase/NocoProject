@@ -1,6 +1,7 @@
 /**
  * NocoProject provider: binds every module service to its token, connects domain events to realtime topics and runs
- * the run sweeper every 30 seconds (which also purges old webhook delivery records).
+ * the run sweeper every 30 seconds (which also purges old webhook delivery records and, since NP-78, attachment uploads
+ * never attached to an issue within a day).
  *
  * Iteration 2: the secret key for stored secrets comes from the `nocoproject` configuration section
  * (`NOCOPROJECT_SECRET_KEY`), falling back to a key derived from `auth.secret` with a warning; the AI intake parser is
@@ -20,6 +21,7 @@ import {
 } from '@nocobase/app-plugin-ai-employee/server';
 import type { AuthConfig } from '@nocobase/app-plugin-authentication/server';
 import type { Application } from '@nocobase/app-server/application';
+import { driveManagerToken } from '@nocobase/app-server/drive';
 import { idGeneratorToken } from '@nocobase/app-server/id-generator';
 import { loggingToken } from '@nocobase/app-server/logging';
 import { realtimeServiceToken } from '@nocobase/app-server/realtime';
@@ -33,6 +35,10 @@ import {
 
 import type { NocoProjectConfig } from '../config/nocoproject.js';
 import type { AgentService } from '../modules/agent/agent.service.js';
+import type {
+  AttachmentService,
+  FileObjectStore,
+} from '../modules/attachment/attachment.service.js';
 import type { AgentEnvService } from '../modules/agent/env.service.js';
 import type { ReactionService } from '../modules/collaboration/reaction.service.js';
 import type { GitConnectionService } from '../modules/git/connection.service.js';
@@ -170,6 +176,8 @@ export const npPmServiceToken: ServiceToken<PmService> =
   createServiceToken<PmService>('nocoproject/pm-service');
 export const npChecklistServiceToken: ServiceToken<ChecklistService> =
   createServiceToken<ChecklistService>('nocoproject/checklist-service');
+export const npAttachmentServiceToken: ServiceToken<AttachmentService> =
+  createServiceToken<AttachmentService>('nocoproject/attachment-service');
 
 /** Binds a module token to the member of `NpServices` it exposes. */
 function bindModule<K extends keyof NpServices>(
@@ -201,6 +209,9 @@ export default class NpProvider extends ServiceProvider<Application> {
           this.logError(error, 'NocoProject domain event listener failed.'),
         ),
         secrets: this.secretBox(),
+        fileObjects: this.fileObjects(),
+        onFileObjectError: (error) =>
+          this.logError(error, 'NocoProject attachment object delete failed.'),
         aiIntake: ai ? createAiIntakeParser(ai) : null,
         aiProcess: ai ? createAiProcessClassifier(ai) : null,
         aiConfigured: () =>
@@ -245,6 +256,18 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npDesignServiceToken, 'design');
     bindModule(container, npPmServiceToken, 'pm');
     bindModule(container, npChecklistServiceToken, 'checklists');
+    bindModule(container, npAttachmentServiceToken, 'attachments');
+  }
+
+  /** NP-78: stored attachment objects are deleted through the application's Drive manager, on the row's own disk. */
+  private fileObjects(): FileObjectStore | undefined {
+    const { container } = this.app;
+    if (!container.has(driveManagerToken)) return undefined;
+    return {
+      remove: async (disk, key) => {
+        await container.resolve(driveManagerToken).use(disk).delete(key);
+      },
+    };
   }
 
   /** The key for stored secrets (see `shared/crypto.ts`); warns once when it is derived from `auth.secret`. */
@@ -323,6 +346,9 @@ export default class NpProvider extends ServiceProvider<Application> {
       const now = new Date();
       await this.app.container.resolve(npSweeperServiceToken).sweep(now);
       await this.app.container.resolve(npWebhookServiceToken).purge(now);
+      await this.app.container
+        .resolve(npAttachmentServiceToken)
+        .purgeOrphans(now);
     } catch (error) {
       this.logError(error, 'NocoProject sweeper pass failed.');
     } finally {

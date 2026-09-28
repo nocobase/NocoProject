@@ -158,3 +158,23 @@ PM 在运行里用普通 Agent 接口写 `/note` 评论（Agent 的 `/note` 不�
 10. **Agent 字段**：服务端不限制 manager Agent 改任务状态 / 建子任务（简报约束）；把已有任务的执行者 Agent 改成 manager 不被拒绝（之后对这些任务再分配时才会 400）。
 11. **页面授权**：契约没有写，新增种子 `2026100100003_np_iter4_page_grants` 给 `member` 追加 `np-pm`（前端 `/pm` 页面的 authz）。
 12. **认领载荷**：`issue.originType` 为契约外字段（守护进程可据此区分对话任务）。
+
+## 8. 任务附件（NP-78）
+
+文件存在 Drive 的 disk 上（`nocoproject.attachmentDisk`，默认 `local` = `storage/`），元数据在 `npFiles`（`2026100200001_np_attachments`：`@nocobase/app-plugin-file` 要求的 9 列 + `uploadedById`、`issueId`）。每行记住自己的 `disk` / `key`，默认 disk 换成 S3 兼容的 OSS 后旧文件照常读取。架构选择见 ADR-0005。
+
+| 接口                                            | 说明                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/npFiles:uploadOne`                   | 文件插件的上传路由（multipart，字段 `file`，每次一个）。浏览器守卫（拒绝运行令牌 403、未登录 401、`ensureMember`）。请求体上限 `attachmentMaxFileSize`（默认 20 MiB）+ 64 KiB，超出 413 `BODY_TOO_LARGE`。答 `{ data: { record } }`，`record.contentUrl` 已带应用前缀；文件未挂任务，`uploadedById` 由上传 Policy 从会话用户写入。资源上不开放其它 action。 |
+| `GET /uploads/np/<uuid>.<ext>`                  | 文件插件的内容路由（`stream`，`Content-Disposition: attachment`，`Cache-Control: private, no-store`）。前置守卫：未登录 401、运行令牌 403；看不到 → 404（挂了任务 = 任务可见性，未挂 = 仅上传者）。                                                                                                                                                         |
+| `GET /np/issues/:id/attachments`                | `IssueAttachment[]`（按上传时间）。任务不可见 404。                                                                                                                                                                                                                                                                                                         |
+| `POST /np/issues/:id/attachments` `{ fileIds }` | 挂上调用者自己上传、尚未挂任务的文件（1–10 个），答挂后的列表；其它 id 400 `INVALID_ATTACHMENT`，整批不生效。记 `attachment_added`（`details.filenames`）。                                                                                                                                                                                                 |
+| `DELETE /np/issues/:id/attachments/:fileId`     | 204。上传者、任务负责人、项目负责人、owner/admin；其他人 403，不在该任务上 404。删行后按行的 disk/key 尽力删对象（失败只记日志），记 `attachment_removed`（`details.filename`）。                                                                                                                                                                           |
+| `POST /np/issues` `attachmentIds?`              | 同上规则，在建任务的事务里挂上；不合法则整个创建 400。                                                                                                                                                                                                                                                                                                      |
+
+- Agent 读任务（`IssueForAgentV4`，claim 载荷与 `GET /np/agent/issues/:id`）多 `attachments: { filename, mimeType, size }[]`，本期不提供内容下载。
+- sweeper 每轮清理创建超过 24 小时仍未挂任务的上传（行 + 对象，每轮最多 200 个）。
+- 写操作发 `issue.changed`（详情页实时刷新），不产生收件箱项。
+- 类型：`IssueAttachment`、`AttachFilesRequest`、`CreateIssueAttachmentFields`、`AgentAttachmentInfo`、`IssueForAgentAttachmentFields`、`MAX_ATTACHMENTS_PER_REQUEST`、`ERROR_INVALID_ATTACHMENT`；`ActivityActionPhase1Iter4` 追加 `'attachment_added' | 'attachment_removed'`。
+- 配置：`NOCOPROJECT_ATTACHMENT_DISK`、`NOCOPROJECT_ATTACHMENT_MAX_FILE_SIZE`（字节）。单次挂载上限是常量 10（`MAX_ATTACHMENTS_PER_REQUEST`）。前端的单文件大小检查按默认 20 MiB，改了服务端上限时服务端仍以 413 为准。
+- 未实现：评论附件、富文本内嵌图片、Agent 下载内容、Range/206、内容嗅探与病毒扫描。

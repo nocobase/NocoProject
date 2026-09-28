@@ -168,6 +168,12 @@ import {
   type TriggerService,
 } from './trigger/trigger.service.js';
 
+import {
+  createAttachmentService,
+  type AttachmentService,
+  type FileObjectStore,
+} from './attachment/attachment.service.js';
+
 export interface NpServices {
   readonly bus: DomainEventBus;
   readonly tx: TxRunner;
@@ -214,6 +220,8 @@ export interface NpServices {
   readonly pm: Iteration4Services['pm'];
   // Phase 2 (NP-77).
   readonly checklists: ChecklistService;
+  // NP-78.
+  readonly attachments: AttachmentService;
 }
 
 /** What an alternative approval gateway gets to build itself (tests: the in-memory double). */
@@ -236,6 +244,9 @@ export interface NpServiceDeps {
   readonly aiConfigured?: () => boolean;
   /** Iteration 4: the AI process classifier; null or absent = heuristic only. */
   readonly aiProcess?: AiProcessClassifier | null;
+  /** NP-78: deletes stored attachment objects; the provider backs it with Drive. Absent = objects are kept (tests). */
+  readonly fileObjects?: FileObjectStore;
+  readonly onFileObjectError?: (error: unknown) => void;
   /** Replaces the database approval gateway (the replacement checklist test). */
   readonly approvalGateway?: (
     context: ApprovalGatewayContext,
@@ -375,6 +386,13 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       services,
     ),
     checklists: createChecklistService({ tx, ids, users, activity }),
+    attachments: createAttachmentService({
+      tx,
+      users,
+      activity,
+      objects: deps.fileObjects ?? { remove: async () => undefined },
+      onObjectError: deps.onFileObjectError,
+    }),
   } satisfies NpServices);
 
   return services;

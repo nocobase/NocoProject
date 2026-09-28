@@ -352,6 +352,8 @@ export interface CreateIssueInput {
   readonly executionMode?: ExecutionMode;
   /** Iteration 4 §B; `auto` lets the server classify, omitted it applies `settings.defaultProcess`. */
   readonly process?: ProcessChoice;
+  /** NP-78: the caller's own unattached uploads to attach to the new issue. */
+  readonly attachmentIds?: readonly string[];
 }
 
 export interface UpdateIssueInput {

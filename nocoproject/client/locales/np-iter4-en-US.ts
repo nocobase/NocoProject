@@ -90,6 +90,26 @@ const npIter4EnUS = {
     loadFailed: 'Unable to open the conversation with the project manager',
     placeholder: 'Ask the project manager…',
   },
+  attachments: {
+    title: 'Attachments',
+    upload: 'Upload',
+    choose: 'Choose files',
+    preview: 'Preview',
+    download: 'Download',
+    remove: 'Remove',
+    retry: 'Retry',
+    added: 'Attachments added',
+    removed: 'Attachment removed',
+    removeTitle: 'Remove {{filename}}?',
+    removeDescription:
+      'The file is deleted for everyone who can see this issue.',
+    tooLarge: 'The file is larger than the upload limit.',
+    uploadFailed: 'Upload failed.',
+    stillUploading: 'Attachments are still uploading.',
+    fixFailed: 'An attachment failed to upload. Retry or remove it.',
+    invalid:
+      'An attachment can no longer be used. Remove it and upload it again.',
+  },
   pmSettings: {
     agent: 'Project manager agent',
     agentHint: 'Only agents of the project manager kind are listed.',

@@ -246,6 +246,50 @@ export type CreateIntakeBatchRequestV4 = CreateIntakeBatchRequest & {
   readonly process?: DefaultProcess;
 };
 
+// ---------- 任务附件（NP-78） ----------
+
+/**
+ * `GET /np/issues/:id/attachments` 的一项。文件本身由 `POST /api/npFiles:uploadOne`（multipart，字段名 `file`，每次一个）上传，
+ * 上传后未挂任务，只有上传者可见；`contentUrl`（`/uploads/np/<uuid>.<ext>`，含应用前缀）按所属任务的可见性鉴权。
+ */
+export interface IssueAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly ext: string;
+  readonly mimeType: string;
+  readonly size: number;
+  readonly contentUrl: string;
+  readonly uploadedById: string | null;
+  readonly uploadedByName: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  /** 调用者可以移除（上传者、任务负责人、项目负责人、owner/admin） */
+  readonly canDelete: boolean;
+}
+
+/** `POST /np/issues/:id/attachments`：只能挂调用者自己上传、尚未挂任务的文件 */
+export interface AttachFilesRequest {
+  readonly fileIds: readonly string[];
+}
+
+/** `POST /np/issues` 追加：建任务时一并挂上的文件（同上规则） */
+export interface CreateIssueAttachmentFields {
+  readonly attachmentIds?: readonly string[];
+}
+
+/** Agent 读任务时看到的附件元数据（本期不提供内容下载） */
+export interface AgentAttachmentInfo {
+  readonly filename: string;
+  readonly mimeType: string;
+  readonly size: number;
+}
+export interface IssueForAgentAttachmentFields {
+  readonly attachments: readonly AgentAttachmentInfo[];
+}
+
+/** 单次最多挂的文件数 */
+export const MAX_ATTACHMENTS_PER_REQUEST = 10;
+
 // ---------- 追加的枚举值 ----------
 
 export type InboxItemTypePhase1Iter4 = 'design_review';
@@ -260,7 +304,9 @@ export type ActivityActionPhase1Iter4 =
   | 'design_proposed'
   | 'design_approved'
   | 'design_changes_requested'
-  | 'retrospective_done';
+  | 'retrospective_done'
+  | 'attachment_added'
+  | 'attachment_removed';
 
 // ---------- 错误码 ----------
 
@@ -272,3 +318,4 @@ export const ERROR_DESIGN_ALREADY_APPROVED = 'DESIGN_ALREADY_APPROVED';
 export const ERROR_MANAGER_NOT_EXECUTOR = 'MANAGER_NOT_EXECUTOR';
 export const ERROR_MANAGER_ONLY = 'MANAGER_ONLY';
 export const ERROR_PM_NOT_CONFIGURED = 'PM_NOT_CONFIGURED';
+export const ERROR_INVALID_ATTACHMENT = 'INVALID_ATTACHMENT';
