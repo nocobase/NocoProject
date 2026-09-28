@@ -13,6 +13,7 @@ import {
   NP_PHASE1_ITER2_TABLES,
   NP_PHASE1_ITER3_TABLES,
   NP_PHASE1_TABLES,
+  NP_PHASE2_PROPOSAL_TABLES,
   NP_PHASE2_WORKFLOW_TABLES,
   NP_TABLES,
   SEEDS_DIR,
@@ -384,6 +385,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
       '2026100400002_np_file_intake_batch',
+      '2026100400001_np_phase2_workflow_proposals',
       '2026100400001_np_attachments',
       '2026100200001_np_pr_merge',
       '2026100200001_np_phase2_stage_actions',
@@ -400,6 +402,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
       ...NP_PHASE1_ITER2_TABLES,
       ...NP_PHASE1_ITER3_TABLES,
       ...NP_PHASE2_WORKFLOW_TABLES,
+      ...NP_PHASE2_PROPOSAL_TABLES,
       ...NP_ATTACHMENT_TABLES,
     ])
       expect(remaining).not.toContain(table);
@@ -549,7 +552,7 @@ describe.skipIf(!db)('NocoProject migrations (PostgreSQL)', () => {
 
   it('adds the intake batch columns to the attachments table and rolls them back alone', async () => {
     while ((await migrator().rollback()).rolledBack.length > 0);
-    await migrator().upTo('2026100400001_np_attachments');
+    await migrator().upTo('2026100400001_np_phase2_workflow_proposals');
     const applied = await migrator().latest();
     expect(applied.executed).toEqual(['2026100400002_np_file_intake_batch']);
     expect(await columns(db!, 'np_files')).toEqual(

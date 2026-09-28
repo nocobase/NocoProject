@@ -8,7 +8,7 @@ import type { StatusTone } from '../constants.js';
 import type { ProjectStatus } from '../types.js';
 import { projectStatusKey } from './progress.js';
 
-/** Project statuses in the issue tones (docs/design/ui-design.md §2.4). */
+/** Project statuses in the issue tones (nocosolution/frontend/nocosolution-frontend-standard.md §7.2). */
 const PROJECT_STATUS_TONE: Readonly<Record<ProjectStatus, StatusTone>> = {
   planned: 'grey',
   in_progress: 'blue',
@@ -32,7 +32,7 @@ export function ProjectStatusBadge({
   );
 }
 
-/** Progress in a list row: a small ring and "done/total" (docs/design/ui-design.md §8.3). */
+/** Progress in a list row: a small ring and "done/total" (client/pages/np/README.md §3). */
 export function ProjectProgressBar({
   done,
   total,

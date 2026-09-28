@@ -20,7 +20,7 @@ export function prBadgeState(
   return pr.draft ? 'draft' : 'open';
 }
 
-/** PR state tones (docs/design/ui-design.md §2.4): open green, draft grey, merged violet, closed slate. */
+/** PR state tones (nocosolution/frontend/nocosolution-frontend-standard.md §7.2): open green, draft grey, merged violet, closed slate. */
 export const PR_TONE: Readonly<Record<PullRequestBadgeState, NpTone>> = {
   open: 'green',
   draft: 'grey',

@@ -18,6 +18,7 @@ import type {
   ProposalSource,
   RunStatus,
   StageActionType,
+  WorkflowProposalKind,
 } from './protocol.js';
 
 /** Who caused an event, in serializable form. */
@@ -256,6 +257,47 @@ export type DomainEvent =
       readonly requestedBy: EventActor;
       readonly code: string;
       readonly message: string;
+      readonly actor: EventActor;
+    }
+  // Phase 2 workflow template proposals (NP-77 stage 2). They carry what the inbox payload needs, so the notification
+  // module never reads the proposal tables.
+  | {
+      /** An agent proposed a template change: `workflow_proposal` decision cards for the owner/admins. */
+      readonly type: 'workflow.proposed';
+      readonly proposalId: string;
+      readonly kind: WorkflowProposalKind;
+      /** The edited template; null for a copy. */
+      readonly templateId: string | null;
+      /** The edited template's name, or the copy's proposed name. */
+      readonly templateName: string;
+      readonly copyFromId: string | null;
+      readonly reason: string;
+      /** Counts of the structured diff, for the card. */
+      readonly changes: Readonly<Record<string, number>>;
+      /** The source issue (the card is shown on it); null skips the card. */
+      readonly issueId: string | null;
+      readonly deciderUserIds: readonly string[];
+      readonly actor: EventActor;
+    }
+  | {
+      /** The proposal was accepted, rejected, or found stale on acceptance: its cards resolve, the owner is told. */
+      readonly type: 'workflow.decided';
+      readonly proposalId: string;
+      readonly kind: WorkflowProposalKind;
+      readonly templateId: string | null;
+      readonly templateName: string;
+      readonly decision: 'accepted' | 'rejected' | 'stale';
+      /** The revision the acceptance produced (null otherwise). */
+      readonly revision: number | null;
+      readonly comment: string | null;
+      readonly issueId: string | null;
+      readonly actor: EventActor;
+    }
+  | {
+      /** A template got a new definition (an accepted proposal, or the admin `PUT`). */
+      readonly type: 'workflow.changed';
+      readonly templateId: string;
+      readonly revision: number;
       readonly actor: EventActor;
     };
 

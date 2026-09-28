@@ -29,7 +29,7 @@ export interface InboxQuery {
   readonly kind?: string | null;
   readonly archived?: string | null;
   readonly resolved?: string | null;
-  /** Only the items about one issue (docs/design/ui-design.md §8.2: the issue page's "等你决定" section). */
+  /** Only the items about one issue (nocosolution/frontend/nocosolution-frontend-standard.md §3: the issue page's "等你决定" section). */
   readonly issueId?: string | null;
   readonly cursor?: string | null;
 }

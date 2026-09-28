@@ -12,6 +12,7 @@
  * | pr_review          | merge (confirm dialog; for whoever may merge, NP-85), openPr (external), open |
  * | knowledge_proposal | accept, reject (optional comment), openDoc (when the document exists), open |
  * | design_review      | approve (optional comment), requestChanges (comment), open (iteration 4)   |
+ * | workflow_proposal  | accept, reject (optional comment), open (NP-77 stage 2)                    |
  * | anything else      | open (when the item names an issue)                                        |
  *
  * A resolved item keeps only its navigation actions (GET). POST paths are relative to `/api`; GET paths are in-app
@@ -19,7 +20,7 @@
  */
 import type {
   InboxActionV4,
-  InboxItemTypeV4,
+  InboxItemTypeV6,
   PullRequestMergeBlocker,
 } from '../shared/protocol.js';
 
@@ -33,7 +34,7 @@ export interface MergeActionSource {
 }
 
 export interface ActionSource {
-  readonly type: InboxItemTypeV4;
+  readonly type: InboxItemTypeV6;
   readonly issueId: string | null;
   readonly issueIdentifier: string | null;
   readonly payload: Readonly<Record<string, unknown>> | null;
@@ -105,6 +106,19 @@ function typeActions(source: ActionSource, issueId: string): InboxAction[] {
       const proposalId = text(payload.proposalId);
       if (!proposalId) return [];
       const path = `/np/knowledge/proposals/${encodeURIComponent(proposalId)}`;
+      return [
+        post('accept', 'primary', `${path}/accept`, {
+          commentField: 'comment',
+        }),
+        post('reject', 'danger', `${path}/reject`, {
+          commentField: 'comment',
+        }),
+      ];
+    }
+    case 'workflow_proposal': {
+      const proposalId = text(payload.proposalId);
+      if (!proposalId) return [];
+      const path = `/np/workflows/proposals/${encodeURIComponent(proposalId)}`;
       return [
         post('accept', 'primary', `${path}/accept`, {
           commentField: 'comment',

@@ -32,7 +32,7 @@ interface ResolvedHere {
 }
 
 /**
- * "等你决定" on the issue page (docs/design/ui-design.md §8.2). Each open decision the viewer has on this issue is a
+ * "等你决定" on the issue page (nocosolution/frontend/nocosolution-frontend-standard.md §3). Each open decision the viewer has on this issue is a
  * card: what it is, one sentence, the thing being decided in full, and the actions right under it. Deciding runs
  * through `useDecisionRunner` (the inbox's code): the card shows the action in flight, then folds into a one-line
  * "✓ 已验收" that can be expanded again for the rest of the visit. Nothing renders when nothing waits.

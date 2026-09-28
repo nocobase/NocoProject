@@ -47,7 +47,7 @@ import { ProjectOverview } from './overview.js';
 import { ProjectActions } from './project-actions.js';
 
 /**
- * Route `/projects/:projectId` (§J 4, docs/design/ui-design.md §8.3): a covering child page over the project list.
+ * Route `/projects/:projectId` (§J 4, client/pages/np/README.md §3): a covering child page over the project list.
  * The header carries the progress ring, name, status, lead, dates and workflow; three tabs (`?tab=`, because the
  * page's child routes are its dialogs) hold 概览 (numbers, status distribution, description, properties,
  * repositories, members), 任务 (the board, columns in workflow order, drag to change status) and 知识库 (documents

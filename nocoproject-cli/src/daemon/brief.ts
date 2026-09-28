@@ -16,7 +16,7 @@ import {
   workflowSection,
 } from './brief-sections.js';
 import { captureLearningsSection, knowledgeCommands, knowledgeSection } from './brief-knowledge.js';
-import { stageChecklistSection, stageEnteredLines } from './brief-workflow.js';
+import { stageChecklistSection, stageEnteredLines, workflowCommands, workflowTemplatesSection } from './brief-workflow.js';
 import {
   approvedProposalLines,
   DESIGN_APPROVED_OPENING,
@@ -50,7 +50,7 @@ function statusRules(input: BriefInput): string[] {
 function coderParts(input: BriefInput): { commands: string[]; sections: string[]; workflow: string[] } {
   const key = input.issue.identifier;
   return {
-    commands: [`- \`nocoproject issue status ${key} <statusKey>\` — change the issue status`, ...designCommands(input), ...phase1Commands(key)],
+    commands: [`- \`nocoproject issue status ${key} <statusKey>\` — change the issue status`, ...designCommands(input), ...phase1Commands(key), ...workflowCommands(key)],
     sections: [...stageChecklistSection(input), ...repositoriesSection(input), '', ...skillsSection(input), ...knowledgeSection(input)],
     workflow: [
       ...(designPendingOf(input) ? designWorkflowSection(input) : workflowSection(input)),
@@ -58,6 +58,8 @@ function coderParts(input: BriefInput): { commands: string[]; sections: string[]
       ...subIssuesSection(input),
       '',
       ...parentCoordinationSection(key),
+      '',
+      ...workflowTemplatesSection(),
       '',
       ...captureLearningsSection(),
     ],
