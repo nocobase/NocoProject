@@ -51,7 +51,7 @@
 - **门在服务里**：Agent 设计门在 `agentSetStatus` 的转换检查之后、审批门之前；成员跳过设计只记录不拒绝。批准 / 打回用 `IssueService.writeStatusInTx` 直接写状态（仍走 `writeStatus`：一次 revision、`status_changed`、终态规则、`issue.updated`），自己检查权限。
 - **只有触发模块入队**：`designApproved` 走 `enqueueFor`（阻塞检查、归档检查、合并）；总结运行用 `threadScope = 'retro'` 直接 `run.enqueue`（已完成的任务不应被阻塞推迟），同样在 `trigger/`。
 - **PM 读取复用浏览器服务**：`pm.service.ts` 把运行的 `actorUserId` 当作成员去调项目 / 任务 / 收件箱 / 指标 / 知识库服务，可见性规则只有 `shared/authz.ts` 一处。
-- **对话私有**：`canSeeIssue` 与列表查询都排除他人的 `originType = 'pm'` 任务，Agent 读范围（`agentReadableIssue`）也排除，避免 PM 以某人的权限写出的答复被别人读到。
+- **对话私有**：`canSeeIssue` 排除他人的 `originType = 'pm'` 任务，Agent 读范围（`agentReadableIssue`）也排除，避免 PM 以某人的权限写出的答复被别人读到。列表查询（`issue.list.ts` 的 `filteredQuery`）自 NP-100 起排除所有 `originType = 'pm'`，连主人自己也看不到：对话不是一项工作，只从 `/pm` 进入；度量的创建任务数同样排除。
 
 ## 4. 已知缺口
 

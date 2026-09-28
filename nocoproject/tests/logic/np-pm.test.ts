@@ -279,11 +279,25 @@ describe.skipIf(!db)('project manager conversation (PostgreSQL)', () => {
     expect((await bob('GET', `/np/issues/${issueId}`)).status).toBe(404);
     const bobList = await bob<{ data: { id: string }[] }>('GET', '/np/issues');
     expect(bobList.body.data.map((item) => item.id)).not.toContain(issueId);
-    const aliceList = await alice<{ data: { id: string }[] }>(
-      'GET',
-      '/np/issues',
-    );
-    expect(aliceList.body.data.map((item) => item.id)).toContain(issueId);
+    // NP-100: not a task for its owner either (list, 我负责的, board); only `/pm` opens it.
+    expect((await alice('GET', `/np/issues/${issueId}`)).status).toBe(200);
+    for (const query of ['', `?ownerUserId=${ALICE.id}`]) {
+      const aliceList = await alice<{ data: { id: string }[] }>(
+        'GET',
+        `/np/issues${query}`,
+      );
+      expect(aliceList.status).toBe(200);
+      expect(aliceList.body.data.map((item) => item.id)).not.toContain(issueId);
+    }
+    const board = await alice<{
+      data: { groups: { issues: { id: string }[] }[] };
+    }>('GET', '/np/issues?view=board');
+    expect(board.status).toBe(200);
+    expect(
+      board.body.data.groups.flatMap((group) =>
+        group.issues.map((item) => item.id),
+      ),
+    ).not.toContain(issueId);
     const bobs = await bob<Data<PmConversationResponse>>(
       'POST',
       '/np/pm/conversation',
@@ -398,9 +412,8 @@ describe.skipIf(!db)("the manager's reads (PostgreSQL)", () => {
       'GET',
       '/pm/issues?ownerUserId=me',
     );
-    expect(own.body.data.map((item) => item.id).sort()).toEqual(
-      [mine.id, issueId].sort(),
-    );
+    // NP-100: the asking member's own conversation is not one of their tasks.
+    expect(own.body.data.map((item) => item.id)).toEqual([mine.id]);
     expect(
       (await pm<{ data: unknown[] }>('GET', '/pm/issues?updatedSince=7d')).body
         .data.length,

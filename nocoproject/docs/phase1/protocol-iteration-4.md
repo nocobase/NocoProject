@@ -154,7 +154,7 @@ NP-85 追加（§10）：`PullRequestMergeBlocker`、`PullRequestMergeKeepReason
 4. **方案**：Agent 改 `proposal_review` 前必须已有方案（409 `PROPOSAL_REQUIRED`）；design_first 任务在 todo 时提交方案会先自动进入 analysis（Agent 仍可先自己改 analysis，回声 Agent 就是这样做的）。方案接口不限制 process（direct 任务上也只是一条方案评论）。
 5. **决定**：approve 需要负责人 / 项目 lead / owner/admin；request-changes 任何能看到任务的成员（与交付的 accept / request-changes 一致）。approve 从任意非终态直接写 in_progress（不检查转换、不经审批门，活动 actor 为批准人）；批准评论不单独触发运行，而是挂在 `designApproved` 触发上。request-changes 会清掉已有的批准。重复批准 409 而不是幂等返回。
 6. **决定卡**：除"进入 proposal_review"外，处于 proposal_review 时再提交方案也会合并刷新卡（契约写的"再次 proposal_review 时"在状态不变时无法发生）。卡在状态离开 proposal_review 时也会解决。
-7. **项目经理对话**：`GET` 只查找（没有时 404），`POST` 查找或创建（契约写"GET 同"，按前端要求改为只查）；没有可用 PM 时两者 409，即使已有旧对话。响应多 `identifier`、`agentId`。对话任务只对负责人可见（详情、列表、看板、Agent 读接口）：PM 以提问者的可见范围回答，答复不能让别人看到。`pmAgentId` 变更后对话执行者跟随。
+7. **项目经理对话**：`GET` 只查找（没有时 404），`POST` 查找或创建（契约写"GET 同"，按前端要求改为只查）；没有可用 PM 时两者 409，即使已有旧对话。响应多 `identifier`、`agentId`。对话任务只对负责人可见（详情、Agent 读接口）：PM 以提问者的可见范围回答，答复不能让别人看到。NP-100 起它对负责人也不算任务：`GET /np/issues`（列表、分页、看板、`ownerUserId` 过滤）与 `pm issues` 一律排除 `originType = 'pm'`，度量 `adoption.issuesCreated` 也不计它（其评论与运行仍计入活跃天）；前端打开它的详情跳到 `/pm`。`pmAgentId` 变更后对话执行者跟随。
 8. **PM 读接口**：`/pm/issues/:id` 多 `usage` 与 `issue.designProposal`；`/pm/inbox` 返回 `{ data, unread, nextCursor }`（与 `GET /np/inbox` 同形，只含未解决项）；`updatedSince` 接受相对时长；运行没有提问者时 403。
 9. **总结**：只在 done 分类（不含 cancelled），且从非终态进入时触发；"执行者曾是 Agent" 的判断 = 当前执行者是 PM 以外的 Agent，或有 PM 以外的 Agent 在该任务上跑过运行。PM Agent 已归档或不是 manager 时不触发。系统改为 done（PR 合并）时 actorUserId = 任务负责人。`retrospective_done` 只在运行写过 `/note` 时记录。"PM 的备注不产生通知"实现为：任何 Agent 的 `/note` 评论都不产生收件箱项。
 10. **Agent 字段**：服务端不限制 manager Agent 改任务状态 / 建子任务（简报约束）；把已有任务的执行者 Agent 改成 manager 不被拒绝（之后对这些任务再分配时才会 400）。

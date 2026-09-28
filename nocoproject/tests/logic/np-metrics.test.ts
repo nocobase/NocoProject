@@ -132,7 +132,8 @@ function issueRow(
 }
 
 /**
- * Range 2026-09-01 … 2026-09-07. Issues i1, i2 (created 09-01), i3 (09-03), i9 deleted, p1 in a private project.
+ * Range 2026-09-01 … 2026-09-07. Issues i1, i2 (created 09-01), i3 (09-03), i9 deleted, p1 in a private project,
+ * i12 a project manager conversation (not counted as an issue created, NP-100).
  */
 async function fixture(agentId: string, secretId: string): Promise<void> {
   await insert('issues', [
@@ -148,6 +149,7 @@ async function fixture(agentId: string, secretId: string): Promise<void> {
     issueRow('i9', '02T10:00:00', { deleted_at: at('02T11:00:00') }),
     issueRow('i10', '02T10:00:00', { project_id: secretId }),
     issueRow('i11', '08T10:00:00'),
+    issueRow('i12', '03T11:00:00', { origin_type: 'pm' }),
   ]);
   const activity = (
     id: string,

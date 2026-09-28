@@ -5,8 +5,8 @@
  *
  * Definitions (also in docs/phase1/protocol-iteration-3.md §3):
  *
- * - adoption: active days / ISO weeks with an issue created, a comment or a run; issues created; distinct members
- *   with any activity.
+ * - adoption: active days / ISO weeks with an issue created, a comment or a run; issues created (project manager
+ *   conversations excluded); distinct members with any activity.
  * - aiShare: issues that entered a done-category status in the range (by `status_changed` activity); those executed
  *   by an agent (current executor).
  * - trust: accepted / (accepted + rejected) executor proposals decided in the range; in_review → done over every exit
@@ -124,6 +124,8 @@ export async function adoption(scope: MetricsScope): Promise<MetricsAdoption> {
     .where('createdAt', '>=', scope.from)
     .where('createdAt', '<', scope.to)
     .where(inScope(scope, 'id'))
+    // NP-100: a project manager conversation is not a task; its comments and runs still count as activity.
+    .where('originType', '!=', 'pm')
     .execute();
   const days = new Set<string>([
     ...issues.map((row) => dayOf(row.createdAt)).filter((day) => day !== null),

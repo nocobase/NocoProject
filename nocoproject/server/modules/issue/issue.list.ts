@@ -146,13 +146,8 @@ async function filteredQuery(
     query = query.where((eb) =>
       eb.or([eb('projectId', 'is', null), eb('projectId', 'not in', hidden)]),
     );
-  // Iteration 4: project manager conversations are private to their owner.
-  query = query.where((eb) =>
-    eb.or([
-      eb('originType', '!=', 'pm'),
-      eb('ownerUserId', '=', viewer.userId),
-    ]),
-  );
+  // NP-100: project manager conversations are not tasks; they are reached only from `/pm`, even by their owner.
+  query = query.where('originType', '!=', 'pm');
   if (filter.updatedSince)
     query = query.where('updatedAt', '>=', filter.updatedSince);
   if (filter.statusKey) query = query.where('statusKey', '=', filter.statusKey);

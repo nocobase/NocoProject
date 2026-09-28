@@ -2,10 +2,12 @@ import './np-editor-dom.js';
 
 import { ApiClientError } from '@nocobase/app-client';
 import { screen, waitFor } from '@testing-library/react';
+import { Route } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import IssueDetailPage from '../../client/pages/np/issues/detail/index.js';
 import PmPage from '../../client/pages/np/pm/index.js';
-import { type RequestOptions, renderNp } from './np-harness.js';
+import { type RequestOptions, renderNp, renderNpRoutes } from './np-harness.js';
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
 const realtime = vi.hoisted(() => ({
@@ -170,5 +172,26 @@ describe('project manager page (iteration 4 §C)', () => {
         document.querySelector('[data-placeholder="Ask the project manager…"]'),
       ).not.toBeNull(),
     );
+  });
+
+  it('redirects the conversation issue detail to the project manager page (NP-100)', async () => {
+    api.request.mockImplementation(
+      respond({ pmAgentId: 'pm' }, () => ({ data: { issueId: 'pm-issue' } })),
+    );
+    await renderNpRoutes(
+      <>
+        <Route path='/issues/:issueId' element={<IssueDetailPage />} />
+        <Route path='/pm' element={<PmPage />} />
+      </>,
+      { url: '/issues/pm-issue' },
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Project manager' }),
+    ).toBeVisible();
+    expect(
+      await screen.findByText('NP-12 and NP-14 were accepted.'),
+    ).toBeVisible();
+    // No task properties column: the conversation is not rendered as a task.
+    expect(screen.queryByRole('complementary')).toBeNull();
   });
 });

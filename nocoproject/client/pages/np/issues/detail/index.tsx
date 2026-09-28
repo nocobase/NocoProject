@@ -3,7 +3,7 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircleIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
-import { Link, Outlet, useParams } from 'react-router';
+import { Link, Navigate, Outlet, useParams } from 'react-router';
 
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NpDetailLayout } from '@/components/np-detail-layout';
@@ -31,6 +31,9 @@ import { PropertiesPanel } from './properties-panel.js';
  *
  * The detail refreshes through the `np:issues` subscription owned by the list page underneath, and polls while a run
  * is queued or working (`detailRefetchInterval`) so a dropped realtime connection does not leave it stale.
+ *
+ * A project manager conversation (`originType = 'pm'`, NP-100) is not shown as a task: opening it here (from a
+ * notification or a typed URL) redirects to `/pm`.
  */
 export default function IssueDetailPage(): ReactElement {
   const { issueId = '' } = useParams();
@@ -108,6 +111,8 @@ function IssueDetailView({
   }
 
   if (!detail.data) return <NpDetailSkeleton />;
+  if (detail.data.issue.originType === 'pm')
+    return <Navigate replace to='/pm' />;
 
   return (
     <IssueLayout detail={detail.data} agents={agents.data ?? []} me={me.data} />
