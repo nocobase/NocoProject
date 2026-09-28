@@ -4,6 +4,7 @@ import type {
   PullRequest,
   PullRequestBadgeState,
 } from '../../types.js';
+import type { MergeBlocker } from '../../types-iter4.js';
 
 /**
  * How a PR card reads a pull request snapshot (iteration 2 §C). Pure, so the four badge states and the CI and
@@ -78,4 +79,25 @@ export function looksLikePullRequestUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * NP-85: why the stored snapshot says the PR cannot be merged yet, in the server's order (merged, closed, draft,
+ * conflicts, CI). Only a hint for the button: the confirm dialog asks GitHub again before anything is merged.
+ */
+export function mergeBlockerOf(
+  pr: Pick<
+    PullRequest,
+    'state' | 'draft' | 'mergedAt' | 'mergeableState' | 'ciState'
+  >,
+): MergeBlocker | null {
+  const state = prBadgeState(pr);
+  if (state === 'merged') return 'merged';
+  if (state === 'closed') return 'closed';
+  if (state === 'draft') return 'draft';
+  if (pr.mergeableState === 'dirty') return 'conflicts';
+  if (pr.ciState === 'pending') return 'ciPending';
+  if (pr.ciState === 'failure') return 'ciFailed';
+  if (pr.ciState !== 'success') return 'ciMissing';
+  return null;
 }

@@ -268,6 +268,7 @@ const npIter3EnUS = {
     reject: 'Reject',
     openDoc: 'Open document',
     openPr: 'Open PR',
+    merge: 'Merge',
     commentPlaceholder: 'Write a comment…',
     commentFor: '{{action}}: {{title}}',
     done: '{{action}}: {{title}}',

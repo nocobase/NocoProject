@@ -8,7 +8,11 @@
  */
 import type { Actor } from '../shared/activity.js';
 import type { ApprovalGateway } from '../shared/approval.js';
-import { requireVisibleIssue, viewerOf } from '../shared/authz.js';
+import {
+  canMergePullRequest,
+  requireVisibleIssue,
+  viewerOf,
+} from '../shared/authz.js';
 import type { Conn, TxRunner } from '../shared/db.js';
 import { str } from '../shared/db.js';
 import { notFound } from '../shared/errors.js';
@@ -226,7 +230,12 @@ async function issueQueryDetail(
         .executeTakeFirst()
     : null;
   const deps2 = await dependenciesOf(conn, issue.id);
-  const extras = await detailExtras(deps, conn, issue);
+  const extras = await detailExtras(
+    deps,
+    conn,
+    issue,
+    await canMergePullRequest(conn, viewer, issue),
+  );
   const activities = await activityPage(
     conn,
     deps.users,

@@ -57,11 +57,17 @@ export async function detailExtras(
   },
   conn: Conn,
   issue: IssueV4,
+  viewerCanMerge = false,
 ): Promise<DetailExtras> {
   const { modelPrices } = await deps.settings.read(conn);
   const usage = await usageForIssue(conn, issue.id, modelPrices);
   return {
-    pullRequests: await pullRequestsForIssue(conn, deps.users, issue.id),
+    pullRequests: await pullRequestsForIssue(
+      conn,
+      deps.users,
+      issue.id,
+      viewerCanMerge,
+    ),
     approvals: await deps.approvals().listForIssue(issue.id),
     usage: { ...usage, name: issue.identifier },
     queuedRun: await queuedRunOf(conn, issue.id),

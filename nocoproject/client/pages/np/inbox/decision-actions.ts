@@ -45,6 +45,13 @@ function readAction(value: unknown): InboxDecisionAction | null {
     commentField: text(raw.commentField) ?? undefined,
     opensIssue: raw.opensIssue === true,
     external: raw.external === true,
+    ...(raw.confirm === 'prMerge' ? { confirm: 'prMerge' as const } : {}),
+    ...(text(raw.pullRequestId)
+      ? { pullRequestId: text(raw.pullRequestId) ?? undefined }
+      : {}),
+    ...(text(raw.disabledReason)
+      ? { disabledReason: text(raw.disabledReason) ?? undefined }
+      : {}),
   };
   const actionable =
     action.opensIssue || !!action.path || !!externalUrl(action);
@@ -259,5 +266,20 @@ export function resolveLocally(item: InboxItem, now: string): InboxItem {
     ...item,
     resolvedAt: item.resolvedAt ?? now,
     readAt: item.readAt ?? now,
+  };
+}
+
+/** NP-85: the issue and PR a `confirm: 'prMerge'` action merges (`/np/issues/<id>/pull-requests/<prId>/merge`). */
+export function mergeTargetOf(
+  action: InboxDecisionAction,
+): { issueId: string; pullRequestId: string } | null {
+  if (action.confirm !== 'prMerge' || !action.path) return null;
+  const match = /^\/?np\/issues\/([^/]+)\/pull-requests\/([^/]+)\/merge$/u.exec(
+    action.path,
+  );
+  if (!match?.[1] || !match[2]) return null;
+  return {
+    issueId: decodeURIComponent(match[1]),
+    pullRequestId: action.pullRequestId ?? decodeURIComponent(match[2]),
   };
 }

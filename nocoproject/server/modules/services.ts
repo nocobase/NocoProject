@@ -223,6 +223,7 @@ export interface NpServices {
   // Iteration 4.
   readonly design: Iteration4Services['design'];
   readonly pm: Iteration4Services['pm'];
+  readonly pullRequestMerges: Iteration4Services['pullRequestMerges'];
   // Phase 2 (NP-77).
   readonly checklists: ChecklistService;
   readonly workflowProposals: WorkflowProposalService;
@@ -390,7 +391,7 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       services,
     ),
     ...createIteration4Services(
-      { tx, users, activity, settings, workflows },
+      { tx, ids, secrets, github, users, activity, settings, workflows },
       services,
     ),
     checklists: createChecklistService({ tx, ids, users, activity }),
@@ -456,7 +457,7 @@ function createIteration2Services(
       secrets,
       github,
     }),
-    webhooks: createWebhookService({ ...flow, tx, ids, secrets }),
+    webhooks: createWebhookService({ ...flow, tx, ids, secrets, github }),
     intake: createIntakeService({
       tx,
       ids,

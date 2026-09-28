@@ -6,7 +6,11 @@
  * token (or when GitHub cannot be read) a minimal open row is stored for the webhook to complete.
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
-import { requireVisibleIssue, viewerOf } from '../shared/authz.js';
+import {
+  canMergePullRequest,
+  requireVisibleIssue,
+  viewerOf,
+} from '../shared/authz.js';
 import type { SecretBox } from '../shared/crypto.js';
 import type { Tx, TxRunner } from '../shared/db.js';
 import { now } from '../shared/db.js';
@@ -14,6 +18,7 @@ import { conflict, invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
   IssuePullRequestView,
+  IssuePullRequestViewV4,
   IssueV1,
   PullRequest,
 } from '../shared/protocol.js';
@@ -24,7 +29,11 @@ import {
   githubError,
   loadConnection,
 } from './connection.service.js';
-import { snapshotFromPayload, type GitHubClient } from './github-client.js';
+import {
+  snapshotFromPayload,
+  type GitHubClient,
+  type GitHubCredentials,
+} from './github-client.js';
 import {
   ensurePullRequest,
   findPullRequestById,
@@ -86,21 +95,48 @@ function requireUrl(url: unknown): PullRequestRef {
   return ref;
 }
 
+/** One linked PR as `actor` sees it (`viewerCanMerge` only for members). */
 async function viewOf(
   deps: PullRequestDeps,
   tx: Tx,
-  issueId: string,
+  issue: IssueV1,
   pullRequestId: string,
-): Promise<IssuePullRequestView> {
-  const view = (await pullRequestsForIssue(tx.conn, deps.users, issueId)).find(
-    (item) => item.id === pullRequestId,
-  );
+  actor: Actor,
+): Promise<IssuePullRequestViewV4> {
+  const canMerge =
+    actor.type === 'user' &&
+    (await canMergePullRequest(tx.conn, await viewerOf(tx.conn, actor), issue));
+  const view = (
+    await pullRequestsForIssue(tx.conn, deps.users, issue.id, canMerge)
+  ).find((item) => item.id === pullRequestId);
   if (!view) throw notFound('Pull request link');
   return view;
 }
 
-/** Full snapshot with the stored token (mergeable state and CI included). Called outside any transaction. */
-async function fetchSnapshot(deps: PullRequestDeps, ref: PullRequestRef) {
+/** The latest Actions run links; a failure (or no Actions at all) is not an error. */
+async function ciLinks(
+  github: GitHubClient,
+  credentials: GitHubCredentials,
+  repo: string,
+  sha: string,
+): Promise<{ ciRunUrl: string | null; screenshotsUrl: string | null }> {
+  const run = sha
+    ? await github.getLatestCiRun(credentials, repo, sha).catch(() => null)
+    : null;
+  return {
+    ciRunUrl: run?.runUrl ?? null,
+    screenshotsUrl: run?.screenshotsUrl ?? null,
+  };
+}
+
+/**
+ * Full snapshot with the stored token (mergeable state, CI and its run links included), plus the raw payload (the
+ * merge check reads `mergeable`). Called outside any transaction.
+ */
+export async function fetchSnapshot(
+  deps: Pick<PullRequestDeps, 'tx' | 'secrets' | 'github'>,
+  ref: Pick<PullRequestRef, 'repo' | 'number'>,
+) {
   const credentials = credentialsOf(
     await loadConnection(deps.tx.read(), deps.secrets),
   );
@@ -116,8 +152,16 @@ async function fetchSnapshot(deps: PullRequestDeps, ref: PullRequestRef) {
     const ciState = snapshot.headSha
       ? await deps.github.getCiState(credentials, ref.repo, snapshot.headSha)
       : null;
+    const links = await ciLinks(
+      deps.github,
+      credentials,
+      ref.repo,
+      snapshot.headSha,
+    );
     return {
-      snapshot: { ...snapshot, ciState },
+      snapshot: { ...snapshot, ciState, ...links },
+      payload,
+      credentials,
       connectionId: credentials.connectionId,
     };
   } catch (error) {
@@ -166,7 +210,7 @@ async function agentLink(
       actor,
     });
     if (created) await requestReviews(tx, pr, [issue.id]);
-    return { view: await viewOf(deps, tx, issue.id, pr.id), created };
+    return { view: await viewOf(deps, tx, issue, pr.id, actor), created };
   });
 }
 
@@ -188,14 +232,16 @@ export function createPullRequestService(
   async function list(
     actor: Actor,
     idOrKey: string,
-  ): Promise<IssuePullRequestView[]> {
+  ): Promise<IssuePullRequestViewV4[]> {
     const conn = deps.tx.read();
-    const issue = await requireVisibleIssue(
+    const viewer = await viewerOf(conn, actor);
+    const issue = await requireVisibleIssue(conn, viewer, idOrKey);
+    return pullRequestsForIssue(
       conn,
-      await viewerOf(conn, actor),
-      idOrKey,
+      deps.users,
+      issue.id,
+      await canMergePullRequest(conn, viewer, issue),
     );
-    return pullRequestsForIssue(conn, deps.users, issue.id);
   }
 
   return {
@@ -218,7 +264,7 @@ export function createPullRequestService(
           linkedByType: 'user',
           actor,
         });
-        return viewOf(deps, tx, issue.id, pr.id);
+        return viewOf(deps, tx, issue, pr.id, actor);
       });
     },
     async unlink(actor, idOrKey, pullRequestId) {
@@ -259,7 +305,7 @@ export function createPullRequestService(
           .where('pullRequestId', '=', pullRequestId)
           .execute();
         tx.emit({ type: 'issue.changed', issueId: issue.id });
-        return viewOf(deps, tx, issue.id, pullRequestId);
+        return viewOf(deps, tx, issue, pullRequestId, actor);
       });
     },
     async refresh(actor, idOrKey, pullRequestId) {
@@ -267,12 +313,7 @@ export function createPullRequestService(
         (item) => item.id === pullRequestId,
       );
       if (!linked) throw notFound('Pull request link');
-      const fetched = await fetchSnapshot(deps, {
-        repo: linked.repo,
-        number: linked.number,
-        url: linked.url,
-        host: '',
-      });
+      const fetched = await fetchSnapshot(deps, linked);
       return deps.tx.run(async (tx) => {
         const issue = await visible(tx, actor, idOrKey);
         await requireLink(tx, issue.id, pullRequestId);
@@ -281,9 +322,10 @@ export function createPullRequestService(
           deps.ids,
           fetched.snapshot,
           fetched.connectionId,
+          { keepOpenState: true },
         );
         tx.emit({ type: 'issue.changed', issueId: issue.id });
-        return viewOf(deps, tx, issue.id, pullRequestId);
+        return viewOf(deps, tx, issue, pullRequestId, actor);
       });
     },
     agentLink: (actor, issue, url) => agentLink(deps, actor, issue, url),

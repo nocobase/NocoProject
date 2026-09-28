@@ -116,6 +116,8 @@ export type ActivityLabel =
   | 'designChangesRequested'
   | 'designSkipped'
   | 'retrospectiveDone'
+  // NP-85
+  | 'prMergeRequested'
   // NP-78
   | 'attachmentAdded'
   | 'attachmentRemoved'
@@ -148,6 +150,7 @@ const EXACT_LABELS: Readonly<Record<string, ActivityLabel>> = {
   design_changes_requested: 'designChangesRequested',
   design_skipped: 'designSkipped',
   retrospective_done: 'retrospectiveDone',
+  pr_merge_requested: 'prMergeRequested',
   attachment_added: 'attachmentAdded',
   attachment_removed: 'attachmentRemoved',
 };

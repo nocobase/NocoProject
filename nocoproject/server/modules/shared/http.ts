@@ -26,11 +26,11 @@ export function errorBody(
   code: string,
   message: string,
   details?: Readonly<Record<string, unknown>>,
-): ApiErrorBody & { readonly details?: Readonly<Record<string, unknown>> } {
+): ApiErrorBody {
   return details ? { code, message, details } : { code, message };
 }
 
-/** Maps domain errors to `{ code, message }` with their status; anything else is a 500 without internals. */
+/** Maps domain errors to `{ code, message, details? }` with their status; anything else is a 500 without internals. */
 export const npErrorHandler: ErrorHandler = (error, context) => {
   if (error instanceof NpError) {
     return context.json(

@@ -17,7 +17,7 @@ export type NpErrorKind =
 export class NpError extends Error {
   public readonly kind: NpErrorKind;
   public readonly code: string;
-  /** Structured detail for the client body (Phase 2: field-level workflow validation issues). */
+  /** Extra machine-readable facts for the client body (`details`); never secrets. */
   public readonly details?: Readonly<Record<string, unknown>>;
 
   public constructor(

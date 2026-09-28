@@ -8,7 +8,9 @@
  * by the provider's sweep.
  *
  * Events: `pull_request` (upsert, link rules, merge / close / ready flows), `check_suite` completed and `status`
- * (CI state by head SHA), `ping`; anything else is acknowledged and ignored.
+ * (CI state by head SHA), `ping`; anything else is acknowledged and ignored. After a completed check suite the head's
+ * Actions run and `screenshots` artifact links are fetched with the stored token, outside the transaction (NP-85);
+ * failures there are ignored.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -21,11 +23,12 @@ import type { IdSource } from '../shared/ids.js';
 import type { PullRequestCiState } from '../shared/protocol.js';
 import type { SettingsService } from '../system/settings.service.js';
 import { findIssue } from '../issue/issue.records.js';
-import { loadConnection } from './connection.service.js';
+import { credentialsOf, loadConnection } from './connection.service.js';
 import {
   ciStateOfCheckSuite,
   ciStateOfStatus,
   snapshotFromPayload,
+  type GitHubClient,
   type GitHubPullRequestPayload,
 } from './github-client.js';
 import {
@@ -83,6 +86,8 @@ export interface WebhookDeps extends GitFlowDeps {
   readonly secrets: SecretBox;
   readonly activity: ActivityRecorder;
   readonly settings: SettingsService;
+  /** For the CI run links after a completed check suite; absent = skipped. */
+  readonly github?: GitHubClient;
 }
 
 /** `sha256=<hex>` of the raw body, compared in constant time. */
@@ -233,6 +238,50 @@ async function dispatch(
   }
 }
 
+/** The head commit's Actions run and screenshots links, for every stored PR at that head. Never throws. */
+async function backfillCiLinks(
+  deps: WebhookDeps,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const repo = (payload.repository as { full_name?: string } | undefined)
+    ?.full_name;
+  const sha = (payload.check_suite as { head_sha?: string } | undefined)
+    ?.head_sha;
+  if (!deps.github || !repo || !sha) return;
+  try {
+    const credentials = credentialsOf(
+      await loadConnection(deps.tx.read(), deps.secrets),
+    );
+    if (!credentials) return;
+    const links = await deps.github.getLatestCiRun(credentials, repo, sha);
+    if (!links) return;
+    await deps.tx.run(async (tx) => {
+      const rows = await tx.conn.query
+        .selectFrom('pullRequests')
+        .select('id')
+        .where('repo', '=', repo)
+        .where('headSha', '=', sha)
+        .execute();
+      if (rows.length === 0) return;
+      const ids = rows.map((row) => String(row.id));
+      await tx.conn.query
+        .updateTable('pullRequests')
+        .set({
+          ciRunUrl: links.runUrl,
+          screenshotsUrl: links.screenshotsUrl,
+          updatedAt: now(),
+        })
+        .where('id', 'in', ids)
+        .execute();
+      for (const id of ids)
+        for (const link of await linksOfPullRequest(tx.conn, id))
+          tx.emit({ type: 'issue.changed', issueId: link.issueId });
+    });
+  } catch {
+    // Links are a convenience; the CI state itself came with the delivery.
+  }
+}
+
 async function recordDelivery(
   tx: Tx,
   ids: IdSource,
@@ -287,7 +336,7 @@ async function receive(
     payload = {};
   }
   const event = delivery.event ?? '';
-  return deps.tx.run(async (tx): Promise<WebhookResult> => {
+  const result = await deps.tx.run(async (tx): Promise<WebhookResult> => {
     if (!(await recordDelivery(tx, deps.ids, deliveryId)))
       return { status: 'duplicate' };
     const handled = await dispatch(deps, tx, event, payload, connection.id);
@@ -298,6 +347,13 @@ async function receive(
       .execute();
     return { status: 'processed', event, ignored: !handled };
   });
+  if (
+    result.status === 'processed' &&
+    !result.ignored &&
+    event === 'check_suite'
+  )
+    await backfillCiLinks(deps, payload);
+  return result;
 }
 
 export function createWebhookService(deps: WebhookDeps): WebhookService {

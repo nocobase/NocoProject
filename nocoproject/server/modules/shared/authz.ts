@@ -8,6 +8,7 @@
  * | Create, comment, edit fields, non-terminal status   | members who can see the issue                            |
  * | Change the owner                                    | current owner, project lead, owner/admin                 |
  * | Write a terminal status (done / cancelled)          | issue owner, project lead, owner/admin                   |
+ * | Merge a linked pull request (NP-85)                 | issue owner, project lead, owner/admin; never a run token |
  * | Assign, mention, accept a proposal for an agent     | whoever may invoke the agent (see `canInvokeAgent`)      |
  * | Create an agent                                     | on an own runtime or a public runtime                    |
  * | Edit an agent, its access and delegation lists      | agent owner, owner/admin                                 |
@@ -185,6 +186,15 @@ export async function canWriteTerminal(
   issue: Pick<Issue, 'ownerUserId' | 'projectId'>,
 ): Promise<boolean> {
   return canChangeOwner(conn, viewer, issue);
+}
+
+/** Merging a PR completes the issue, so it follows the terminal-status rule: issue owner, project lead, owner/admin. */
+export async function canMergePullRequest(
+  conn: Conn,
+  viewer: Viewer,
+  issue: Pick<Issue, 'ownerUserId' | 'projectId'>,
+): Promise<boolean> {
+  return canWriteTerminal(conn, viewer, issue);
 }
 
 /** Project lead or owner/admin. */

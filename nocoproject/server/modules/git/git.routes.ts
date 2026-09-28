@@ -4,10 +4,12 @@ import type { Context, Hono } from 'hono';
 import { npRouter, readJson, sessionActor } from '../shared/http.js';
 import type {
   LinkPullRequestRequest,
+  MergePullRequestRequest,
   UpdateGitConnectionRequest,
   UpdateIssuePullRequestRequest,
 } from '../shared/protocol.js';
 import type { GitConnectionService } from './connection.service.js';
+import type { PullRequestMergeService } from './merge.service.js';
 import type { PullRequestService } from './pull-request.service.js';
 
 /** Where GitHub should deliver webhooks: `${publicOrigin or request origin}${basePath}/np/webhooks/github`. */
@@ -53,9 +55,10 @@ export function createIntegrationRoutes(deps: {
   return routes;
 }
 
-/** `/np/issues/:id/pull-requests[/:prId[/refresh]]` (browser, contract §C). */
+/** `/np/issues/:id/pull-requests[/:prId[/refresh|/merge]]` (browser, contract §C; merge: NP-85). */
 export function createIssuePullRequestRoutes(
   prs: PullRequestService,
+  merges: PullRequestMergeService,
 ): Hono<AuthEnv> {
   const routes = npRouter<AuthEnv>();
   routes.get('/:id/pull-requests', async (context) =>
@@ -104,5 +107,25 @@ export function createIssuePullRequestRoutes(
       ),
     }),
   );
+  routes.get('/:id/pull-requests/:prId/merge', async (context) =>
+    context.json({
+      data: await merges.preflight(
+        sessionActor(context),
+        context.req.param('id'),
+        context.req.param('prId'),
+      ),
+    }),
+  );
+  routes.post('/:id/pull-requests/:prId/merge', async (context) => {
+    const body = await readJson<MergePullRequestRequest>(context);
+    return context.json({
+      data: await merges.merge(
+        sessionActor(context),
+        context.req.param('id'),
+        context.req.param('prId'),
+        body.expectedHeadSha,
+      ),
+    });
+  });
   return routes;
 }

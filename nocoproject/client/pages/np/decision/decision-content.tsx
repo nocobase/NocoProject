@@ -257,7 +257,8 @@ function PrContent({
   if (pr && detail) {
     return (
       <ul aria-label={t('np.pullRequests.title')}>
-        <PullRequestCard issueId={detail.issue.id} pr={pr} />
+        {/* The decision's action bar carries the merge. */}
+        <PullRequestCard issueId={detail.issue.id} pr={pr} showMerge={false} />
       </ul>
     );
   }
