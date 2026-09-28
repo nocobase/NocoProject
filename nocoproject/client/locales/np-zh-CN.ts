@@ -118,6 +118,7 @@ const npCollabZhCN: NpCollabResource = {
       '已确认建议；其中 {{count}} 条因你无权使用对应 Agent 而跳过。',
     rejected: '已驳回建议。',
     forbidden: '你没有该 Agent 的使用权限。',
+    sourceWorkflow: '来自工作流：进入 {{status}} 建议由 {{agent}} 执行',
   },
   inbox: {
     title: '收件箱',
@@ -169,6 +170,11 @@ const npCollabZhCN: NpCollabResource = {
       knowledge_proposal: '知识库建议',
       knowledge_decided: '知识库建议已处理',
       design_review: '方案待审',
+      workflow_proposal: '工作流模板提议',
+      workflow_decided: '工作流模板提议已处理',
+      stage_entered: '进入了新阶段',
+      stage_action_problem: '阶段动作出现问题',
+      approval_stale: '审批已失效',
     },
   },
   projects: {

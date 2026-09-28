@@ -20,7 +20,7 @@ import {
   acceptAllProposals,
   decideProposal,
 } from '../../api-collab.js';
-import { npKeys } from '../../constants.js';
+import { npKeys, statusLabelKey } from '../../constants.js';
 import type { AgentListItem, ExecutorProposal } from '../../types.js';
 import { pendingProposals } from './subtask-model.js';
 
@@ -119,10 +119,17 @@ export function ProposalsCard({
             </p>
             <p className='flex items-center gap-1.5 text-xs text-muted-foreground'>
               <BotIcon className='size-3.5' aria-hidden='true' />
-              {t('np.proposals.line', {
-                agent: proposal.proposedAgentName,
-                by: proposal.proposedByAgentName,
-              })}
+              {proposal.source === 'workflow' && proposal.stageStatusKey
+                ? t('np.proposals.sourceWorkflow', {
+                    agent: proposal.proposedAgentName,
+                    status: t(statusLabelKey(proposal.stageStatusKey), {
+                      defaultValue: proposal.stageStatusKey,
+                    }),
+                  })
+                : t('np.proposals.line', {
+                    agent: proposal.proposedAgentName,
+                    by: proposal.proposedByAgentName,
+                  })}
             </p>
           </div>
           <div className='flex shrink-0 gap-1.5'>

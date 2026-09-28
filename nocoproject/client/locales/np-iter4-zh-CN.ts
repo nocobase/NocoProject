@@ -90,6 +90,12 @@ const npIter4ZhCN: NpIter4Resource = {
     defaultProcess: '默认流程',
     defaultProcessHint: '新建任务没有选择流程时使用。自动：按标题和描述判断。',
   },
+  checklist: {
+    title: '检查清单',
+    complete: '必填项都已勾选。',
+    incomplete: '离开这个状态前需要勾完必填项。',
+    required: '必填',
+  },
 };
 
 export default npIter4ZhCN;

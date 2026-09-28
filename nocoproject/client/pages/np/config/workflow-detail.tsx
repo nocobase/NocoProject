@@ -19,12 +19,18 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 
-import { fetchWorkflowTemplate } from '../api-iter3.js';
+import { fetchAgents } from '../api.js';
+import {
+  fetchWorkflowRevisions,
+  fetchWorkflowTemplateV5,
+} from '../api-phase2.js';
 import { npKeys } from '../constants.js';
 import {
   WorkflowFlow,
   WorkflowMatrix,
+  WorkflowRevisionHistory,
   WorkflowRules,
+  WorkflowStatusActions,
 } from './workflow-views.js';
 
 /**
@@ -38,11 +44,21 @@ export default function WorkflowDetailPage(): ReactElement {
   const api = useApiClient();
   const workflow = useQuery({
     queryKey: npKeys.workflow(workflowId),
-    queryFn: ({ signal }) => fetchWorkflowTemplate(api, workflowId, signal),
+    queryFn: ({ signal }) => fetchWorkflowTemplateV5(api, workflowId, signal),
     retry: (count, error) =>
       !(error instanceof ApiClientError && [403, 404].includes(error.status)) &&
       count < 2,
   });
+  const revisions = useQuery({
+    queryKey: npKeys.workflowRevisions(workflowId),
+    queryFn: ({ signal }) => fetchWorkflowRevisions(api, workflowId, signal),
+  });
+  const agents = useQuery({
+    queryKey: npKeys.agents,
+    queryFn: () => fetchAgents(api),
+  });
+  const agentName = (agentId: string): string | null =>
+    agents.data?.find((agent) => agent.id === agentId)?.name ?? null;
 
   let body: ReactElement;
   if (workflow.isError && !workflow.data) {
@@ -74,6 +90,9 @@ export default function WorkflowDetailPage(): ReactElement {
               {workflow.data.name}
               {workflow.data.isDefault ? (
                 <NpTag tone='blue'>{t('np.workflows.default')}</NpTag>
+              ) : null}
+              {workflow.data.isSystem ? (
+                <NpTag tone='grey'>{t('np.workflows.isSystem')}</NpTag>
               ) : null}
             </span>
           }
@@ -110,6 +129,31 @@ export default function WorkflowDetailPage(): ReactElement {
           </CardHeader>
           <CardContent>
             <WorkflowRules definition={definition} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('np.workflows.statusesTitle')}</CardTitle>
+            <CardDescription>
+              {t('np.workflows.statusesDescription')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WorkflowStatusActions
+              definition={definition}
+              agentName={agentName}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('np.workflows.revisionsTitle')}</CardTitle>
+            <CardDescription>
+              {t('np.workflows.revisionsDescription')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WorkflowRevisionHistory revisions={revisions.data ?? []} />
           </CardContent>
         </Card>
       </>

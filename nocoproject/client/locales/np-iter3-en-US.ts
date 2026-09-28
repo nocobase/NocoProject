@@ -250,6 +250,51 @@ const npIter3EnUS = {
       done: 'Done',
       closed: 'Closed',
     },
+    // Phase 2 (NP-77 stage 1 / 3): the status table's stage-action column, and read-only revision history.
+    isSystem: 'System template',
+    statusesTitle: 'Statuses and stage actions',
+    statusesDescription:
+      'What happens automatically when an issue enters each status.',
+    columns: {
+      status: 'Status',
+      category: 'Category',
+      onEnter: 'On enter',
+    },
+    noActions: 'No stage actions',
+    stageActions: {
+      notifyOwner: 'Notify owner',
+      runExecutor: 'Run executor',
+      suggestExecutor: 'Suggest executor',
+      checklist: 'Checklist',
+      requirePrMerged: 'Requires a merged PR',
+      automation: 'Automation (reserved)',
+    },
+    stageActionDetail: {
+      notifyOwner: 'Notifies the issue owner.',
+      notifyOwnerMessage: 'Notifies the issue owner: “{{message}}”.',
+      runExecutorCurrent: 'Creates a run for the current executor.',
+      runExecutorAgent:
+        'Sets {{agent}} as the executor (without the owner’s confirmation) and creates a run.',
+      suggestExecutor: 'Suggests {{agent}} as the executor to the owner.',
+      checklist: 'Generates a checklist with {{count}} item(s).',
+      requirePrMerged:
+        'Requires at least {{count}} merged pull request(s) to enter.',
+      automation: 'Reserved for an automation script; not run in this version.',
+    },
+    revisionsTitle: 'Revision history',
+    revisionsDescription:
+      'Every revision this template has taken effect as, newest first.',
+    revisionsEmpty: 'No revisions yet.',
+    revisionColumns: {
+      revision: 'Revision',
+      createdAt: 'Time',
+      source: 'Source',
+      note: 'Reason',
+      author: 'By',
+    },
+    revisionBaseline: 'Baseline',
+    revisionProposal: 'Proposal',
+    revisionAdmin: 'Direct edit',
   },
   githubSecrets: {
     show: 'Show value',

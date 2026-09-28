@@ -18,6 +18,7 @@ import {
   UserCheckIcon,
   UserPlusIcon,
   UsersIcon,
+  WorkflowIcon,
 } from 'lucide-react';
 import type { ReactElement } from 'react';
 
@@ -45,6 +46,9 @@ const TYPE_ICON: Readonly<Record<string, LucideIcon>> = {
   pr_merged: GitMergeIcon,
   knowledge_decided: BookCheckIcon,
   design_review: DraftingCompassIcon,
+  // Phase 2 stage 2 (NP-82): a workflow template change an agent proposed.
+  workflow_proposal: WorkflowIcon,
+  workflow_decided: WorkflowIcon,
 };
 
 /**

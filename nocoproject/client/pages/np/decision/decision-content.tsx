@@ -13,6 +13,7 @@ import type { AgentListItem, IssueDetail, InboxItem } from '../types.js';
 import { latestAgentComment, latestFinishedRun } from './decision-model.js';
 import { DesignProposalContent } from './proposal-content.js';
 import { KnowledgeProposalContent } from './knowledge-content.js';
+import { WorkflowProposalContent } from './workflow-proposal-content.js';
 
 function text(value: unknown): string | null {
   return typeof value === 'string' && value ? value : null;
@@ -62,6 +63,8 @@ export function DecisionContent({
       ) : null;
     case 'knowledge_proposal':
       return <KnowledgeProposalContent item={item} />;
+    case 'workflow_proposal':
+      return <WorkflowProposalContent item={item} />;
     case 'pr_review':
       return <PrContent item={item} detail={detail} loading={detailLoading} />;
     case 'design_review':

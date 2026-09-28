@@ -21,8 +21,19 @@ import {
   STATUS_CHANGE_LABELS,
   activityChange,
   activityLabel,
+  type ActivityLabel,
   type TimelineEntry,
 } from './timeline.js';
+
+/** Labels whose details carry a plain `statusKey` (not a `from`/`to` change) to show as one badge. */
+const STAGE_STATUS_LABELS: ReadonlySet<ActivityLabel> = new Set([
+  'stageActionApplied',
+  'stageActionSkipped',
+  'stageActionFailed',
+  'stageActionSuppressed',
+  'checklistItemChecked',
+  'checklistItemUnchecked',
+]);
 
 export interface ActivityTimelineProps extends ThreadContext {
   readonly entries: readonly TimelineEntry[];
@@ -103,6 +114,19 @@ export function ActivityRow({
       ) : null}
       {label === 'processSelected' ? (
         <SelectedProcess details={activity.details} />
+      ) : null}
+      {STAGE_STATUS_LABELS.has(label) &&
+      typeof activity.details?.statusKey === 'string' ? (
+        <NpStatusBadge
+          statusKey={activity.details.statusKey}
+          catalog={statusCatalog}
+        />
+      ) : null}
+      {(label === 'workflowProposed' || label === 'workflowUpdated') &&
+      typeof activity.details?.name === 'string' ? (
+        <span className='font-medium text-foreground'>
+          {activity.details.name}
+        </span>
       ) : null}
       <time
         dateTime={activity.createdAt}

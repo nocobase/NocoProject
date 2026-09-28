@@ -116,7 +116,16 @@ export type ActivityLabel =
   | 'designChangesRequested'
   | 'designSkipped'
   | 'retrospectiveDone'
-  | 'updated';
+  | 'updated'
+  // Phase 2 (NP-77 stage 1 / 2)
+  | 'stageActionApplied'
+  | 'stageActionSkipped'
+  | 'stageActionFailed'
+  | 'stageActionSuppressed'
+  | 'checklistItemChecked'
+  | 'checklistItemUnchecked'
+  | 'workflowProposed'
+  | 'workflowUpdated';
 
 /** Iteration 2 actions are matched exactly (snake case, as the contract spells them) before the keyword rules. */
 const EXACT_LABELS: Readonly<Record<string, ActivityLabel>> = {
@@ -145,6 +154,14 @@ const EXACT_LABELS: Readonly<Record<string, ActivityLabel>> = {
   design_changes_requested: 'designChangesRequested',
   design_skipped: 'designSkipped',
   retrospective_done: 'retrospectiveDone',
+  stage_action_applied: 'stageActionApplied',
+  stage_action_skipped: 'stageActionSkipped',
+  stage_action_failed: 'stageActionFailed',
+  stage_action_suppressed: 'stageActionSuppressed',
+  checklist_item_checked: 'checklistItemChecked',
+  checklist_item_unchecked: 'checklistItemUnchecked',
+  workflow_proposed: 'workflowProposed',
+  workflow_updated: 'workflowUpdated',
 };
 
 /** Labels whose details carry a status change to show as badges. */

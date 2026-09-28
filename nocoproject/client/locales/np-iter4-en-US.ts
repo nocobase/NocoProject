@@ -101,6 +101,13 @@ const npIter4EnUS = {
     defaultProcessHint:
       'Used when a new issue does not choose one. Automatic decides from the title and description.',
   },
+  // Phase 2 stage 1 (NP-81 §6): the current status's checklist on the issue page.
+  checklist: {
+    title: 'Checklist',
+    complete: 'Every required item is checked.',
+    incomplete: 'Check the required items before leaving this status.',
+    required: 'Required',
+  },
 };
 
 export default npIter4EnUS;

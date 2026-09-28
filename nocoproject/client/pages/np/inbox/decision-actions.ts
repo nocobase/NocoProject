@@ -177,6 +177,17 @@ export function defaultInboxActions(
         ...(issue ? [open()] : []),
       ];
     }
+    // Stage 2 (NP-82): a workflow template change an agent proposed; owner/admin accept or reject (with a comment).
+    case 'workflow_proposal': {
+      const proposalId = text(payload.proposalId);
+      if (!proposalId) return issue ? [open()] : [];
+      const id = encodeURIComponent(proposalId);
+      return [
+        post('accept', `/np/workflows/proposals/${id}/accept`, 'primary'),
+        post('reject', `/np/workflows/proposals/${id}/reject`, 'danger'),
+        ...(issue ? [open()] : []),
+      ];
+    }
     default:
       return issue ? [open()] : [];
   }

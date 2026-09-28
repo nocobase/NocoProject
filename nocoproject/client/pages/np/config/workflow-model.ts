@@ -4,6 +4,7 @@ import type {
   WorkflowDefinitionV3,
   WorkflowTransitionV3,
 } from '../types-iter3.js';
+import type { StageAction } from '../types-phase2.js';
 
 /**
  * The read-only picture of a workflow template (§F): the status line with its side branches, the transition matrix
@@ -151,6 +152,44 @@ export function workflowRules(
       enabled: definition.childBatchDoneWakesParentExecutor,
     },
   ];
+}
+
+/**
+ * A stage action's hover detail (NP-77 stage 1 §2): the i18n key under `np.workflows.stageActionDetail` and its
+ * interpolation values. `agentName` resolves a `runExecutor` / `suggestExecutor` agent id to a name; the id itself
+ * when the agent is not (or no longer) known.
+ */
+export function stageActionDetail(
+  action: StageAction,
+  agentName: (agentId: string) => string | null,
+): { readonly key: string; readonly values: Record<string, string | number> } {
+  switch (action.type) {
+    case 'notifyOwner':
+      return action.message
+        ? { key: 'notifyOwnerMessage', values: { message: action.message } }
+        : { key: 'notifyOwner', values: {} };
+    case 'runExecutor':
+      return action.agentId
+        ? {
+            key: 'runExecutorAgent',
+            values: { agent: agentName(action.agentId) ?? action.agentId },
+          }
+        : { key: 'runExecutorCurrent', values: {} };
+    case 'suggestExecutor':
+      return {
+        key: 'suggestExecutor',
+        values: { agent: agentName(action.agentId) ?? action.agentId },
+      };
+    case 'checklist':
+      return { key: 'checklist', values: { count: action.items.length } };
+    case 'requirePrMerged':
+      return {
+        key: 'requirePrMerged',
+        values: { count: action.minCount ?? 1 },
+      };
+    case 'automation':
+      return { key: 'automation', values: {} };
+  }
 }
 
 /** Category → token classes for a status node, so the flow follows light and dark themes. */

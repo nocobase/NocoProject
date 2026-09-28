@@ -357,6 +357,15 @@ const enUS = {
         designSkipped: 'skipped the design step',
         retrospectiveDone: 'wrote the retrospective',
         updated: 'updated the issue',
+        // Phase 2 (NP-77 stage 1 / 2): stage actions, checklist items and workflow template proposals.
+        stageActionApplied: 'applied a stage action',
+        stageActionSkipped: 'skipped a stage action',
+        stageActionFailed: 'a stage action failed',
+        stageActionSuppressed: 'suppressed a stage action (too many runs)',
+        checklistItemChecked: 'checked a checklist item',
+        checklistItemUnchecked: 'unchecked a checklist item',
+        workflowProposed: 'proposed a workflow template change',
+        workflowUpdated: 'updated a workflow template',
       },
       run: {
         queued: '{{name}} was queued',

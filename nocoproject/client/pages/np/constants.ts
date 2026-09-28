@@ -223,6 +223,13 @@ export const npKeys = {
   knowledgeProposals: ['np', 'knowledge', 'proposals'] as const,
   metrics: (query: MetricsQuery) => ['np', 'metrics', query] as const,
   workflow: (id: string) => ['np', 'workflows', id] as const,
+  // Phase 2 (NP-77 stage 3)
+  workflowRevisions: (id: string) =>
+    ['np', 'workflows', id, 'revisions'] as const,
+  workflowProposal: (id: string) =>
+    ['np', 'workflows', 'proposals', id] as const,
+  issueChecklists: (issueId: string) =>
+    ['np', 'issue', issueId, 'checklists'] as const,
 };
 
 /** Dormant statuses (§ terminology): backlog, or any status whose category is done or closed. */

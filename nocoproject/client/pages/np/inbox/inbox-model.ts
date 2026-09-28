@@ -101,5 +101,11 @@ export function inboxItemLink(
       ? `/knowledge/${encodeURIComponent(docId)}`
       : '/knowledge';
   }
+  if (type === 'workflow_proposal' || type === 'workflow_decided') {
+    const templateId = item.payload?.templateId;
+    return typeof templateId === 'string' && templateId
+      ? `/config/workflows/${encodeURIComponent(templateId)}`
+      : '/config/workflows';
+  }
   return null;
 }

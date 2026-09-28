@@ -27,6 +27,7 @@ const npDesignEnUS = {
       knowledge_proposal: 'Knowledge change proposed',
       pr_review: 'Pull request ready to merge',
       design_review: 'Design proposal to review',
+      workflow_proposal: 'Workflow template change proposed',
     },
     actions: {
       review_requested: {
@@ -55,6 +56,10 @@ const npDesignEnUS = {
       design_review: {
         approve: 'Approve for development',
         requestChanges: 'Send back',
+      },
+      workflow_proposal: {
+        accept: 'Accept',
+        reject: 'Reject',
       },
     },
     section: {
@@ -89,6 +94,31 @@ const npDesignEnUS = {
       unchanged: '{{count}} unchanged lines',
       added: 'Added:',
       removed: 'Removed:',
+    },
+    workflow: {
+      template: 'Template',
+      reason: 'Why',
+      affectedProjects: 'Projects affected',
+      kind: {
+        update: 'Change this template',
+        copy: 'Copy into a new template',
+      },
+      outdated:
+        'The template changed since this proposal was submitted; accepting will fail until it is resubmitted.',
+      runExecutorHighlight:
+        'Entering {{status}} will run {{agent}} without the owner’s confirmation.',
+      against: 'Compared with revision {{revision}}',
+      showDiff: 'Show diff summary',
+      showFull: 'Show full definition',
+      gone: 'This proposal has already been decided.',
+      noChange: 'The proposed definition is the same as the current one.',
+      nameChanged: 'Name:',
+      statuses: 'Statuses',
+      transitions: 'Transitions',
+      actions: 'Stage actions',
+      added: 'Added',
+      removed: 'Removed',
+      changed: 'Changed',
     },
   },
   issueAdd: {

@@ -22,6 +22,7 @@ const npDesignZhCN: NpDesignResource = {
       knowledge_proposal: '知识库修改建议',
       pr_review: 'PR 待合并',
       design_review: '设计方案待审核',
+      workflow_proposal: '工作流模板修改提议',
     },
     actions: {
       review_requested: {
@@ -50,6 +51,10 @@ const npDesignZhCN: NpDesignResource = {
       design_review: {
         approve: '批准进入开发',
         requestChanges: '打回修改',
+      },
+      workflow_proposal: {
+        accept: '接受',
+        reject: '驳回',
       },
     },
     section: {
@@ -84,6 +89,30 @@ const npDesignZhCN: NpDesignResource = {
       unchanged: '{{count}} 行未变',
       added: '新增：',
       removed: '删除：',
+    },
+    workflow: {
+      template: '模板',
+      reason: '理由',
+      affectedProjects: '受影响的项目数',
+      kind: {
+        update: '修改这个模板',
+        copy: '复制为新模板',
+      },
+      outdated: '模板自提议提交后已变化；接受会失败，需要基于最新版重提。',
+      runExecutorHighlight:
+        '进入{{status}}会自动唤醒 {{agent}}，无需负责人确认。',
+      against: '与修订 {{revision}} 对比',
+      showDiff: '看差异摘要',
+      showFull: '看完整定义',
+      gone: '这条提议已经处理过了。',
+      noChange: '提议的定义与当前版本相同。',
+      nameChanged: '名称：',
+      statuses: '状态',
+      transitions: '转换',
+      actions: '阶段动作',
+      added: '新增',
+      removed: '删除',
+      changed: '变更',
     },
   },
   issueAdd: {
