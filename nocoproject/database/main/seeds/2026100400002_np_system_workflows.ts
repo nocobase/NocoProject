@@ -8,7 +8,7 @@ import { defineSeed, type SeedDefinition } from '@nocobase/db';
 const SYSTEM_TEMPLATE_IDS = ['default', 'software-with-approval'];
 
 const seed: SeedDefinition = defineSeed({
-  name: '2026100500002_np_system_workflows',
+  name: '2026100400002_np_system_workflows',
 
   async run({ query }) {
     await query

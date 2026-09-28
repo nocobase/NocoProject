@@ -120,16 +120,16 @@ describe.skipIf(!db)('NocoProject Phase 2 migrations (PostgreSQL)', () => {
 
   it('rolls back the Phase 2 workflow proposals batch alone', async () => {
     while ((await migrator().rollback()).rolledBack.length > 0);
-    await migrator().upTo('2026100400002_np_file_intake_batch');
+    await migrator().upTo('2026100400001_np_attachments');
     await db!.knex.raw(
       `INSERT INTO "${db!.schema}".workflow_templates (id, name, is_default, definition, created_at, updated_at)
        VALUES ('t1', 'T', false, '{}', now(), now())`,
     );
     const applied = await migrator().upTo(
-      '2026100500001_np_phase2_workflow_proposals',
+      '2026100400001_np_phase2_workflow_proposals',
     );
     expect(applied.executed).toEqual([
-      '2026100500001_np_phase2_workflow_proposals',
+      '2026100400001_np_phase2_workflow_proposals',
     ]);
     expect(await tables()).toEqual(
       expect.arrayContaining([...NP_PHASE2_PROPOSAL_TABLES]),
@@ -158,7 +158,7 @@ describe.skipIf(!db)('NocoProject Phase 2 migrations (PostgreSQL)', () => {
     );
     const rolledBack = await migrator().rollback();
     expect(rolledBack.rolledBack).toEqual([
-      '2026100500001_np_phase2_workflow_proposals',
+      '2026100400001_np_phase2_workflow_proposals',
     ]);
     for (const table of NP_PHASE2_PROPOSAL_TABLES)
       expect(await tables()).not.toContain(table);
