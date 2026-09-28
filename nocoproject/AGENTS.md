@@ -366,7 +366,7 @@ For each change, scope all verification to the affected files, projects, or pack
 
 Do not run full-application or workspace-wide checks, or an aggregate `pnpm check`, as a routine step after each edit. If a necessary check cannot be narrowed further, run the smallest supported project or package scope and explain why. Expand scope only when shared code, dependencies, configuration, or a failure gives a concrete reason, or when the user explicitly requests it. After checks pass, repeat them only for further relevant changes or unresolved failures. Documentation-only changes need formatting and link checks for the changed documents, not type checking, runtime tests, or builds.
 
-Report which checks ran, their scope, and any unverified behavior. See the application development Skill's `references/testing.md` for selection examples.
+Report which checks ran, their scope, and any unverified behavior. CI minutes are metered (the repository is private): CI skips documentation-only changes, runs `app` or `cli` only when their directory changed, and takes screenshots only when `client/`, `e2e/` or `public/` changed (rules in `docs/dogfooding.md`, "CI 与 Actions 额度"). Do not add `[skip ci]` to commits or push commits only to re-trigger CI; the owner decides that. See the application development Skill's `references/testing.md` for selection examples.
 
 Add tests for what you changed: a route's authenticated, unauthenticated, and unauthorized responses; a migration's `up` and `down` against a real database; a page's actual behavior. Tests belong in `tests/`, or in `e2e/` when they need a real server. Never place a test beside the source it covers.
 

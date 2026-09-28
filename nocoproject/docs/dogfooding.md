@@ -44,21 +44,34 @@ Agent 跑在谁的电脑上，就在那台电脑的检出里看效果；服务�
 
 ## 什么放哪里
 
-| 内容                                           | 位置                                                                                                                                                              |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 代码规范、模块结构、界面规则                   | 仓库：`AGENTS.md`、`client/pages/np/README.md`、`nocosolution/frontend/nocobase3-frontend-best-practices.md`、`nocosolution/frontend/nocosolution-frontend-standard.md`              |
-| 方案、阶段文档、ADR                            | 仓库：根目录方案 md、`docs/phase*`、`docs/adr`                                                                                                                    |
-| 环境事实、工作约定、坑与决策、验收标准、路线图 | NocoProject 知识库：系统级《团队工作约定》；项目级《开发环境与命令》《已知坑与决策》《验收标准》《路线图与已知缺口》                                              |
-| 一类事怎么做                                   | NocoProject 技能：《NocoProject 交付流程》《前端页面开发》《服务端模块开发》《文档同步》，挂给所有 Agent                                                          |
-| Agent 的角色与底线                             | Agent 指令：Opus 主力（可委派 Sonnet）、Sonnet 承接小任务、Codex 小改动；项目经理（`kind = manager`，dev 的 OpenCode + DeepSeek V4.1 Flash high）只读、回答、总结 |
-| 待办                                           | NocoProject 任务（批量录入）                                                                                                                                      |
+| 内容                                           | 位置                                                                                                                                                                    |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 代码规范、模块结构、界面规则                   | 仓库：`AGENTS.md`、`client/pages/np/README.md`、`nocosolution/frontend/nocobase3-frontend-best-practices.md`、`nocosolution/frontend/nocosolution-frontend-standard.md` |
+| 方案、阶段文档、ADR                            | 仓库：根目录方案 md、`docs/phase*`、`docs/adr`                                                                                                                          |
+| 环境事实、工作约定、坑与决策、验收标准、路线图 | NocoProject 知识库：系统级《团队工作约定》；项目级《开发环境与命令》《已知坑与决策》《验收标准》《路线图与已知缺口》                                                    |
+| 一类事怎么做                                   | NocoProject 技能：《NocoProject 交付流程》《前端页面开发》《服务端模块开发》《文档同步》，挂给所有 Agent                                                                |
+| Agent 的角色与底线                             | Agent 指令：Opus 主力（可委派 Sonnet）、Sonnet 承接小任务、Codex 小改动；项目经理（`kind = manager`，dev 的 OpenCode + DeepSeek V4.1 Flash high）只读、回答、总结       |
+| 待办                                           | NocoProject 任务（批量录入）                                                                                                                                            |
 
 ## GitHub
 
-- CI：`.github/workflows/ci.yml`（`app` 带 PostgreSQL 服务容器；`cli`），每次推送与 PR 都跑。分支保护在私有仓库需要 GitHub Pro，未开启；合并前看 PR 上的检查结果。
+- CI：`.github/workflows/ci.yml`（`changes` 判断改了哪些目录；`app` 带 PostgreSQL 服务容器；`cli`；`deploy`），按下一节的规则只跑需要的部分。分支保护在私有仓库需要 GitHub Pro，未开启；合并前看 PR 上的检查结果。
 - Webhook：仓库设置里的正式 webhook（id 686895797）推到 `https://project.nocobase.cn/main/np/webhooks/github`，事件 `pull_request`、`check_suite`、`status`；secret 与“设置 → GitHub”里保存的一致，原件在开发机 `~/.nocoproject/github-webhook-secret`（600）。投递记录：`gh api repos/zhouyanliang/NocoProject/hooks/686895797/deliveries`。
 - 发布：合并到 main 后 CI 通过即自动部署到服务器（部署前备份、失败自动回滚，见 [deploy.md](deploy.md)）。Agent 只到开 PR 为止，不部署。
 - 合并 PR 由负责人做；合并后 webhook 把任务改为 done（`prMergedStatus`）。
+
+## CI 与 Actions 额度
+
+仓库私有，GitHub 托管 runner 按分钟计费，免费额度用完后作业会在几秒内失败，也拿不到日志。2026-09-28 用完过一次：当时每个 PR 要跑两遍 `app`（PR 上一遍、合并到 main 又一遍，各约 13 分钟，大头是 vitest 的 8 分多钟），加上 `cli` 和部署，一个 PR 合并下来约 32 分钟。为此定下这几条规则：
+
+- **只改文档不跑 CI。** 所有 `.md`、根目录的 `.html`、`docs/`、`nocoproject/docs/`、`Multica_调研/`、`nocosolution` 子模块指针、`.agents/`、`.claude/`，改动全在这些路径里时整个 workflow 不触发，也不部署。`nocoproject/index.html` 是构建入口，不在其中。
+- **按目录跑作业。** 只改 `nocoproject-cli/` 不跑 `app`，只改 `nocoproject/` 不跑 `cli`；改 `.github/workflows/` 两个都跑。
+- **截图只在界面有改动时跑。** 改到 `nocoproject/{client,e2e,public}/` 才装浏览器、截图、挂 `screenshots` artifact。纯服务端的 PR 没有截图，交付说明照常按"前端任务附截图"的规则走。
+- **main 上不重跑测试。** PR 的检查跑在"分支与 main 合并后"的提交上，所以合并后 main 的推送只做类型检查和 lint（`cli` 只做 tsc 和构建），通过后部署；只改 CLI 也照常部署（安装包随应用构建）。合并前如果 main 已经前进了很多，在 PR 上点"Update branch"让检查重跑一遍再合。
+- **完整检查手动跑。** Actions 页选 CI → Run workflow，选分支，跑全部测试和截图，不看改动路径：`gh workflow run ci.yml --ref <分支>`。
+- **每个作业有超时**（changes 5、app 25、cli 10、deploy 20 分钟），卡住的作业不会一直计费。
+- **额度又不够时：** 提交信息里写 `[skip ci]` 可以跳过这次推送的 CI，但部署也一起跳过，需要本地验证后手动 `pnpm deploy:server`（[deploy.md](deploy.md)）。Agent 不要自己加 `[skip ci]`，由负责人决定。
+- **自托管 runner：** `app` 与 `cli` 的 `runs-on` 读仓库变量 `CI_RUNNER`，没设就用 `ubuntu-latest`。在自托管机器上注册好 runner 后，把变量设成它的标签（例如 `self-hosted`）就切过去，不用改 workflow；删掉变量就切回来。`deploy` 始终在 GitHub 托管机器上跑。自托管机器要预装 Docker（服务容器用）和 Playwright 的系统依赖（workflow 只在托管机器上加 `--with-deps`）。
 
 ## 设置
 

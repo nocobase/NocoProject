@@ -1,9 +1,31 @@
 name: CI
 
+# 省 Actions 分钟数的规则写在 nocoproject/docs/dogfooding.md 的"CI 与 Actions 额度"。改这里的触发条件时同步那一节。
 on:
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "*.html"
+      - "docs/**"
+      - "nocoproject/docs/**"
+      - "Multica_调研/**"
+      - "nocosolution"
+      - ".agents/**"
+      - ".claude/**"
   push:
     branches: [main]
+    # 与 pull_request 的列表保持一致。
+    paths-ignore:
+      - "**.md"
+      - "*.html"
+      - "docs/**"
+      - "nocoproject/docs/**"
+      - "Multica_调研/**"
+      - "nocosolution"
+      - ".agents/**"
+      - ".claude/**"
+  # 手动在任意分支跑一遍完整检查（全部测试和截图），不看改了哪些文件。
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -11,9 +33,49 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # 按改动的目录决定跑哪些作业：只改 CLI 不跑 app，只改应用不跑 cli，没动界面不截图。
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.app == 'true' || steps.filter.outputs.workflow == 'true' }}
+      cli: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workflow == 'true' }}
+      ui: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ui == 'true' || steps.filter.outputs.workflow == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name != 'workflow_dispatch'
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          # 一个文件要同时满足同一组里的每一条（用于 ! 排除）。
+          predicate-quantifier: every
+          filters: |
+            app:
+              - "nocoproject/**"
+              - "!nocoproject/docs/**"
+              - "!**/*.md"
+            cli:
+              - "nocoproject-cli/**"
+              - "!**/*.md"
+            ui:
+              - "nocoproject/{client,e2e,public}/**"
+              - "!**/*.md"
+            workflow:
+              - ".github/workflows/**"
+
   app:
     name: app
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    env:
+      # main 上的推送来自已经在 PR 上跑过全部测试的合并（PR 的检查跑在与 main 合并后的提交上），
+      # 这里只做类型检查和 lint 兜底，然后交给 deploy。完整检查用 workflow_dispatch。
+      FULL: ${{ github.event_name != 'push' }}
+      SCREENSHOTS: ${{ github.event_name != 'push' && needs.changes.outputs.ui == 'true' }}
     services:
       postgres:
         image: postgres:16
@@ -21,7 +83,8 @@ jobs:
           POSTGRES_USER: demo
           POSTGRES_PASSWORD: demo123456
           POSTGRES_DB: nocoproject_test
-        ports: ["5432:5432"]
+        # 宿主端口随机分配，同一台自托管机器上多个 runner 并行也不冲突。
+        ports: ["5432"]
         options: >-
           --health-cmd "pg_isready -U demo -d nocoproject_test"
           --health-interval 5s --health-timeout 5s --health-retries 20
@@ -43,15 +106,20 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm exec eslint --max-warnings 0 client server database tests
       - run: pnpm exec vitest run
+        if: env.FULL == 'true'
         env:
-          NP_TEST_DATABASE_URL: postgres://demo:demo123456@127.0.0.1:5432/nocoproject_test
+          NP_TEST_DATABASE_URL: postgres://demo:demo123456@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/nocoproject_test
           AUTH_SECRET: ci-auth-secret-at-least-32-characters-long
       - run: pnpm build
-      - run: pnpm exec playwright install --with-deps chromium
+        if: env.FULL == 'true'
+      # 自托管机器上浏览器依赖已预装，不需要（也没有权限）apt 安装。
+      - run: pnpm exec playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
+        if: env.SCREENSHOTS == 'true'
       # Screenshots of every page under compact / default × light / dark, from a throwaway preview of this build.
       - run: pnpm screenshots
+        if: env.SCREENSHOTS == 'true'
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && env.SCREENSHOTS == 'true'
         with:
           name: screenshots
           path: nocoproject/output/screenshots
@@ -59,7 +127,10 @@ jobs:
 
   cli:
     name: cli
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: nocoproject-cli
@@ -77,14 +148,20 @@ jobs:
       - run: pnpm exec tsc --noEmit
       - run: pnpm build
       - run: pnpm exec vitest run --exclude "**/*.live.test.ts"
+        if: github.event_name != 'push'
 
   # main 通过 app 与 cli 后自动部署到 ali-agents（nocoproject/docs/deploy.md）。部署密钥在服务器上被强制命令
   # np-ci-deploy 限定为只能部署：接收构建产物、备份数据库、替换容器、不健康就回滚。
+  # app 或 cli 有一个被跳过（没改到）也照常部署；CLI 安装包随应用构建，只改 CLI 也要部署。
   deploy:
     name: deploy
-    needs: [app, cli]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [changes, app, cli]
+    if: >-
+      !cancelled() && !contains(needs.*.result, 'failure')
+      && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && (needs.changes.outputs.app == 'true' || needs.changes.outputs.cli == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     concurrency:
       group: deploy-production
       cancel-in-progress: false
