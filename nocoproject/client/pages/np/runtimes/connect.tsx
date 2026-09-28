@@ -7,7 +7,7 @@ import { RouteDialog } from '@/components/route-dialog';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useRouteOverlay } from '@/components/use-route-overlay';
-import { CLI_INSTALL_COMMAND } from '../constants.js';
+import { cliInstallCommand } from '../constants.js';
 
 /** Route `/runtimes/connect`: how to connect a computer. Instructions only; nothing is submitted. */
 export default function ConnectRuntimePage(): ReactElement {
@@ -36,7 +36,7 @@ function ConnectSteps(): ReactElement {
   const apiKeyPlaceholder = t('np.connect.apiKeyPlaceholder');
 
   const steps = [
-    { title: t('np.connect.install'), command: CLI_INSTALL_COMMAND },
+    { title: t('np.connect.install'), command: cliInstallCommand(serverUrl) },
     {
       title: t('np.connect.login'),
       command: `nocoproject login --server ${serverUrl} --api-key <${apiKeyPlaceholder}>`,

@@ -302,8 +302,13 @@ export const LABEL_DOT_CLASS: Readonly<Record<LabelColor, string>> = {
 };
 
 /**
- * How to install the daemon/CLI on another computer. `nocoproject-cli` is not published to npm yet, so the install
- * pulls the tarball attached to the GitHub release (`gh` must be signed in to the repository).
+ * Version of the daemon/CLI this application ships. Every `pnpm build` packs `nocoproject-cli` into
+ * `dist/client/assets/cli/nocoproject-cli-<version>.tgz` (`scripts/pack-cli.sh`, a build hook in `cli/plugins.ts`) and
+ * fails when this does not match its package.json; bump both together.
  */
-export const CLI_INSTALL_COMMAND =
-  "gh release download cli-v0.2.0 --repo zhouyanliang/NocoProject --pattern '*.tgz' && npm i -g ./nocoproject-cli-0.2.0.tgz";
+export const CLI_VERSION = '0.2.0';
+
+/** How to install the daemon/CLI on another computer: npm fetches the tarball this application serves. */
+export function cliInstallCommand(serverUrl: string): string {
+  return `npm i -g ${serverUrl}/assets/cli/nocoproject-cli-${CLI_VERSION}.tgz`;
+}

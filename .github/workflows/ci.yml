@@ -105,8 +105,7 @@ jobs:
           path: ~/.local/share/pnpm/store
           key: pnpm-app-${{ runner.os }}-${{ hashFiles('nocoproject/pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
-      # 与 scripts/deploy-server.sh 一致：有 CLI 打包脚本时先把 CLI 安装包打进 public/assets/cli/。
-      - run: if [ -f scripts/pack-cli.sh ]; then bash scripts/pack-cli.sh; fi
+      # 构建钩子会把 CLI 安装包打进 dist/client/assets/cli/（scripts/pack-cli.sh）。
       - run: pnpm build --target linux-x64 --node-version 24
         env:
           APP_BASE_PATH: /main

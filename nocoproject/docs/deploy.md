@@ -45,6 +45,10 @@ pnpm deploy:server
 
 `scripts/deploy-server.sh` 按 `linux-x64` / Node 24 构建 `dist/`，rsync 到服务器，用仓库的 Dockerfile（`DIST=prebuilt`）打镜像 `nocoproject:<短提交号>`，替换应用容器并等健康检查通过。约 3 分钟；替换期间服务中断约 30 秒，守护进程会自动重连。迁移随应用启动自动执行。`NP_DEPLOY_SKIP_BUILD=1` 复用已有的 linux-x64 构建。
 
+CLI 安装包随应用发布：每次 `pnpm build` 在客户端构建之后执行 `scripts/pack-cli.sh`（`cli/nocoproject-build.ts` 声明的构建钩子），把同级的 `nocoproject-cli` 打包到 `dist/client/assets/cli/nocoproject-cli-<版本>.tgz`。应用在公网与 Tailscale 地址下都提供 `/main/assets/cli/…`，其他电脑用 `npm i -g <地址>` 安装，不需要 GitHub 账号；“添加电脑”页面按访问地址生成这条命令。应用只对 `/assets/*` 提供静态文件，且按一年 immutable 缓存，所以文件名带版本号。打包失败则构建失败；服务器上的 `np-deploy` 在产物里找不到安装包时拒绝部署。
+
+发布新版 CLI：同时改 `nocoproject-cli/package.json`、`nocoproject-cli/tests/cli.test.ts` 与 `client/pages/np/constants.ts` 的 `CLI_VERSION`（不一致时构建与 `tests/logic/np-cli-installer.test.ts` 都会失败），然后部署；各机器重新执行安装命令并重启守护进程。
+
 服务器端的步骤在 `scripts/server/np-deploy`（部署时同步到 `~/nocoproject/bin/`，`NP_DEPLOY_SCRIPTS_ONLY=1 pnpm deploy:server` 只同步脚本）：先把数据库备份到 `~/nocoproject/backups/pre-deploy-<时间>-<提交>.dump`（留最近 10 份），再打镜像、替换容器、等健康检查；3 分钟内不健康就自动换回上一个镜像并以非零退出。自动回滚不回退数据库迁移，迁移出错时用这份备份恢复。同一时间只允许一个部署。
 
 回滚到更早的版本：服务器保留最近 3 个镜像（`docker images nocoproject`），`ssh ali-agents-ts '~/nocoproject/bin/np-deploy <旧标签>'` 直接用那个镜像替换容器（同样先备份、失败回滚）；更早的版本先检出那个提交再 `pnpm deploy:server`。

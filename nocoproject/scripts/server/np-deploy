@@ -19,6 +19,9 @@ if [ "${2:-}" = --stdin ]; then
   tar -xzf - -C "$ROOT/build"
 fi
 test -f "$ROOT/build/dist/package.json" || { echo "no dist in $ROOT/build" >&2; exit 1; }
+# “添加电脑”的安装命令从应用下载 CLI，构建钩子（scripts/pack-cli.sh）应已打进 dist；缺了就不部署。
+ls "$ROOT"/build/dist/client/assets/cli/nocoproject-cli-*.tgz >/dev/null 2>&1 ||
+  { echo "dist has no CLI installer (dist/client/assets/cli/); rebuild with pnpm build" >&2; exit 1; }
 
 echo "==> backup database"
 mkdir -p "$ROOT/backups"
