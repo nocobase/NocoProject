@@ -85,3 +85,14 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 ## 10. Languages
 
 - Every string is a key in `client/locales/` with `en-US` and `zh-CN`; `tests/logic/locale-coverage.test.ts` fails on a missing key. New groups go in the latest `np-*-en-US.ts` (today `np-iter4-en-US.ts`); a key inside an existing group goes into the file that defines that group, since the spread into `np` is shallow; avoid i18next plural suffixes.
+
+## 11. Shell, screenshots and token inventory
+
+NocoProject-specific reference material that doesn't belong in the two shared design docs because no other Solution needs it verbatim:
+
+- **Shell**: brand mark, top bar (collapse toggle, workspace name, appearance, account) above a flat sidebar — 收件箱 → 我的任务 → 工作（任务、项目）→ AGENT 团队（Agent、运行时、技能、知识库）→ 报表 → 设置. Top bar and sidebar keep the template's own sizes (`h-16`, `size-10` / `size-9` icon buttons); they are already sized for the compact preset, so they are not compressed further.
+- **Screenshots**: 1360×900 desktop viewport, `docs/design/screenshots/` holds the last reviewed baseline (compact · dark as the primary shot, plus a light and a default-preset counterpart per page: inbox, issue detail, project detail, board, issue list, knowledge, reports, settings). Day-to-day verification doesn't update that baseline — `pnpm build && pnpm screenshots` regenerates the same four combinations (compact/default × light/dark) into `output/screenshots/` from a throwaway local preview (`docs/dogfooding.md` "看效果"); attach those to the delivery instead.
+- **Token and file inventory**:
+  - Theme presets (`client/theme/themes/{compact,default}.css`, identical except density): cool-toned neutrals, `--primary` indigo, `--chart-1..5` fixed hues, an independent sidebar background, selected nav text in the body color.
+  - App semantic colours (`client/np-tones.css`): `--agent`, `--attention` / `--attention-foreground`, `--success`, `--np-tint-*` / `--np-ink-*` (eight hues), plus the `badge-text` and `np-live-ring` utilities (the latter in `client/styles.css`).
+  - Flat sidebar sections: `client/layouts/components/navigation-sections.tsx` (the template's `navigation-tree.tsx` only gained the entry row styling and `relative`, and still owns the collapsible tree for Settings/Dev and for any group whose entry count needs it — see the best-practices doc §2.1 for when to switch).
