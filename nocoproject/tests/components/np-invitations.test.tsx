@@ -2,7 +2,13 @@ import { ApiClientError } from '@nocobase/app-client';
 import { I18nRuntime } from '@nocobase/i18n';
 import { I18nProvider } from '@nocobase/i18n/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +20,8 @@ import MembersSettingsPage from '../../client/pages/np/config/members.js';
 /**
  * NP-88 in the browser: the "邀请成员" entry on the members tab (owner/admin, and project leads for their projects),
  * the dialog's validation and per-address results with the link to copy, the pending list with revoke, and the
- * public acceptance page (lookup, accept, sign-in; refused and signed-in states).
+ * public acceptance page (lookup, accept, sign-in; refused and signed-in states). NP-110: signing in remounts the
+ * page, so going in after sign-up must not depend on the page's own state.
  */
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
@@ -64,7 +71,13 @@ const PENDING = [
   },
 ];
 
-async function renderWith(element: ReactElement, path = '/') {
+async function renderWith(
+  element: ReactElement,
+  path = '/',
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  }),
+) {
   const runtime = new I18nRuntime({
     defaultLocale: 'en-US',
     locales: ['en-US', 'zh-CN'],
@@ -74,11 +87,7 @@ async function renderWith(element: ReactElement, path = '/') {
   await runtime.init('en-US');
   render(
     <I18nProvider runtime={runtime}>
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
+      <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path='/' element={<div>Home</div>} />
@@ -276,6 +285,106 @@ describe('the invitation page', () => {
         json: { token: 'tok', name: 'New Person', password: 'long-enough-1' },
       }),
     );
+  });
+
+  const usedLink = () =>
+    new ApiClientError('used', {
+      status: 409,
+      code: 'INVITATION_ACCEPTED',
+      method: 'POST',
+      url: '/api/np/public/invitations/lookup',
+    });
+  const newcomer = { user: { name: 'New Person', email: 'new@example.com' } };
+
+  async function submitForm(): Promise<void> {
+    await renderWith(<InvitePage />, '/invite/tok');
+    fireEvent.change(await screen.findByLabelText('Name'), {
+      target: { value: 'New Person' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'long-enough-1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }));
+    await vi.waitFor(() => expect(auth.login).toHaveBeenCalled());
+  }
+
+  it('goes in after sign-up although signing in remounts the page', async () => {
+    api.request.mockImplementation((options: { path: string }) =>
+      Promise.resolve(
+        options.path === 'np/public/invitations/lookup'
+          ? { data: lookup }
+          : { data: { email: 'new@example.com', existingAccount: false } },
+      ),
+    );
+    await submitForm();
+
+    // What the authorization provider does once the session arrives: a fresh page tree and query cache, and the
+    // token is looked up again — the server now reports it as used.
+    auth.session = newcomer;
+    api.request.mockRejectedValue(usedLink());
+    cleanup();
+    await renderWith(<InvitePage />, '/invite/tok');
+    expect(await screen.findByText('Home')).toBeVisible();
+    expect(
+      screen.queryByText(
+        'This invitation has already been used. Sign in instead.',
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it('goes in after sign-up when the page stays mounted', async () => {
+    api.request.mockImplementation((options: { path: string }) =>
+      Promise.resolve(
+        options.path === 'np/public/invitations/lookup'
+          ? { data: lookup }
+          : { data: { email: 'new@example.com', existingAccount: false } },
+      ),
+    );
+    auth.login.mockImplementation(() => {
+      auth.session = newcomer;
+      return Promise.resolve();
+    });
+    await submitForm();
+    expect(await screen.findByText('Home')).toBeVisible();
+  });
+
+  it('waits for a fresh lookup when signed in instead of asking to sign out', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(['np', 'public-invitation', 'tok'], lookup);
+    let answer: (error: unknown) => void = () => {};
+    api.request.mockReturnValue(
+      new Promise((_, reject) => {
+        answer = reject;
+      }),
+    );
+    auth.session = newcomer;
+    await renderWith(<InvitePage />, '/invite/tok', queryClient);
+    expect(await screen.findByText('Opening the invitation…')).toBeVisible();
+    expect(
+      screen.queryByText(/Sign out to accept this invitation/u),
+    ).not.toBeInTheDocument();
+    answer(usedLink());
+    expect(await screen.findByText('Home')).toBeVisible();
+  });
+
+  it('sends a signed-in visitor with a used link straight in', async () => {
+    auth.session = { user: { name: 'Someone', email: 's@example.com' } };
+    api.request.mockRejectedValue(usedLink());
+    await renderWith(<InvitePage />, '/invite/tok');
+    expect(await screen.findByText('Home')).toBeVisible();
+  });
+
+  it('still explains a used link to a visitor who is not signed in', async () => {
+    api.request.mockRejectedValue(usedLink());
+    await renderWith(<InvitePage />, '/invite/tok');
+    expect(
+      await screen.findByText(
+        'This invitation has already been used. Sign in instead.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Go to sign in' })).toBeVisible();
   });
 
   it('explains an expired invitation', async () => {

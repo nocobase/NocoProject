@@ -7,10 +7,9 @@ import {
   type FormEvent,
   type ReactElement,
   type ReactNode,
-  useEffect,
   useState,
 } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useParams } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,10 +51,15 @@ function LoginLink(): ReactElement {
  * the visitor into which projects, takes a name and a password, creates the account through the public acceptance
  * endpoint and then signs in with the authentication plugin's password action. A visitor who is already signed in
  * is asked to sign out first, so an invitation is never accepted into the wrong session.
+ *
+ * Signing in remounts the whole page: the authorization provider renders nothing while the session refreshes and
+ * keys its children by session (NP-110). So going in after sign-up cannot rest on this page's state; it rests on
+ * what survives the remount — a session and an invitation the server reports as accepted.
  */
 export default function InvitePage(): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
+  const { session } = useAuthentication();
   const { token = '' } = useParams();
   const invitation = useQuery({
     queryKey: ['np', 'public-invitation', token],
@@ -63,8 +67,17 @@ export default function InvitePage(): ReactElement {
     retry: false,
   });
 
+  if (
+    session &&
+    invitation.isError &&
+    !invitation.isFetching &&
+    errorKey(invitation.error) === 'accepted'
+  )
+    return <Navigate replace to='/' />;
+
   let body: ReactNode;
-  if (invitation.isPending) {
+  // Signed in, a cached answer may predate the sign-in; wait for the fresh one rather than flash "sign out first".
+  if (invitation.isPending || (session && invitation.isFetching)) {
     body = (
       <p className='text-sm text-muted-foreground'>{t('np.invite.loading')}</p>
     );
@@ -111,7 +124,6 @@ function AcceptForm({
 }): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
-  const navigate = useNavigate();
   const { session, client, refresh } = useAuthentication();
   const login = usePasswordLogin();
   const [name, setName] = useState('');
@@ -134,10 +146,8 @@ function AcceptForm({
     await refresh();
   }
 
-  // Once the new account's session arrives, go in.
-  useEffect(() => {
-    if (done === 'signedUp' && session) void navigate('/', { replace: true });
-  }, [done, session, navigate]);
+  // The session usually arrives through a remount (see InvitePage); this covers a shell that keeps the page mounted.
+  if (done === 'signedUp' && session) return <Navigate replace to='/' />;
 
   if (session && done === null) {
     return (
