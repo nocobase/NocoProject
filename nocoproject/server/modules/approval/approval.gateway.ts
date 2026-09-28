@@ -3,7 +3,8 @@
  * `DbApprovalGateway`: today's implementation of `shared/approval.ts`, backed by the `approvalRequests` table. The
  * rules are in the interface file; this implementation adds the activities (`approval_requested`, `approval_self`,
  * `approval_no_approver`, `approval_approved`, `approval_rejected`) and the `approval.requested` /
- * `approval.decided` domain events the notification module turns into decision cards and `approval_decided` notices.
+ * `approval.decided` domain events the notification module turns into decision cards and `approval_decided` notices;
+ * Phase 2 adds `approval_stale` / `approval.stale` for an approval whose entry conditions no longer hold.
  *
  * Replace this module wholesale when the official capability ships; nothing outside `approval/` imports it except
  * the wiring in `services.ts`.
@@ -160,6 +161,69 @@ async function gate(
   return { kind: 'pending', requestId: request.id, request };
 }
 
+/**
+ * Phase 2: the approved transition no longer meets its entry conditions (a checklist, a merged pull request). The
+ * request is cancelled as stale in the same transaction, so the decision commits without moving the issue.
+ */
+async function markStale(
+  deps: DbApprovalGatewayDeps,
+  tx: Tx,
+  request: ApprovalRequest,
+  actor: Actor,
+  failure: { readonly code: string; readonly message: string },
+): Promise<ApprovalRequest> {
+  const timestamp = now();
+  await tx.conn.query
+    .updateTable('approvalRequests')
+    .set({ status: 'cancelled', updatedAt: timestamp })
+    .where('id', '=', request.id)
+    .execute();
+  await deps.activity.record(tx.conn, {
+    issueId: request.issueId,
+    actor,
+    action: 'approval_stale',
+    details: {
+      requestId: request.id,
+      from: request.fromStatus,
+      to: request.toStatus,
+      code: failure.code,
+      message: failure.message,
+    },
+  });
+  const requestedBy: EventActor = {
+    type: request.requestedByType,
+    id: request.requestedById,
+  };
+  tx.emit({
+    type: 'approval.decided',
+    requestId: request.id,
+    issueId: request.issueId,
+    status: 'cancelled',
+    fromStatus: request.fromStatus,
+    toStatus: request.toStatus,
+    requestedBy,
+    actor: eventActor(actor),
+    comment: request.comment,
+  });
+  tx.emit({
+    type: 'approval.stale',
+    requestId: request.id,
+    issueId: request.issueId,
+    fromStatus: request.fromStatus,
+    toStatus: request.toStatus,
+    approverUserIds: request.approverUserIds,
+    requestedBy,
+    code: failure.code,
+    message: failure.message,
+    actor: eventActor(actor),
+  });
+  tx.emit({ type: 'issue.changed', issueId: request.issueId });
+  const [stale] = await mapApprovals(tx.conn, deps.users, [
+    await findRow(tx, request.id),
+  ]);
+  return stale;
+}
+
 async function decide(
   deps: DbApprovalGatewayDeps,
   requestId: string,
@@ -209,8 +273,10 @@ async function decide(
         comment,
       },
     });
-    if (decision === 'approved')
-      await deps.hooks().applyTransition(tx, decided, actor);
+    if (decision === 'approved') {
+      const applied = await deps.hooks().applyTransition(tx, decided, actor);
+      if (!applied.applied) return markStale(deps, tx, decided, actor, applied);
+    }
     tx.emit({
       type: 'approval.decided',
       requestId,

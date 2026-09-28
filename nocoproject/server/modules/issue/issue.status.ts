@@ -6,17 +6,27 @@
  * terminal entry, and the `issue.updated` event. Human and agent writes call the approval gate (`shared/approval.ts`)
  * first; system writes and approved transitions do not. Iteration 4: agent writes also pass the design gate
  * (`process.ts`).
+ *
+ * Phase 2 (NP-77 §2): human and agent writes go through `transitionPipeline` — canTransition → design gate (agents) →
+ * entry conditions (`workflow/stage-guards.ts`) → approval gate — and then `writeStatus`, whose trigger call runs the
+ * stage effects. An approved transition checks the entry conditions again; when they no longer hold it is not applied
+ * and the gateway cancels the request as stale.
  */
 import type { Actor } from '../shared/activity.js';
 import { SYSTEM_ACTOR } from '../shared/activity.js';
 import type { Tx } from '../shared/db.js';
 import { now } from '../shared/db.js';
 import { conflict, forbidden, notFound } from '../shared/errors.js';
+import type { ApprovalApplyResult } from '../shared/approval.js';
 import type {
   ApprovalRequest,
   IssueV4,
   TransitionActor,
 } from '../shared/protocol.js';
+import {
+  assertStageGuards,
+  stageGuardFailure,
+} from '../workflow/stage-guards.js';
 import { ACTIVE_STATUSES } from '../run/run.records.js';
 import { validateStatus } from './issue.fields.js';
 import { emitUpdate } from './issue.events.js';
@@ -67,7 +77,8 @@ export async function writeStatus(
   const after = (await findIssue(tx.conn, before.id)) as IssueV4;
   await deps.triggers().onStatusChanged(tx, { before, after, actor });
   emitUpdate(tx, before, after, actor);
-  return after;
+  // Stage effects may have written the issue again (a preset executor): answer its current revision.
+  return (await findIssue(tx.conn, before.id)) ?? after;
 }
 
 /**
@@ -99,6 +110,34 @@ export async function gateTransition(
   return result.kind === 'pending' ? result.request : null;
 }
 
+/**
+ * The checks before a human or agent status write, in order: the agent transition and design gate (a human's
+ * transition and terminal rule are checked with the other fields, `issue.fields.ts`), the entry conditions, then the
+ * approval gate. Returns the pending request when the transition has to wait, or null when it may be written now.
+ */
+export async function transitionPipeline(
+  deps: IssueDeps,
+  tx: Tx,
+  input: {
+    readonly before: IssueV4;
+    readonly target: string;
+    readonly actor: Actor;
+    readonly view: WorkflowView;
+  },
+): Promise<ApprovalRequest | null> {
+  const { before, target, actor, view } = input;
+  if (actor.type === 'agent') {
+    if (!view.canTransition(before.statusKey, target, 'agent'))
+      throw forbidden(
+        'TRANSITION_NOT_ALLOWED',
+        `Agents may not move an issue from ${before.statusKey} to ${target}.`,
+      );
+    await agentProcessGate(tx.conn, before, target);
+  }
+  await assertStageGuards(tx.conn, view, before, target, actor);
+  return gateTransition(deps, tx, before, target, actor, view);
+}
+
 /** An agent (run token) moving its issue along the workflow's agent transitions. Never enqueues for itself. */
 export async function agentSetStatus(
   deps: IssueDeps,
@@ -113,14 +152,12 @@ export async function agentSetStatus(
     const target = validateStatus(view, statusKey);
     if (before.statusKey === target)
       return { issue: before, pendingApproval: null };
-    if (!view.canTransition(before.statusKey, target, 'agent')) {
-      throw forbidden(
-        'TRANSITION_NOT_ALLOWED',
-        `Agents may not move an issue from ${before.statusKey} to ${target}.`,
-      );
-    }
-    await agentProcessGate(tx.conn, before, target);
-    const pending = await gateTransition(deps, tx, before, target, actor, view);
+    const pending = await transitionPipeline(deps, tx, {
+      before,
+      target,
+      actor,
+      view,
+    });
     if (pending) return { issue: before, pendingApproval: pending };
     return {
       issue: await writeStatus(deps, tx, before, target, actor),
@@ -147,13 +184,16 @@ export async function systemSetStatus(
   return writeStatus(deps, tx, before, target, SYSTEM_ACTOR, details);
 }
 
-/** The transition an approver accepted, applied on their behalf (the status activity names the approver). */
+/**
+ * The transition an approver accepted, applied on their behalf (the status activity names the approver). Not applied
+ * when its entry conditions no longer hold (the gateway then cancels the request as stale).
+ */
 export async function applyApprovedTransition(
   deps: IssueDeps,
   tx: Tx,
   request: ApprovalRequest,
   approver: Actor,
-): Promise<void> {
+): Promise<ApprovalApplyResult> {
   const before = await findIssue(tx.conn, request.issueId);
   if (!before) throw notFound('Issue');
   if (before.statusKey !== request.fromStatus)
@@ -163,6 +203,15 @@ export async function applyApprovedTransition(
     );
   const view = await deps.workflows.forIssue(tx.conn, before);
   validateStatus(view, request.toStatus);
+  const failure = await stageGuardFailure(
+    tx.conn,
+    view,
+    before,
+    request.toStatus,
+    approver,
+  );
+  if (failure)
+    return { applied: false, code: failure.code, message: failure.message };
   const after = await writeStatus(
     deps,
     tx,
@@ -174,6 +223,7 @@ export async function applyApprovedTransition(
     },
   );
   await deps.triggers().onIssueChanged(tx, { before, after, actor: approver });
+  return { applied: true };
 }
 
 /** in_progress → todo when a run failed and nothing else is active on the issue. */

@@ -3,6 +3,10 @@
  * parent's `autoExecuteSubtasks` off) or for another agent outside its delegation list leaves a pending proposal;
  * the parent owner's inbox gets one `proposal_pending` decision card per parent. Accepting sets the executor and runs
  * the assign rule with trigger type `proposalAccepted`; the caller must be allowed to invoke the proposed agent.
+ *
+ * Phase 2 (NP-77 §3): a `suggestExecutor` stage action leaves a proposal with `source = workflow`, no proposing agent
+ * and `stageStatusKey`; its card sits on its own issue (not the parent's), and leaving that status supersedes it
+ * (`status = superseded`, `workflow/stage-actions.ts`).
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import {
@@ -19,11 +23,12 @@ import { conflict, notFound } from '../shared/errors.js';
 import { NpError } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
-  AcceptAllProposalsResponse,
+  AcceptAllProposalsResponseV5 as AcceptAllProposalsResponse,
   DecideProposalRequest,
-  ExecutorProposal,
+  ExecutorProposalV5 as ExecutorProposal,
   IssueV1,
-  ProposalStatus,
+  ProposalSource,
+  ProposalStatusV5,
 } from '../shared/protocol.js';
 import { findIssue, issuesByIds } from '../issue/issue.records.js';
 import type { IssueService } from '../issue/issue.service.js';
@@ -56,12 +61,13 @@ export interface ProposalDeps {
   readonly issues: () => IssueService;
 }
 
-function isProposalStatus(value: unknown): value is ProposalStatus {
+function isProposalStatus(value: unknown): value is ProposalStatusV5 {
   return (
     value === 'pending' ||
     value === 'accepted' ||
     value === 'rejected' ||
-    value === 'autoAccepted'
+    value === 'autoAccepted' ||
+    value === 'superseded'
   );
 }
 
@@ -80,7 +86,7 @@ async function mapProposals(
   return rows.map((row) => {
     const issue = issues.get(str(row.issueId) ?? '');
     const proposedAgentId = str(row.proposedAgentId) ?? '';
-    const proposedByAgentId = str(row.proposedByAgentId) ?? '';
+    const proposedByAgentId = str(row.proposedByAgentId);
     return {
       id: str(row.id) ?? '',
       issueId: str(row.issueId) ?? '',
@@ -89,8 +95,12 @@ async function mapProposals(
       proposedAgentId,
       proposedAgentName: names.get(proposedAgentId) ?? proposedAgentId,
       proposedByAgentId,
-      proposedByAgentName: names.get(proposedByAgentId) ?? proposedByAgentId,
+      proposedByAgentName: proposedByAgentId
+        ? (names.get(proposedByAgentId) ?? proposedByAgentId)
+        : null,
       sourceRunId: str(row.sourceRunId),
+      source: row.source === 'workflow' ? 'workflow' : 'agent',
+      stageStatusKey: str(row.stageStatusKey),
       status: isProposalStatus(row.status) ? row.status : 'pending',
       decidedById: str(row.decidedById),
       decidedAt: isoOrNull(row.decidedAt),
@@ -127,12 +137,16 @@ export async function insertProposal(
   input: {
     issue: IssueV1;
     proposedAgentId: string;
-    proposedByAgentId: string;
+    /** Null for a workflow suggestion (Phase 2). */
+    proposedByAgentId: string | null;
     sourceRunId: string | null;
     status: 'pending' | 'autoAccepted';
     actor: Actor;
+    source?: ProposalSource;
+    stageStatusKey?: string | null;
   },
 ): Promise<ExecutorProposal> {
+  const source = input.source ?? 'agent';
   const id = deps.ids.next();
   const timestamp = now();
   const row = {
@@ -145,6 +159,8 @@ export async function insertProposal(
     decidedById: null,
     decidedAt: input.status === 'autoAccepted' ? timestamp : null,
     reason: null,
+    source,
+    stageStatusKey: input.stageStatusKey ?? null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -156,16 +172,24 @@ export async function insertProposal(
       input.status === 'pending'
         ? 'proposal_created'
         : 'proposal_auto_accepted',
-    details: { proposalId: id, proposedAgentId: input.proposedAgentId },
+    details: {
+      proposalId: id,
+      proposedAgentId: input.proposedAgentId,
+      ...(source === 'workflow'
+        ? { source, stageStatusKey: input.stageStatusKey ?? null }
+        : {}),
+    },
   });
   if (input.status === 'pending')
     tx.emit({
       type: 'proposal.created',
       proposalId: id,
       issueId: input.issue.id,
-      parentIssueId: input.issue.parentIssueId,
+      // A workflow suggestion is decided on its own issue, not on the parent's card.
+      parentIssueId: source === 'workflow' ? null : input.issue.parentIssueId,
       proposedByAgentId: input.proposedByAgentId,
       proposedAgentId: input.proposedAgentId,
+      source,
     });
   const [mapped] = await mapProposals(tx.conn, [row]);
   return mapped;
@@ -260,7 +284,7 @@ async function decide(
     type: 'proposal.decided',
     proposalId,
     issueId: issue.id,
-    parentIssueId: issue.parentIssueId,
+    parentIssueId: row.source === 'workflow' ? null : issue.parentIssueId,
     actor: { type: actor.type, id: actor.id },
   });
   const updated = await tx.conn.query

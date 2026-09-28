@@ -17,9 +17,9 @@ import { forbidden, invalid, notFound } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import type {
   AgentCreateIssueRequest,
-  AgentCreateIssueResponse,
+  AgentCreateIssueResponseV5 as AgentCreateIssueResponse,
   AgentDependencyRequest,
-  ExecutorProposal,
+  ExecutorProposalV5 as ExecutorProposal,
   IssueDependency,
   IssueV1,
   SubtaskSummary,
