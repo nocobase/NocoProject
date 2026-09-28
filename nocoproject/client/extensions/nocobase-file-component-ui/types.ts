@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import type {
   ClientFileRepository,
   FileRecord,
@@ -16,7 +16,16 @@ export interface FileUiLabels {
   readonly retry?: string;
 }
 
+/**
+ * NocoProject addition (NP-78): lets the application feed files the field did not pick itself — pasted into or
+ * dropped onto another element — through the same checks and upload queue. Reconcile on a Registry upgrade.
+ */
+export interface FileUploadFieldHandle {
+  addFiles(files: readonly File[]): void;
+}
+
 export interface FileUploadFieldProps {
+  readonly ref?: Ref<FileUploadFieldHandle>;
   readonly repository: ClientFileRepository;
   readonly value: readonly FileRecord[];
   readonly onChange: (value: readonly FileRecord[]) => void;

@@ -225,7 +225,13 @@ function mountIteration2(
   );
   router.route(
     '/np/intake',
-    guarded(guard, createIntakeRoutes(container.resolve(npIntakeServiceToken))),
+    guarded(
+      guard,
+      createIntakeRoutes(
+        container.resolve(npIntakeServiceToken),
+        app.publicBasePath,
+      ),
+    ),
   );
   router.route(
     '/np/comments',

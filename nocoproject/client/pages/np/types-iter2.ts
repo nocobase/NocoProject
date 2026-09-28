@@ -204,6 +204,8 @@ export interface IntakeDraftFields {
   readonly ownerUserId?: string | null;
   /** Iteration 4 §D: the draft's process; missing or `auto` lets the server decide. */
   readonly process?: ProcessChoice | null;
+  /** NP-78: batch files attached to the issue created from this draft. */
+  readonly attachmentIds?: readonly string[];
 }
 
 export interface IntakeDraftInput {
@@ -236,10 +238,22 @@ export interface IntakeBatch {
   readonly createdAt: string;
 }
 
+/** NP-78: a file travelling with a batch (`IntakeBatchAttachment` in the protocol). */
+export interface IntakeBatchAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly ext: string;
+  readonly mimeType: string;
+  readonly size: number;
+  readonly contentUrl: string;
+  readonly issueId: string | null;
+}
+
 export interface IntakeBatchDetail {
   readonly batch: IntakeBatch;
   readonly drafts: readonly IntakeDraft[];
   readonly parser?: IntakeParserKind;
+  readonly attachments?: readonly IntakeBatchAttachment[];
 }
 
 export interface IntakeConfirmInput {

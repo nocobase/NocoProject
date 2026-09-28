@@ -2,13 +2,14 @@ import { ApiClientError, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircleIcon } from 'lucide-react';
-import { type FormEvent, type ReactElement, useState } from 'react';
+import { type FormEvent, type ReactElement, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
 import type { FileRecord } from '@nocobase/app-plugin-file/client';
 
 import {
   FileUploadField,
+  type FileUploadFieldHandle,
   type FileUploadStatus,
 } from '@/extensions/nocobase-file-component-ui';
 import { NpExecutorSelect } from '@/components/np-executor-select';
@@ -52,6 +53,7 @@ import { ISSUE_PRIORITIES, npKeys } from '../constants.js';
 import type { ExecutorRef, IssuePriority, StartDecision } from '../types.js';
 import type { ProcessChoice } from '../types-iter4.js';
 import {
+  usePasteDrop,
   uploadErrorTitle,
   useAttachmentRepository,
   useFileLabels,
@@ -65,7 +67,8 @@ const FORM_ID = 'np-issue-new-form';
  * The 手动 tab of "新建任务" (iteration 4 §D; the iteration 1–3 form): title, description, priority, project (`?project=`
  * preselects it), owner (the signed-in user by default), executor (an agent asks "start now?" before creating),
  * process (iteration 4 §B, starting at the workspace default) and session mode (iteration 2 §J). NP-78: attachments
- * upload as they are chosen and are attached by `attachmentIds` when the issue is created; submitting waits for them.
+ * upload as they are chosen, dropped or pasted into the description, and are attached by `attachmentIds` when the
+ * issue is created; submitting waits for them.
  */
 export function ManualIssueForm({
   onSubmittingChange,
@@ -101,6 +104,8 @@ export function ManualIssueForm({
   const [description, setDescription] = useState('');
   const repository = useAttachmentRepository();
   const fileLabels = useFileLabels();
+  const uploadRef = useRef<FileUploadFieldHandle>(null);
+  const pasteDrop = usePasteDrop(uploadRef);
   const [files, setFiles] = useState<readonly FileRecord[]>([]);
   const [uploadStatus, setUploadStatus] = useState<FileUploadStatus>('idle');
   const [priority, setPriority] = useState<IssuePriority>('none');
@@ -240,11 +245,13 @@ export function ManualIssueForm({
             value={description}
             placeholder={t('np.issueForm.descriptionPlaceholder')}
             onChange={(event) => setDescription(event.target.value)}
+            {...pasteDrop}
           />
         </Field>
         <Field>
           <FieldLabel>{t('np.attachments.title')}</FieldLabel>
           <FileUploadField
+            ref={uploadRef}
             repository={repository}
             value={files}
             onChange={setFiles}

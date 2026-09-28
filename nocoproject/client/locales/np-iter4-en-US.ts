@@ -93,11 +93,12 @@ const npIter4EnUS = {
   attachments: {
     title: 'Attachments',
     upload: 'Upload',
-    choose: 'Choose files',
+    choose: 'Choose, drop or paste files',
     preview: 'Preview',
     download: 'Download',
     remove: 'Remove',
     retry: 'Retry',
+    attachTo: 'Attach to',
     added: 'Attachments added',
     removed: 'Attachment removed',
     removeTitle: 'Remove {{filename}}?',

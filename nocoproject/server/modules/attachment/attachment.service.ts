@@ -21,7 +21,7 @@ import {
   type Viewer,
 } from '../shared/authz.js';
 import type { Conn, Tx, TxRunner } from '../shared/db.js';
-import { now, toDate } from '../shared/db.js';
+import { now, toDate, unique } from '../shared/db.js';
 import { forbidden, invalid, notFound } from '../shared/errors.js';
 import type { IssueAttachment } from '../shared/protocol.js';
 import {
@@ -40,6 +40,7 @@ import {
   toFileRow,
   type FileRow,
 } from './attachment.records.js';
+import { openBatchIds } from './attachment.intake.js';
 
 /** Deletes stored objects; the provider backs it with the Drive manager. */
 export interface FileObjectStore {
@@ -111,7 +112,12 @@ export async function attachFiles(
   const files = rows.map(toFileRow);
   for (const id of fileIds) {
     const file = files.find((candidate) => candidate.id === id);
-    if (!file || file.uploadedById !== actor.id || file.issueId !== null)
+    if (
+      !file ||
+      file.uploadedById !== actor.id ||
+      file.issueId !== null ||
+      file.intakeBatchId !== null
+    )
       throw invalid(
         ERROR_INVALID_ATTACHMENT,
         `File ${id} is not an unattached upload of yours.`,
@@ -250,26 +256,35 @@ export function createAttachmentService(
     async purgeOrphans(at) {
       const conn = deps.tx.read();
       // Oldest unattached uploads first; the age is compared here rather than in SQL because SQLite stores the
-      // timestamp as text and would compare it with a numeric parameter.
+      // timestamp as text and would compare it with a numeric parameter. Files of an intake batch that is still a
+      // draft are not orphans.
       const rows = await conn.query
         .selectFrom(FILE_COLLECTION)
         .selectAll()
         .where('issueId', 'is', null)
         .orderBy('createdAt', 'asc')
-        .limit(200)
+        .limit(500)
         .execute();
       const cutoff = at.getTime() - ORPHAN_TTL_MS;
-      const expired = rows
+      const candidates = rows
         .map(toFileRow)
         .filter((file) => (toDate(file.createdAt)?.getTime() ?? 0) < cutoff);
+      const open = await openBatchIds(
+        conn,
+        unique(candidates.map((file) => file.intakeBatchId)),
+      );
       let purged = 0;
-      for (const file of expired) {
-        await conn.query
+      for (const file of candidates) {
+        if (file.intakeBatchId && open.has(file.intakeBatchId)) continue;
+        let remove = conn.query
           .deleteFrom(FILE_COLLECTION)
           .where('id', '=', file.id)
-          .where('issueId', 'is', null)
-          .execute();
-        // Attached in the meantime: the row survived, so the object stays.
+          .where('issueId', 'is', null);
+        remove = file.intakeBatchId
+          ? remove.where('intakeBatchId', '=', file.intakeBatchId)
+          : remove.where('intakeBatchId', 'is', null);
+        await remove.execute();
+        // Attached or claimed by a batch in the meantime: the row survived, so the object stays.
         if (await findFile(conn, file.id)) continue;
         await removeObject(file);
         purged += 1;

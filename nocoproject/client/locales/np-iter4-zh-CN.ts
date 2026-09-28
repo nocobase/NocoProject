@@ -83,11 +83,12 @@ const npIter4ZhCN: NpIter4Resource = {
   attachments: {
     title: '附件',
     upload: '上传',
-    choose: '选择文件',
+    choose: '选择、拖入或粘贴文件',
     preview: '预览',
     download: '下载',
     remove: '移除',
     retry: '重试',
+    attachTo: '挂到',
     added: '已添加附件',
     removed: '已移除附件',
     removeTitle: '移除 {{filename}}？',

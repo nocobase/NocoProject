@@ -338,4 +338,123 @@ describe('NocoProject issue attachments through the application', () => {
     expect((await member.content(orphan.contentUrl)).status).toBe(404);
     expect((await member.content(mine.contentUrl)).status).toBe(200);
   });
+
+  it('carries AI 整理 uploads with the batch and attaches them to the issues it creates', async () => {
+    const storage = mkdtempSync(path.join(tmpdir(), 'np-attachments-store-'));
+    cleanups.push(() => rmSync(storage, { recursive: true, force: true }));
+    const app = await startNpApp(cleanups, 'nocoproject-attachments-intake-', {
+      storageDir: storage,
+    });
+    const admin = await session(
+      app,
+      await post(app, '/auth/sign-in/username', {
+        username: 'nocobase',
+        password: 'admin123',
+      }),
+    );
+    const member = await signUp(app, 'member1@example.com', 'Member One');
+    const shot = await uploaded(admin, 'shot.txt', 'screenshot');
+    const spec = await uploaded(admin, 'spec.txt', 'spec');
+    const theirs = await uploaded(member, 'theirs.txt', 'not yours');
+
+    // Someone else's upload cannot ride along; nothing is created.
+    const refused = await admin.send('POST', '/np/intake/batches', {
+      source: 'paste',
+      rawContent: '- Fix the login page\n- Update the docs',
+      attachmentIds: [theirs.id],
+    });
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { code: string }).code).toBe(
+      'INVALID_ATTACHMENT',
+    );
+
+    interface Detail {
+      batch: { id: string };
+      drafts: {
+        position: number;
+        parentPosition: number | null;
+        fields: { title: string; attachmentIds?: string[] };
+      }[];
+      attachments: { id: string; contentUrl: string; issueId: string | null }[];
+    }
+    const created = await json<Detail>(
+      await admin.send('POST', '/np/intake/batches', {
+        source: 'paste',
+        rawContent: '- Fix the login page\n- Update the docs',
+        attachmentIds: [shot.id, spec.id],
+      }),
+      201,
+    );
+    expect(created.drafts.length).toBeGreaterThanOrEqual(2);
+    // Every file starts on the first draft; the batch lists them with content URLs.
+    expect(created.drafts[0].fields.attachmentIds).toEqual([shot.id, spec.id]);
+    expect(created.attachments.map((file) => file.contentUrl)).toEqual([
+      shot.contentUrl,
+      spec.contentUrl,
+    ]);
+    // A file in a batch cannot be attached elsewhere, and is not an orphan while the batch is open.
+    const other = await json<{ id: string }>(
+      await admin.send('POST', '/np/issues', { title: 'Elsewhere' }),
+      201,
+    );
+    expect(
+      (
+        await admin.send('POST', `/np/issues/${other.id}/attachments`, {
+          fileIds: [shot.id],
+        })
+      ).status,
+    ).toBe(400);
+    const attachments = app.application.container.resolve(
+      npAttachmentServiceToken,
+    );
+    expect(
+      await attachments.purgeOrphans(new Date(Date.now() + 25 * 3600_000)),
+    ).toBe(1); // only `theirs`
+    expect((await admin.content(shot.contentUrl)).status).toBe(200);
+
+    // Move the spec to the second draft, then confirm.
+    const drafts = created.drafts.map((draft, index) => ({
+      position: draft.position,
+      parentPosition: draft.parentPosition,
+      fields: {
+        ...draft.fields,
+        attachmentIds:
+          index === 0 ? [shot.id] : index === 1 ? [spec.id] : undefined,
+      },
+    }));
+    expect(
+      (
+        await admin.send(
+          'PUT',
+          `/np/intake/batches/${created.batch.id}/drafts`,
+          { drafts },
+        )
+      ).status,
+    ).toBe(200);
+    const confirmed = await json<{ issues: { id: string }[] }>(
+      await admin.send(
+        'POST',
+        `/np/intake/batches/${created.batch.id}/confirm`,
+        {},
+      ),
+    );
+    const [firstIssue, secondIssue] = confirmed.issues;
+    const firstFiles = await json<{ id: string }[]>(
+      await admin.get(`/np/issues/${firstIssue.id}/attachments`),
+    );
+    const secondFiles = await json<{ id: string }[]>(
+      await admin.get(`/np/issues/${secondIssue.id}/attachments`),
+    );
+    expect(firstFiles.map((file) => file.id)).toEqual([shot.id]);
+    expect(secondFiles.map((file) => file.id)).toEqual([spec.id]);
+    // Attached now: visible to members who can see the issue, and listed with its issue in the batch.
+    expect((await member.content(spec.contentUrl)).status).toBe(200);
+    const after = await json<Detail>(
+      await admin.get(`/np/intake/batches/${created.batch.id}`),
+    );
+    expect(after.attachments.map((file) => file.issueId)).toEqual([
+      firstIssue.id,
+      secondIssue.id,
+    ]);
+  });
 });

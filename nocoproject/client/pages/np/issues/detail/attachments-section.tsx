@@ -2,9 +2,17 @@ import { useApiClient } from '@nocobase/app-client';
 import type { FileRecord } from '@nocobase/app-plugin-file/client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { DownloadIcon, Trash2Icon, UploadIcon } from 'lucide-react';
-import { type ReactElement, useMemo, useState } from 'react';
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  type ReactElement,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import {
+  type FileUploadFieldHandle,
   FilePreviewDialog,
   FileThumbnail,
   FileUploadField,
@@ -34,6 +42,7 @@ import {
 } from '../../api-attachments.js';
 import { useNpFormatters } from '../../format.js';
 import {
+  usePasteDrop,
   uploadErrorTitle,
   useAttachmentRepository,
   useFileLabels,
@@ -42,8 +51,8 @@ import { useDetailMutation } from './use-detail-mutation.js';
 
 /**
  * Issue attachments (NP-78): a card listing each file (thumbnail, name opening the preview, size, uploader, time),
- * download, and removal for those allowed (confirmed). "上传" opens the upload field; every finished upload is
- * attached right away. Rendered by the main column only when the issue has attachments or the "添加 → 附件" chip
+ * download, and removal for those allowed (confirmed). "上传" opens the upload field, and so do files dropped or pasted
+ * onto the card; every finished upload is attached right away. Rendered by the main column only when the issue has attachments or the "添加 → 附件" chip
  * revealed it (empty sections take no room).
  */
 export function AttachmentsSection({
@@ -65,6 +74,20 @@ export function AttachmentsSection({
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [confirm, setConfirm] = useState<IssueAttachment | null>(null);
   const records = useMemo(() => attachments.map(toFileRecord), [attachments]);
+  const uploadRef = useRef<FileUploadFieldHandle>(null);
+  // Files dropped or pasted anywhere on the card open the upload field and start uploading.
+  const handlers = usePasteDrop(uploadRef);
+  const cardDrop = {
+    onDragOver: handlers.onDragOver,
+    onDrop: (event: DragEvent) => {
+      setUploading(true);
+      handlers.onDrop(event);
+    },
+    onPaste: (event: ClipboardEvent) => {
+      if (event.clipboardData.files.length > 0) setUploading(true);
+      handlers.onPaste(event);
+    },
+  };
 
   const attach = useDetailMutation(
     issueId,
@@ -97,6 +120,7 @@ export function AttachmentsSection({
     <section
       className='space-y-3 rounded-lg border bg-card p-4 text-card-foreground'
       aria-labelledby='np-attachments-heading'
+      {...cardDrop}
     >
       <NpSectionHeading
         id='np-attachments-heading'
@@ -173,8 +197,10 @@ export function AttachmentsSection({
           ))}
         </ul>
       ) : null}
-      {uploading ? (
+      {/* Always mounted, so files dropped or pasted onto the closed card reach it. */}
+      <div hidden={!uploading}>
         <FileUploadField
+          ref={uploadRef}
           repository={repository}
           value={pending}
           onChange={onUploaded}
@@ -190,7 +216,7 @@ export function AttachmentsSection({
             })
           }
         />
-      ) : null}
+      </div>
       <FilePreviewDialog
         files={records}
         initialIndex={previewIndex ?? 0}

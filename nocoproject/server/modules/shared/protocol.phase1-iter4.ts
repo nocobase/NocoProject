@@ -239,11 +239,15 @@ export type UpdateWorkspaceSettingsRequestV4 =
 /** 草稿字段追加 `process`（缺省 = settings.defaultProcess；auto 在确认时用启发式分类） */
 export type IntakeDraftFieldsV4 = IntakeDraftFields & {
   readonly process?: DefaultProcess;
+  /** NP-78：确认时挂到这条草稿建出的任务的批次附件 */
+  readonly attachmentIds?: readonly string[];
 };
 
 /** `POST /np/intake/batches` 追加 `process`：写进每条没有 `process` 的草稿 */
 export type CreateIntakeBatchRequestV4 = CreateIntakeBatchRequest & {
   readonly process?: DefaultProcess;
+  /** NP-78：见 `IntakeBatchAttachment` */
+  readonly attachmentIds?: readonly string[];
 };
 
 // ---------- 任务附件（NP-78） ----------
@@ -285,6 +289,27 @@ export interface AgentAttachmentInfo {
 }
 export interface IssueForAgentAttachmentFields {
   readonly attachments: readonly AgentAttachmentInfo[];
+}
+
+/**
+ * AI 整理（批量录入）带附件：`POST /np/intake/batches` 追加 `attachmentIds`（调用者自己上传、未挂任务、未进其它批次），
+ * 文件跟着批次走；解析出的第一条顶层草稿的 `fields.attachmentIds` 先拿到全部文件，可以在草稿之间移动。确认时每个文件挂到
+ * 它所在草稿建出的任务；不在任何草稿里的文件挂到第一个建出的任务。
+ *
+ * 批次详情（`GET /np/intake/batches/:id`、创建的响应）追加 `attachments`，每项如下。
+ */
+export interface IntakeBatchAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly ext: string;
+  readonly mimeType: string;
+  readonly size: number;
+  readonly contentUrl: string;
+  /** 已挂到的任务（批次确认后） */
+  readonly issueId: string | null;
+}
+export interface IntakeBatchAttachmentsField {
+  readonly attachments: readonly IntakeBatchAttachment[];
 }
 
 /** 单次最多挂的文件数 */

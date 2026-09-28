@@ -172,9 +172,11 @@ PM 在运行里用普通 Agent 接口写 `/note` 评论（Agent 的 `/note` 不�
 | `DELETE /np/issues/:id/attachments/:fileId`     | 204。上传者、任务负责人、项目负责人、owner/admin；其他人 403，不在该任务上 404。删行后按行的 disk/key 尽力删对象（失败只记日志），记 `attachment_removed`（`details.filename`）。                                                                                                                                                                           |
 | `POST /np/issues` `attachmentIds?`              | 同上规则，在建任务的事务里挂上；不合法则整个创建 400。                                                                                                                                                                                                                                                                                                      |
 
+- **AI 整理带附件**（迁移 `2026100300001_np_file_intake_batch`：`npFiles.intakeBatchId`）：`POST /np/intake/batches` 追加 `attachmentIds?`（调用者自己上传、未挂任务、未进其它批次，1–10 个；否则 400 `INVALID_ATTACHMENT`，批次不创建）。文件跟着批次走，全部先放进第一条顶层草稿的 `fields.attachmentIds`；草稿的 `fields.attachmentIds` 可随 `PUT …/drafts` 在草稿之间移动（格式不对进 `validation.errors`）。批次详情与创建响应追加 `attachments: IntakeBatchAttachment[]`（`contentUrl` 带应用前缀，确认后带 `issueId`）。确认时（在触发运行之前）每个文件挂到它所在草稿建出的任务，不在任何草稿里的挂到第一个建出的任务，记 `attachment_added`。批次还是草稿时文件不算孤儿；批次取消 / 已确认后仍未挂的，照常 24 小时后清理。批次里的文件不能再用 `POST /np/issues/:id/attachments` 挂到别处。
+- 前端：三处上传（AI 整理、手动新建、任务详情附件卡）都支持选择、拖入、粘贴；AI 整理和手动新建把文件粘贴或拖进描述框即上传，详情页拖到或粘贴到附件卡上即上传。`FileUploadField`（应用自有的 Registry 副本）为此加了 `ref` 句柄 `addFiles(files)`，升级 Registry 时要保留。
 - Agent 读任务（`IssueForAgentV4`，claim 载荷与 `GET /np/agent/issues/:id`）多 `attachments: { filename, mimeType, size }[]`，本期不提供内容下载。
 - sweeper 每轮清理创建超过 24 小时仍未挂任务的上传（行 + 对象，每轮最多 200 个）。
 - 写操作发 `issue.changed`（详情页实时刷新），不产生收件箱项。
-- 类型：`IssueAttachment`、`AttachFilesRequest`、`CreateIssueAttachmentFields`、`AgentAttachmentInfo`、`IssueForAgentAttachmentFields`、`MAX_ATTACHMENTS_PER_REQUEST`、`ERROR_INVALID_ATTACHMENT`；`ActivityActionPhase1Iter4` 追加 `'attachment_added' | 'attachment_removed'`。
+- 类型：`IssueAttachment`、`AttachFilesRequest`、`IntakeBatchAttachment`、`IntakeBatchAttachmentsField`、`CreateIssueAttachmentFields`、`AgentAttachmentInfo`、`IssueForAgentAttachmentFields`、`MAX_ATTACHMENTS_PER_REQUEST`、`ERROR_INVALID_ATTACHMENT`；`ActivityActionPhase1Iter4` 追加 `'attachment_added' | 'attachment_removed'`。
 - 配置：`NOCOPROJECT_ATTACHMENT_DISK`、`NOCOPROJECT_ATTACHMENT_MAX_FILE_SIZE`（字节）。单次挂载上限是常量 10（`MAX_ATTACHMENTS_PER_REQUEST`）。前端的单文件大小检查按默认 20 MiB，改了服务端上限时服务端仍以 413 为准。
 - 未实现：评论附件、富文本内嵌图片、Agent 下载内容、Range/206、内容嗅探与病毒扫描。

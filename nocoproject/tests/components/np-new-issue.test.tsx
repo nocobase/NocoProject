@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -232,9 +232,33 @@ describe('new issue dialog: manual tab (iteration 4 §B, §D)', () => {
     expect(input).not.toBeNull();
     await user.upload(input!, new File(['hello'], 'notes.txt'));
     expect(await screen.findByText('notes.txt')).toBeVisible();
+    // Pasting a file into the description uploads it as well.
+    const pasted = new File(['png'], 'shot.png', { type: 'image/png' });
+    fileRepository.uploadOne.mockResolvedValueOnce({
+      record: {
+        id: 'f2',
+        disk: 'local',
+        key: 'objects/f2.png',
+        filename: 'shot.png',
+        ext: 'png',
+        mimeType: 'image/png',
+        size: 3,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        contentUrl: '/uploads/np/f2.png',
+      },
+      createdTargets: [],
+    });
+    fireEvent.paste(screen.getByRole('textbox', { name: 'Description' }), {
+      clipboardData: { files: [pasted], types: ['Files'] },
+    });
+    await waitFor(() =>
+      expect(fileRepository.uploadOne).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(screen.getAllByText('Done')).toHaveLength(2));
     await user.click(screen.getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(posted).toHaveLength(1));
-    expect(posted[0].attachmentIds).toEqual(['f1']);
+    expect(posted[0].attachmentIds).toEqual(['f1', 'f2']);
   });
 
   it('does not offer a project manager as executor', async () => {

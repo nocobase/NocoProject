@@ -4,7 +4,13 @@ import { ApiClientError } from '@nocobase/app-client';
 import { I18nRuntime } from '@nocobase/i18n';
 import { I18nProvider } from '@nocobase/i18n/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -591,5 +597,43 @@ describe('attachments (NP-78)', () => {
     );
     await waitFor(() => expect(attached).toEqual([{ fileIds: ['f9'] }]));
     expect(fileRepository.uploadOne).toHaveBeenCalledTimes(1);
+  });
+  it('uploads and attaches a file dropped onto the attachments card', async () => {
+    const attached: unknown[] = [];
+    fileRepository.uploadOne.mockResolvedValue({
+      record: {
+        ...ATTACHMENT,
+        id: 'f7',
+        filename: 'drop.png',
+        disk: '',
+        key: '',
+      },
+      createdTargets: [],
+    });
+    api.request.mockImplementation(
+      (options: { path: string; method?: string; json?: unknown }) => {
+        if (options.path === 'np/issues/101/attachments' && !options.method)
+          return Promise.resolve({ data: [ATTACHMENT] });
+        if (
+          options.path === 'np/issues/101/attachments' &&
+          options.method === 'POST'
+        ) {
+          attached.push(options.json);
+          return Promise.resolve({ data: [] });
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+    const section = await screen.findByRole('region', { name: /Attachments/ });
+    const dropped = new File(['png'], 'drop.png', { type: 'image/png' });
+    fireEvent.drop(section, {
+      dataTransfer: { files: [dropped], types: ['Files'] },
+    });
+    await waitFor(() => expect(attached).toEqual([{ fileIds: ['f7'] }]));
+    expect(fileRepository.uploadOne).toHaveBeenCalledWith(
+      { file: dropped },
+      expect.anything(),
+    );
   });
 });

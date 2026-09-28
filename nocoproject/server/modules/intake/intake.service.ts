@@ -5,7 +5,9 @@
  * A batch belongs to the member who entered it; only they (or an owner/admin) may edit, confirm, cancel or revert
  * it. Confirming creates parents before children (`intake.confirm.ts`); reverting soft-deletes the issues it created
  * that never had a run and keeps the others. Iteration 4: `process` on the request is written into every draft that
- * has none; confirming selects each issue's process (heuristic only, `issue/process.ts`).
+ * has none; confirming selects each issue's process (heuristic only, `issue/process.ts`). NP-78: `attachmentIds`
+ * hands the member's own uploads to the batch (`attachment/attachment.intake.ts`); they start on the first top-level
+ * draft (`fields.attachmentIds`) and are attached when the batch is confirmed.
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import {
@@ -25,8 +27,10 @@ import type {
   CreateIntakeBatchRequestV4,
   CreateIntakeBatchResponse,
   IntakeBatch,
+  IntakeBatchAttachmentsField,
   IntakeBatchDetail,
   IntakeDraft,
+  IntakeDraftFieldsV4,
   RevertIntakeResponse,
 } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
@@ -35,6 +39,11 @@ import type { TriggerService } from '../trigger/trigger.service.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 import type { IssueService } from '../issue/issue.service.js';
 import { validateProcess } from '../issue/process.js';
+import {
+  claimFilesForBatch,
+  intakeBatchAttachments,
+} from '../attachment/attachment.intake.js';
+import { validateFileIds } from '../attachment/attachment.service.js';
 import type { AiIntakeParser } from './ai-parser.js';
 import type { ProcessClassifier } from './process-classifier.js';
 import { confirmBatch } from './intake.confirm.js';
@@ -55,13 +64,19 @@ import type {
 const MAX_RAW_CONTENT = 200_000;
 const LIST_LIMIT = 50;
 
+/** NP-78: the batch views carry the files that travel with the batch. */
+export type IntakeBatchDetailV4 = IntakeBatchDetail &
+  IntakeBatchAttachmentsField;
+export type CreateIntakeBatchResponseV4 = CreateIntakeBatchResponse &
+  IntakeBatchAttachmentsField;
+
 export interface IntakeService {
   create(
     actor: Actor,
     input: CreateIntakeBatchRequestV4,
-  ): Promise<CreateIntakeBatchResponse>;
+  ): Promise<CreateIntakeBatchResponseV4>;
   list(actor: Actor, mine: boolean): Promise<IntakeBatch[]>;
-  get(actor: Actor, id: string): Promise<IntakeBatchDetail>;
+  get(actor: Actor, id: string): Promise<IntakeBatchDetailV4>;
   putDrafts(actor: Actor, id: string, drafts: unknown): Promise<IntakeDraft[]>;
   confirm(
     actor: Actor,
@@ -206,7 +221,11 @@ async function create(
   deps: IntakeDeps,
   actor: Actor,
   input: CreateIntakeBatchRequestV4,
-): Promise<CreateIntakeBatchResponse> {
+): Promise<CreateIntakeBatchResponseV4> {
+  const attachmentIds =
+    input?.attachmentIds === undefined
+      ? []
+      : validateFileIds(input.attachmentIds, 'attachmentIds');
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
   const origin = await source(conn, viewer, input);
@@ -221,7 +240,11 @@ async function create(
       ? undefined
       : validateProcess(input.process, true);
   // A batch split from an issue hangs every draft directly under that issue; `process` fills the drafts' gaps.
-  const parsed = outcome.drafts.map((draft) => ({
+  const parsed: {
+    position: number;
+    parentPosition: number | null;
+    fields: IntakeDraftFieldsV4;
+  }[] = outcome.drafts.map((draft) => ({
     ...draft,
     parentPosition: origin.sourceIssueId ? null : draft.parentPosition,
     fields:
@@ -229,6 +252,14 @@ async function create(
         ? { ...draft.fields, process }
         : draft.fields,
   }));
+  // NP-78: every uploaded file starts on the first top-level draft; the editor can move it to another one.
+  const holder =
+    parsed.find((draft) => draft.parentPosition === null) ?? parsed[0];
+  if (holder && attachmentIds.length > 0)
+    parsed[parsed.indexOf(holder)] = {
+      ...holder,
+      fields: { ...holder.fields, attachmentIds },
+    };
   const id = deps.ids.next();
   await deps.tx.run(async (tx) => {
     const drafts = await validateDrafts(
@@ -259,6 +290,7 @@ async function create(
         updatedAt: timestamp,
       })
       .execute();
+    await claimFilesForBatch(tx, actor, id, attachmentIds);
     await replaceDrafts(tx, deps.ids, id, drafts);
   });
   const read = deps.tx.read();
@@ -266,6 +298,7 @@ async function create(
     batch: await findBatch(read, id),
     drafts: await draftsOf(read, id),
     parser: outcome.parser,
+    attachments: await intakeBatchAttachments(read, id),
   };
 }
 
@@ -375,7 +408,11 @@ export function createIntakeService(deps: IntakeDeps): IntakeService {
     async get(actor, id) {
       const conn = deps.tx.read();
       const { batch } = await ownBatch(conn, actor, id);
-      return { batch, drafts: await draftsOf(conn, id) };
+      return {
+        batch,
+        drafts: await draftsOf(conn, id),
+        attachments: await intakeBatchAttachments(conn, id),
+      };
     },
     async putDrafts(actor, id, drafts) {
       return deps.tx.run(async (tx) => {

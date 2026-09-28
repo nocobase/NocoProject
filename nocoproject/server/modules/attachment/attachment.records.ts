@@ -22,6 +22,8 @@ export interface FileRow {
   readonly size: number;
   readonly uploadedById: string | null;
   readonly issueId: string | null;
+  /** Set while the file travels with an intake batch (AI 整理 tab). */
+  readonly intakeBatchId: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -37,6 +39,7 @@ export function toFileRow(row: Record<string, unknown>): FileRow {
     size: num(row.size),
     uploadedById: str(row.uploadedById),
     issueId: str(row.issueId),
+    intakeBatchId: str(row.intakeBatchId),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };

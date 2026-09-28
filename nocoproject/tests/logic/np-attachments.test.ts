@@ -205,4 +205,46 @@ describe.skipIf(!db)('issue attachments (PostgreSQL)', () => {
     const left = (await rows(db!, 'np_files')).map((row) => row.id);
     expect(left.sort()).toEqual([fresh, kept].sort());
   });
+
+  it('attaches batch files nobody assigned to the first issue, and purges those of a cancelled batch', async () => {
+    const loose = await upload(ALICE.id!, 'loose.txt');
+    const batch = await services.intake.create(ALICE, {
+      source: 'paste',
+      rawContent: '- First\n- Second',
+      attachmentIds: [loose],
+    });
+    // The member takes the file off every draft (or deletes the draft that held it).
+    await services.intake.putDrafts(
+      ALICE,
+      batch.batch.id,
+      batch.drafts.map(({ position, parentPosition, fields }) => ({
+        position,
+        parentPosition,
+        fields: { ...fields, attachmentIds: [] },
+      })),
+    );
+    const { issues } = await services.intake.confirm(ALICE, batch.batch.id, {});
+    expect(
+      (await services.attachments.list(ALICE, issues[0].id)).map(
+        (item) => item.id,
+      ),
+    ).toEqual([loose]);
+    expect(await services.attachments.list(ALICE, issues[1].id)).toEqual([]);
+
+    const dropped = await upload(
+      ALICE.id!,
+      'dropped.txt',
+      new Date(Date.now() - 25 * 3600_000),
+    );
+    const cancelled = await services.intake.create(ALICE, {
+      source: 'paste',
+      rawContent: 'Something',
+      attachmentIds: [dropped],
+    });
+    const later = new Date(Date.now() + 1000);
+    expect(await services.attachments.purgeOrphans(later)).toBe(0);
+    await services.intake.cancel(ALICE, cancelled.batch.id);
+    expect(await services.attachments.purgeOrphans(later)).toBe(1);
+    expect(removed).toEqual([{ disk: 'local', key: `objects/${dropped}.txt` }]);
+  });
 });

@@ -1,8 +1,16 @@
 import { ApiClientError, useService } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
-import { useMemo } from 'react';
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  type RefObject,
+  useMemo,
+} from 'react';
 
-import { clientFileRepositoryManagerToken } from '@/extensions/nocobase-file-component-ui';
+import {
+  clientFileRepositoryManagerToken,
+  type FileUploadFieldHandle,
+} from '@/extensions/nocobase-file-component-ui';
 
 import { ATTACHMENT_RESOURCE } from '../../api-attachments.js';
 
@@ -37,4 +45,40 @@ export function uploadErrorTitle(
   if (error instanceof ApiClientError && error.status === 413)
     return t('np.attachments.tooLarge');
   return t('np.attachments.uploadFailed');
+}
+
+/** Whether a drag carries files (not text or a link). */
+function carriesFiles(data: DataTransfer | null): boolean {
+  return !!data && Array.from(data.types).includes('Files');
+}
+
+/**
+ * Handlers that hand files pasted into or dropped onto an element (a description box, a card) to an upload field.
+ * Text pastes and drops pass through untouched.
+ */
+export function usePasteDrop(field: RefObject<FileUploadFieldHandle | null>): {
+  onPaste: (event: ClipboardEvent) => void;
+  onDragOver: (event: DragEvent) => void;
+  onDrop: (event: DragEvent) => void;
+} {
+  return useMemo(
+    () => ({
+      onPaste: (event: ClipboardEvent) => {
+        const files = Array.from(event.clipboardData.files);
+        if (files.length === 0) return;
+        event.preventDefault();
+        field.current?.addFiles(files);
+      },
+      onDragOver: (event: DragEvent) => {
+        if (carriesFiles(event.dataTransfer)) event.preventDefault();
+      },
+      onDrop: (event: DragEvent) => {
+        const files = Array.from(event.dataTransfer.files);
+        if (files.length === 0) return;
+        event.preventDefault();
+        field.current?.addFiles(files);
+      },
+    }),
+    [field],
+  );
 }
