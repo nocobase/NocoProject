@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 
 import { fetchAgents, fetchIssueDetail, fetchMe } from '../../api.js';
 import { npKeys } from '../../constants.js';
+import { detailRefetchInterval } from '../../detail-normalize.js';
 import type { AgentListItem, IssueDetail, Me } from '../../types.js';
 import { IssueMain } from './issue-main.js';
 import { PropertiesPanel } from './properties-panel.js';
@@ -28,7 +29,8 @@ import { PropertiesPanel } from './properties-panel.js';
  * Main column (title, description, activity, composer) beside a fixed 20rem properties column with the execution
  * log (§H 3), stacked on narrow screens. The transcript dialog (`runs/:runId`) renders in the outlet beside the layer.
  *
- * The detail refreshes through the `np:issues` subscription owned by the list page underneath.
+ * The detail refreshes through the `np:issues` subscription owned by the list page underneath, and polls while a run
+ * is queued or working (`detailRefetchInterval`) so a dropped realtime connection does not leave it stale.
  */
 export default function IssueDetailPage(): ReactElement {
   const { issueId = '' } = useParams();
@@ -53,6 +55,7 @@ function IssueDetailView({
   const detail = useQuery({
     queryKey: npKeys.issue(issueId),
     queryFn: ({ signal }) => fetchIssueDetail(api, issueId, signal),
+    refetchInterval: (query) => detailRefetchInterval(query.state.data),
     retry: (count, error) =>
       !(error instanceof ApiClientError && [403, 404].includes(error.status)) &&
       count < 2,
