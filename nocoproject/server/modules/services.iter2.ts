@@ -72,7 +72,7 @@ export function createIteration2Services(
       secrets,
       github,
     }),
-    webhooks: createWebhookService({ ...flow, tx, ids, secrets }),
+    webhooks: createWebhookService({ ...flow, tx, ids, secrets, github }),
     intake: createIntakeService({
       tx,
       ids,
