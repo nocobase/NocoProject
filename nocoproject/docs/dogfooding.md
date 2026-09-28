@@ -2,26 +2,28 @@
 
 NocoProject 的开发从此在 NocoProject 自己里进行。本文记录常驻服务、接入方式和"什么放哪里"的约定；变更时同步更新。
 
-## 常驻服务（开发机 zhou-air，launchd 用户级服务）
+## 常驻服务
 
-| 服务         | Label                             | 内容                                                                                                              | 日志                                     |
-| ------------ | --------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| 开发服务器   | `ai.nocobase.nocoproject-dev`     | `pnpm dev`，`http://127.0.0.1:13001/main`（`.env` 固定 `APP_SERVER_PORT=13001`），局域网与 Tailscale 地址同样可用 | `~/Library/Logs/nocoproject/dev.log`     |
-| 守护进程     | `ai.nocobase.nocoproject-daemon`  | 等开发服务器就绪后启动 `nocoproject daemon start --providers claude,codex,opencode`                               | `~/Library/Logs/nocoproject/daemon.log`  |
-| Webhook 转发 | `ai.nocobase.nocoproject-webhook` | `gh webhook forward` 把 GitHub 的 PR / CI 事件转发到本机；secret 在 `~/.nocoproject/github-webhook-secret`（600） | `~/Library/Logs/nocoproject/webhook.log` |
+2026-09-28 起应用部署在 ali-agents 服务器：`https://project.nocobase.cn/main`（国内机器用 Tailscale 地址 `http://100.89.167.29:13001/main`）。布局、发布（`pnpm deploy:server`）、回滚与日志见 [deploy.md](deploy.md)。
 
-plist 在 `~/Library/LaunchAgents/`，用显式 Node 24 路径（`/opt/homebrew/opt/node@24/bin`），不要用登录 shell（会选到旧版 Node）。管理：`launchctl bootout gui/$(id -u)/<label>`、`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist`。
+| 机器                 | 守护进程                                                                                                                   | 连接地址                           | 日志                                      |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------- |
+| ali-agents（服务器） | systemd 用户服务 `nocoproject-daemon`（claude、codex、opencode）                                                           | Tailscale 地址                     | `journalctl --user -u nocoproject-daemon` |
+| 开发机 zhou-air      | launchd `ai.nocobase.nocoproject-daemon`，等服务器健康检查通过后启动，显式 Node 24 路径（`/opt/homebrew/opt/node@24/bin`） | `https://project.nocobase.cn/main` | `~/Library/Logs/nocoproject/daemon.log`   |
+| dev                  | `nocoproject daemon start`（PATH 要含 `~/.local/bin`、`~/.opencode/bin`，否则找不到 codex / opencode）                     | Tailscale 地址                     | `~/.nocoproject/logs/daemon.log`          |
+
+开发机上原来的 `ai.nocobase.nocoproject-dev`（`pnpm dev`）与 `-webhook`（`gh webhook forward`）已停用，plist 仍在 `~/Library/LaunchAgents/`。本机开发需要时手动 `pnpm dev`，它连的是本机的开发库，不是服务器的数据。
 
 ## 接入其他电脑
 
 1. `gh release download cli-v0.2.0 --repo zhouyanliang/NocoProject --pattern '*.tgz' && npm i -g ./nocoproject-cli-0.2.0.tgz`（CLI 未发布到 npm，安装包挂在 GitHub Release）。
-2. 在界面生成 API Key，`nocoproject login --server http://<开发机地址>:13001/main --api-key-stdin`。远程机器用 Tailscale 地址（开发机 `100.82.49.7`）。
+2. 在界面生成 API Key，`nocoproject login --server https://project.nocobase.cn/main --api-key-stdin`；国内机器改用 `http://100.89.167.29:13001/main`（需要在 Tailscale 里）。已登录的机器换服务器只要改 `~/.nocoproject/config.json` 的 `serverUrl` 再重启守护进程。
 3. 装好编码工具并登录，`nocoproject daemon start`。
 4. 服务端升级后每台机器都要升级 CLI（新 Release 的 tgz，`npm i -g`），然后 `nocoproject daemon stop && nocoproject daemon start`；版本不一致时 Agent 会找不到简报里的命令。
 
 ## 看效果：本机预览与截图
 
-Agent 跑在谁的电脑上，就在那台电脑的检出里看效果；开发机的 13001 跑的是 main，不能用来验证分支。
+Agent 跑在谁的电脑上，就在那台电脑的检出里看效果；服务器上跑的是最近一次部署的 main，不能用来验证分支。
 
 - `pnpm build && pnpm screenshots`：用这份检出的构建产物起一个一次性预览（独立 SQLite、演示数据、`scripts/preview-server.ts`），Playwright 登录后把主要页面在 compact / default × 浅 / 深四种组合下各截一张到 `output/screenshots/<页面>.<预设>-<模式>.png`（`e2e/screenshots.test.ts`）。构建约 1 分钟，截图约 1 分钟。
 - `pnpm preview`：只起预览（`http://127.0.0.1:13100/main`，nocobase / admin123），自己在浏览器里看；`NP_PREVIEW_PORT`、`NP_PREVIEW_DIR`（设了就保留数据）、`NP_PREVIEW_SEED=0`（不灌演示数据）。
@@ -43,6 +45,7 @@ Agent 跑在谁的电脑上，就在那台电脑的检出里看效果；开发�
 ## GitHub
 
 - CI：`.github/workflows/ci.yml`（`app` 带 PostgreSQL 服务容器；`cli`），每次推送与 PR 都跑。分支保护在私有仓库需要 GitHub Pro，未开启；合并前看 PR 上的检查结果。
+- Webhook：仓库设置里的正式 webhook（id 686895797）推到 `https://project.nocobase.cn/main/np/webhooks/github`，事件 `pull_request`、`check_suite`、`status`；secret 与“设置 → GitHub”里保存的一致，原件在开发机 `~/.nocoproject/github-webhook-secret`（600）。投递记录：`gh api repos/zhouyanliang/NocoProject/hooks/686895797/deliveries`。
 - 合并 PR 由负责人做；合并后 webhook 把任务改为 done（`prMergedStatus`）。
 
 ## 设置

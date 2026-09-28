@@ -200,7 +200,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test --pass-with-no-tests",
     "preview": "node --import tsx scripts/preview-server.ts",
-    "screenshots": "playwright test e2e/screenshots.test.ts"
+    "screenshots": "playwright test e2e/screenshots.test.ts",
+    "deploy:server": "bash scripts/deploy-server.sh"
   },
   "packageManager": "pnpm@11.7.0"
 }

@@ -1,0 +1,55 @@
+# 部署：ali-agents 服务器
+
+2026-09-28 起，NocoProject 的正式环境（dogfooding、测试、日常使用）在 ali-agents 服务器上，开发机不再常驻开发服务器。
+
+## 地址
+
+| 用途                       | 地址                                 | 说明                                                                 |
+| -------------------------- | ------------------------------------ | -------------------------------------------------------------------- |
+| 浏览器、海外机器的守护进程 | `https://project.nocobase.cn/main`   | Caddy 反代，证书自动签发；`*.nocobase.cn` 泛解析到服务器             |
+| 国内机器（dev）的守护进程  | `http://100.89.167.29:13001/main`    | 服务器的 Tailscale 地址。国内连公网域名的 443 会被重置，走 Tailscale |
+| SSH                        | `ssh ali-agents-ts`（用户 `agents`） | `~/.ssh/config` 里的别名，经 Tailscale                               |
+
+自助注册已关闭（`auth.emailAndPassword.disableSignUp: true`），成员由管理员在“设置 → 成员”添加。
+
+## 服务器上的布局（`/home/agents/nocoproject`）
+
+| 路径 / 名称                                     | 内容                                                                                                      |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `config.yml`（600）                             | 应用配置，从开发机的 config.yml 迁来，沿用 `auth.secret` 与 `session.secret`（API Key、加密的密钥依赖它） |
+| `app.env`（600）                                | 容器环境变量：`DEEPSEEK_API_KEY`，以及生成 PostgreSQL 容器时用的 `DB_PASSWORD`                            |
+| `storage/`                                      | 挂到容器 `/app/storage`（日志、上传）                                                                     |
+| `pgdata/`                                       | PostgreSQL 数据目录                                                                                       |
+| `build/`                                        | 部署脚本上传的 `dist/` 与 Dockerfile，镜像在这里构建                                                      |
+| 容器 `nocoproject-postgres`                     | `postgres:16`，库 `nocoproject`、用户 `nocoproject`，只在 docker 网络 `nocoproject` 内可见                |
+| 容器 `nocoproject-app`                          | 镜像 `nocoproject:<提交>`，只监听 `100.89.167.29:13001`；`--restart unless-stopped`                       |
+| `~/.nocobase/proxy/caddy/nocoproject/app.caddy` | `project.nocobase.cn` 站点。服务器的 Caddy 由 nb CLI 管理，主配置按 `*/app.caddy` 导入这个目录            |
+| systemd 用户服务 `nocoproject-daemon`           | 服务器自己的守护进程（claude、codex、opencode），CLI 装在 `~/.local`                                      |
+
+Docker 是 rootless 的：容器以 `--user 0:0` 运行，对应宿主机的 `agents` 用户，才能读写挂载的文件；同一端口不能同时绑两个地址，所以应用只绑 Tailscale 地址，Caddy 也反代到这个地址。
+
+## 发布新版本
+
+在开发机的 `nocoproject/` 目录，检出要发布的提交（通常是 main）：
+
+```bash
+pnpm deploy:server
+```
+
+`scripts/deploy-server.sh` 按 `linux-x64` / Node 24 构建 `dist/`，rsync 到服务器，用仓库的 Dockerfile（`DIST=prebuilt`）打镜像 `nocoproject:<短提交号>`，替换应用容器并等健康检查通过。约 3 分钟；替换期间服务中断约 30 秒，守护进程会自动重连。迁移随应用启动自动执行。`NP_DEPLOY_SKIP_BUILD=1` 复用已有的 linux-x64 构建。
+
+回滚：服务器保留最近 3 个镜像，`docker images nocoproject` 查看，按脚本里的 `docker run` 参数换成旧标签重建容器即可（迁移不会自动回退）。
+
+## 常用操作
+
+```bash
+ssh ali-agents-ts 'docker logs --tail 100 nocoproject-app'
+ssh ali-agents-ts 'systemctl --user status nocoproject-daemon; journalctl --user -u nocoproject-daemon -n 50'
+ssh ali-agents-ts 'docker exec nocoproject-postgres pg_dump -U nocoproject -Fc nocoproject' > nocoproject.dump
+```
+
+改 `config.yml` 后 `docker restart nocoproject-app`。
+
+## 迁移记录（2026-09-28）
+
+开发机 `demo-postgres` 的 `nocoproject` 库以 `pg_dump -Fc --no-owner --no-acl` 整库迁入；GitHub 改为仓库正式 webhook 直接推到公网地址（见 dogfooding.md）；开发机的 launchd 开发服务器与 webhook 转发已停用（plist 仍在 `~/Library/LaunchAgents/`，需要时可以重新加载，开发机的库没有删除）。
