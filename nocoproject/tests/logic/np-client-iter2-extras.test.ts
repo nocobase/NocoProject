@@ -8,7 +8,10 @@ import {
 } from '../../client/pages/np/api-agent-extras.js';
 import { unwrap, unwrapList } from '../../client/pages/np/api-iter2.js';
 import { normalizeIssueDetail } from '../../client/pages/np/detail-normalize.js';
-import { inboxBadgeText } from '../../client/pages/np/inbox/inbox-model.js';
+import {
+  inboxBadgeText,
+  inboxTitle,
+} from '../../client/pages/np/inbox/inbox-model.js';
 import { inboxBodyText } from '../../client/pages/np/inbox/inbox-text.js';
 import {
   activeSessionRun,
@@ -179,10 +182,14 @@ describe('inbox', () => {
     ).toBeNull();
   });
 
-  it('shows the unread decision count on the navigation badge', () => {
+  it('shows the pending decision count on the navigation badge and the tab title', () => {
     expect(inboxBadgeText(0)).toBeNull();
     expect(inboxBadgeText(3)).toBe('3');
     expect(inboxBadgeText(120)).toBe('99+');
+    expect(inboxTitle('NocoProject', '3')).toBe('(3) NocoProject');
+    expect(inboxTitle('(3) NocoProject', '99+')).toBe('(99+) NocoProject');
+    expect(inboxTitle('(99+) NocoProject', null)).toBe('NocoProject');
+    expect(inboxTitle('NocoProject', null)).toBe('NocoProject');
   });
 });
 

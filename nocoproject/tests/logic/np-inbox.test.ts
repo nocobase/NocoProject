@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * Subscriptions and the inbox on a real PostgreSQL (contract §E): automatic subscriptions, no self-notification,
- * dedupe/merge, decision auto-resolve, `run_failed` auto-archive, read state, unread counts, paging, `inbox.changed`.
+ * dedupe/merge, decision auto-resolve, `run_failed` auto-archive, read state, unread and pending counts, paging, `inbox.changed`.
  */
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -162,6 +162,16 @@ describe.skipIf(!db)('subscriptions and inbox (PostgreSQL)', () => {
       resolvedAt: null,
     });
     expect((await services.inbox.unreadCount(BOB)).decision).toBe(1);
+    expect(await services.inbox.pendingCount(BOB)).toEqual({ decision: 1 });
+    // Opening the decision clears it from the unread count but it still waits on the owner.
+    await services.inbox.mark(BOB, review!.id, 'read');
+    expect((await services.inbox.unreadCount(BOB)).decision).toBe(0);
+    expect(await services.inbox.pendingCount(BOB)).toEqual({ decision: 1 });
+    expect(await services.inbox.pendingCount(ALICE)).toEqual({ decision: 0 });
+    await services.inbox.mark(BOB, review!.id, 'archive');
+    expect(await services.inbox.pendingCount(BOB)).toEqual({ decision: 0 });
+    await services.inbox.mark(BOB, review!.id, 'unarchive');
+    expect(await services.inbox.pendingCount(BOB)).toEqual({ decision: 1 });
     // The owner got the plain notice for todo → in_progress; the in_review change is only the decision.
     const notices = (await inboxOf(BOB, 'info')).data.filter(
       (item) => item.type === 'status_changed',
@@ -179,6 +189,7 @@ describe.skipIf(!db)('subscriptions and inbox (PostgreSQL)', () => {
     const [resolved] = (await inboxOf(BOB, 'decision')).data;
     expect(resolved!.resolvedAt).not.toBeNull();
     expect((await services.inbox.unreadCount(BOB)).decision).toBe(0);
+    expect(await services.inbox.pendingCount(BOB)).toEqual({ decision: 0 });
   });
 
   it('narrows the list to one issue for the issue page decision section', async () => {

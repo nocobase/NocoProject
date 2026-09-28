@@ -39,6 +39,7 @@ describe('browser API /np/*', () => {
     '/np/labels',
     '/np/inbox',
     '/np/inbox/unread-count',
+    '/np/inbox/pending-count',
   ])('answers 401 to an anonymous GET %s', async (path) => {
     const { router } = await build(npApiRoutes);
     const response = await router.request(path);
@@ -179,6 +180,14 @@ describe('browser API /np/*', () => {
     });
     await expect(count.json()).resolves.toEqual({
       data: { decision: 1, info: 2 },
+    });
+    const pending = await router.request('/np/inbox/pending-count', {
+      headers: signedIn,
+    });
+    await expect(pending.json()).resolves.toEqual({ data: { decision: 3 } });
+    expect(doubles.inbox.pendingCount).toHaveBeenCalledWith({
+      type: 'user',
+      id: 'u1',
     });
   });
 });

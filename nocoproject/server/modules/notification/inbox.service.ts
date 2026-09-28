@@ -2,7 +2,8 @@
  * The signed-in member's inbox and issue subscriptions (docs/phase1/iteration-1-contract.md §E).
  *
  * The list is newest first (`updatedAt`, then id) and pages with an opaque cursor. Unread counts cover items that
- * are unread, not archived and not resolved.
+ * are unread, not archived and not resolved; the pending count covers decisions that are not archived and not
+ * resolved, read or not (what the navigation badge shows: opening a decision does not settle it).
  */
 import type { Actor } from '../shared/activity.js';
 import { requireVisibleIssue, viewerOf } from '../shared/authz.js';
@@ -14,6 +15,7 @@ import type {
   InboxItemV4,
   InboxKind,
   InboxListResponse,
+  InboxPendingCounts,
   InboxUnreadCounts,
 } from '../shared/protocol.js';
 
@@ -39,6 +41,7 @@ export type InboxAction = 'read' | 'unread' | 'archive' | 'unarchive';
 export interface InboxService {
   list(actor: Actor, query: InboxQuery): Promise<InboxListResponseV2>;
   unreadCount(actor: Actor): Promise<InboxUnreadCounts>;
+  pendingCount(actor: Actor): Promise<InboxPendingCounts>;
   mark(actor: Actor, itemId: string, action: InboxAction): Promise<InboxItemV4>;
   readAll(actor: Actor, kind: unknown): Promise<InboxUnreadCounts>;
   subscribe(actor: Actor, issueIdOrKey: string): Promise<void>;
@@ -97,6 +100,21 @@ async function unread(conn: Conn, userId: string): Promise<InboxUnreadCounts> {
   return counts;
 }
 
+async function pending(
+  conn: Conn,
+  userId: string,
+): Promise<InboxPendingCounts> {
+  const row = await conn.query
+    .selectFrom('inboxItems')
+    .select((eb) => [eb.fn.countAll().as('count')])
+    .where('userId', '=', userId)
+    .where('kind', '=', 'decision')
+    .where('archivedAt', 'is', null)
+    .where('resolvedAt', 'is', null)
+    .executeTakeFirst();
+  return { decision: num(row?.count ?? 0) };
+}
+
 export function createInboxService(deps: {
   tx: TxRunner;
   ids: IdSource;
@@ -149,6 +167,11 @@ export function createInboxService(deps: {
     async unreadCount(actor) {
       const conn = deps.tx.read();
       return unread(conn, (await viewerOf(conn, actor)).userId);
+    },
+
+    async pendingCount(actor) {
+      const conn = deps.tx.read();
+      return pending(conn, (await viewerOf(conn, actor)).userId);
     },
 
     async mark(actor, itemId, action) {

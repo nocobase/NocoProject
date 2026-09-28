@@ -80,10 +80,21 @@ export function isSettled(item: InboxItem): boolean {
   return item.kind === 'decision' && item.resolvedAt !== null;
 }
 
-/** The navigation badge: the unread decision count, "99+" above 99 so the badge keeps its size, none at zero. */
+/** The navigation badge: the pending decision count, "99+" above 99 so the badge keeps its size, none at zero. */
 export function inboxBadgeText(count: number): string | null {
   if (!Number.isFinite(count) || count <= 0) return null;
   return count > 99 ? '99+' : String(count);
+}
+
+const TITLE_COUNT = /^\(\d+\+?\) /;
+
+/**
+ * The browser tab title with the badge text in front (`(3) NocoProject`), or without it when `text` is null. Any
+ * earlier count prefix is replaced, so applying it again (a re-render, a second writer) never stacks prefixes.
+ */
+export function inboxTitle(title: string, text: string | null): string {
+  const base = title.replace(TITLE_COUNT, '');
+  return text ? `(${text}) ${base}` : base;
 }
 
 /**

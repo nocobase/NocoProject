@@ -30,16 +30,18 @@ realtime.subscribe.mockImplementation(
 );
 
 describe('inbox navigation badge', () => {
-  it('shows the unread decision count and refreshes on np:inbox', async () => {
+  it('shows the pending decision count and refreshes on np:inbox', async () => {
     let decision = 3;
     api.request.mockImplementation(
       answer({
-        'GET np/inbox/unread-count': () => ({ data: { decision, info: 9 } }),
+        'GET np/inbox/pending-count': () => ({ data: { decision } }),
       }),
     );
-    await renderNp(<NpInboxNavIcon />);
+    document.title = 'NocoProject';
+    const view = await renderNp(<NpInboxNavIcon />);
     expect(await screen.findByTestId('np-inbox-badge')).toHaveTextContent('3');
-    expect(screen.getByText('3 unread decisions')).toBeInTheDocument();
+    expect(screen.getByText('3 pending')).toBeInTheDocument();
+    expect(document.title).toBe('(3) NocoProject');
 
     decision = 120;
     realtime.listeners.get('np:inbox')?.({
@@ -48,12 +50,30 @@ describe('inbox navigation badge', () => {
     await waitFor(() =>
       expect(screen.getByTestId('np-inbox-badge')).toHaveTextContent('99+'),
     );
+    expect(document.title).toBe('(99+) NocoProject');
+
+    decision = 0;
+    realtime.listeners.get('np:inbox')?.({
+      payload: { kind: 'inbox.changed' },
+    });
+    await waitFor(() =>
+      expect(screen.queryByTestId('np-inbox-badge')).toBeNull(),
+    );
+    expect(document.title).toBe('NocoProject');
+
+    decision = 2;
+    realtime.listeners.get('np:inbox')?.({
+      payload: { kind: 'inbox.changed' },
+    });
+    await waitFor(() => expect(document.title).toBe('(2) NocoProject'));
+    view.unmount();
+    expect(document.title).toBe('NocoProject');
   });
 
-  it('shows no badge without unread decisions or when the count fails', async () => {
+  it('shows no badge without pending decisions or when the count fails', async () => {
     api.request.mockImplementation(
       answer({
-        'GET np/inbox/unread-count': { data: { decision: 0, info: 4 } },
+        'GET np/inbox/pending-count': { data: { decision: 0 } },
       }),
     );
     const view = await renderNp(<NpInboxNavIcon />);

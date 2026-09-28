@@ -145,7 +145,7 @@ const npCollabEnUS = {
       'Review requests, blocked agents and executor proposals appear here.',
     unread: 'Unread',
     unreadCount: '{{count}} unread',
-    unreadDecisions: '{{count}} unread decisions',
+    pendingDecisions: '{{count}} pending',
     count: '×{{count}}',
     resolved: 'Resolved',
     actionsFor: 'Actions for {{title}}',
