@@ -158,3 +158,7 @@ PM 在运行里用普通 Agent 接口写 `/note` 评论（Agent 的 `/note` 不�
 10. **Agent 字段**：服务端不限制 manager Agent 改任务状态 / 建子任务（简报约束）；把已有任务的执行者 Agent 改成 manager 不被拒绝（之后对这些任务再分配时才会 400）。
 11. **页面授权**：契约没有写，新增种子 `2026100100003_np_iter4_page_grants` 给 `member` 追加 `np-pm`（前端 `/pm` 页面的 authz）。
 12. **认领载荷**：`issue.originType` 为契约外字段（守护进程可据此区分对话任务）。
+
+## 8. 活动来源 `details.via`（NP-86，迭代 4 之后追加）
+
+浏览器接口（`/api/np/*`）用 API Key（`x-api-key`）鉴权时，`sessionActor` 给操作人加 `via`，活动记录器把它写进 `activities.details.via`（与运行令牌的 `details.runId` 同一处）：请求头 `x-np-client` 以 `nocoproject-cli/` 开头为 `'cli'`（CLI 用户模式 `nocoproject user …`），否则为 `'api_key'`；浏览器会话不写。`via` 只用于追溯，不参与任何权限判断；操作人仍是 Key 的主人。无迁移（`details` 是 JSON），协议类型不变。

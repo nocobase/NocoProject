@@ -7,7 +7,7 @@ import type { Context, Env, ErrorHandler, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
-import type { Actor } from './activity.js';
+import type { Actor, ActorVia } from './activity.js';
 import { NpError, type NpErrorKind } from './errors.js';
 import type { ApiErrorBody } from './protocol.js';
 import { RUN_TOKEN_PREFIX } from './protocol.js';
@@ -103,8 +103,29 @@ export function rejectRunTokens(): MiddlewareHandler {
   };
 }
 
-/** The signed-in user as an actor. Only valid behind `auth.required()`. */
-export function sessionActor(context: Pick<Context<AuthEnv>, 'get'>): Actor {
+/** Header the CLI user mode sends (`nocoproject-cli/<version>`). */
+export const NP_CLIENT_HEADER = 'x-np-client';
+const CLI_CLIENT_PREFIX = 'nocoproject-cli/';
+
+/**
+ * How the request reached the API when it was not a browser session: an `x-api-key` request (browsers never send
+ * one; `auth.required()` has already verified it) is `cli` when it names the CLI in `x-np-client`, otherwise
+ * `api_key`. The header only labels the source; the actor is still the key's owner.
+ */
+export function requestVia(
+  context: Pick<Context, 'req'> | undefined,
+): ActorVia | undefined {
+  const req = context?.req;
+  if (!req || typeof req.header !== 'function') return undefined;
+  if (!req.header('x-api-key')) return undefined;
+  const client = req.header(NP_CLIENT_HEADER) ?? '';
+  return client.startsWith(CLI_CLIENT_PREFIX) ? 'cli' : 'api_key';
+}
+
+/** The signed-in user as an actor, with `via` for API-key requests. Only valid behind `auth.required()`. */
+export function sessionActor(
+  context: Pick<Context<AuthEnv>, 'get'> & Partial<Pick<Context, 'req'>>,
+): Actor {
   const auth = context.get('auth');
   if (!auth)
     throw new NpError(
@@ -112,7 +133,10 @@ export function sessionActor(context: Pick<Context<AuthEnv>, 'get'>): Actor {
       'UNAUTHORIZED',
       'Authentication required',
     );
-  return { type: 'user', id: auth.user.id };
+  const via = requestVia(context as Pick<Context, 'req'>);
+  return via
+    ? { type: 'user', id: auth.user.id, via }
+    : { type: 'user', id: auth.user.id };
 }
 
 export function sessionUserId(context: Pick<Context<AuthEnv>, 'get'>): string {

@@ -8,11 +8,22 @@ import { now, toJson } from './db.js';
 import type { IdSource } from './ids.js';
 import type { ActorType } from './protocol.js';
 
-/** Who performed an operation. `runId` is set when an agent acts through a run token. */
+/**
+ * How a signed-in user reached the API when it was not the browser: `cli` for the CLI user mode (API key plus the
+ * `x-np-client: nocoproject-cli/<version>` header), `api_key` for any other API-key client. Traceability only; never
+ * used for permission checks.
+ */
+export type ActorVia = 'cli' | 'api_key';
+
+/**
+ * Who performed an operation. `runId` is set when an agent acts through a run token; `via` when a user acts through
+ * an API key instead of a browser session.
+ */
 export interface Actor {
   readonly type: ActorType;
   readonly id: string | null;
   readonly runId?: string;
+  readonly via?: ActorVia;
 }
 
 export const SYSTEM_ACTOR: Actor = { type: 'system', id: null };
@@ -31,9 +42,14 @@ export interface ActivityRecorder {
 export function createActivityRecorder(ids: IdSource): ActivityRecorder {
   return {
     async record(conn, input) {
+      const { runId, via } = input.actor;
       const details =
-        input.actor.runId !== undefined
-          ? { ...input.details, runId: input.actor.runId }
+        runId !== undefined || via !== undefined
+          ? {
+              ...input.details,
+              ...(runId !== undefined ? { runId } : {}),
+              ...(via !== undefined ? { via } : {}),
+            }
           : input.details;
       await conn.query
         .insertInto('activities')

@@ -16,10 +16,21 @@ NocoProject 的开发从此在 NocoProject 自己里进行。本文记录常驻�
 
 ## 接入其他电脑
 
-1. `npm i -g https://project.nocobase.cn/main/assets/cli/nocoproject-cli-0.2.0.tgz`（国内机器把地址换成 `http://100.89.167.29:13001/main`）。安装包随应用部署，不需要 GitHub 账号；“添加电脑”页面按当前访问的地址生成这条命令。
+1. `npm i -g https://project.nocobase.cn/main/assets/cli/nocoproject-cli-0.3.0.tgz`（国内机器把地址换成 `http://100.89.167.29:13001/main`）。安装包随应用部署，不需要 GitHub 账号；“添加电脑”页面按当前访问的地址生成这条命令。
 2. 在界面生成 API Key，`nocoproject login --server https://project.nocobase.cn/main --api-key-stdin`；国内机器改用 `http://100.89.167.29:13001/main`（需要在 Tailscale 里）。已登录的机器换服务器只要改 `~/.nocoproject/config.json` 的 `serverUrl` 再重启守护进程。
 3. 装好编码工具并登录，`nocoproject daemon start`。
 4. CLI 升级后每台机器都要重新执行第 1 步的安装命令（新版本号），然后 `nocoproject daemon stop && nocoproject daemon start`；版本不一致时 Agent 会找不到简报里的命令。
+
+## 在终端里以本人身份用（CLI 用户模式，0.3.0 起）
+
+登录过的电脑上，人和他在终端里驱动的 Claude Code / Codex 可以用 `nocoproject user …` 以本人身份查任务、建任务（详见 CLI README 的 "User mode"）：
+
+1. `ncp user whoami` 确认 Key 属于谁、连的是哪台服务器。
+2. `ncp user skill install` 把 `nocoproject-user` skill 装到 `~/.claude/skills/` 与 `~/.codex/skills/`，本机 Agent 就知道怎么用这组命令。CLI 升级后重新执行一次（内容有改动时加 `--force`）。
+3. 常用：`ncp user issues`（我负责的）、`ncp user issue NP-12`、`ncp user inbox`、`ncp user create --title … --project … --executor <Agent>`、`ncp user comment NP-12 --content-file reply.md`、`ncp user status NP-12 in_review`；都支持 `--json`。
+
+- 操作记在你名下，活动流标"通过 CLI"。用这组命令把任务派给系统里的 Agent 算你本人的操作，不算"Agent 触发 Agent"。
+- 系统派发的运行里（带 `NOCOPROJECT_TOKEN`）这组命令一律拒绝；运行用 `nocoproject issue …`。
 
 ## 看效果：本机预览与截图
 
