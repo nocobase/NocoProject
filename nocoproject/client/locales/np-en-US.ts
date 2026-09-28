@@ -146,6 +146,12 @@ const npCollabEnUS = {
     unread: 'Unread',
     unreadCount: '{{count}} unread',
     pendingDecisions: '{{count}} pending',
+    chime: {
+      on: 'Chime on new decisions: on',
+      off: 'Chime on new decisions: off',
+      mute: 'Turn off the chime',
+      unmute: 'Turn on the chime',
+    },
     count: '×{{count}}',
     resolved: 'Resolved',
     actionsFor: 'Actions for {{title}}',

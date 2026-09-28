@@ -2,10 +2,15 @@ import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { InboxIcon } from 'lucide-react';
-import type { ReactElement } from 'react';
+import { type ReactElement, useEffect, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
 import { fetchInboxPending } from '@/pages/np/api-inbox';
+import {
+  armInboxChime,
+  playInboxChime,
+  useInboxChimePreference,
+} from '@/pages/np/inbox/inbox-chime';
 import { inboxBadgeText } from '@/pages/np/inbox/inbox-model';
 import { npKeys } from '@/pages/np/constants';
 import type { InboxTopicPayload } from '@/pages/np/types';
@@ -19,6 +24,9 @@ import { useRealtimeTopic } from '@/pages/np/use-realtime';
  * contract only takes an icon component, so the badge rides on the icon rather than on a change to the shared
  * navigation tree. It reads `GET /np/inbox/pending-count` and refreshes on the `np:inbox` user topic, the same signal
  * the inbox page listens to; the key sits under `npKeys.inbox`, so either refresh updates both.
+ *
+ * The icon is always mounted (the sidebar keeps its tree even when closed), so it also rings the chime (NP-108) when
+ * the count goes up after the first load, unless the viewer muted it on the inbox page.
  */
 export function NpInboxNavIcon({
   className,
@@ -39,6 +47,20 @@ export function NpInboxNavIcon({
   });
   const count = pending.data?.decision ?? 0;
   const text = inboxBadgeText(count);
+
+  const [chime] = useInboxChimePreference();
+  const previousRef = useRef<number | null>(null);
+  useEffect(() => {
+    armInboxChime();
+  }, []);
+  useEffect(() => {
+    const next = pending.data?.decision;
+    if (next === undefined) return;
+    if (chime && previousRef.current !== null && next > previousRef.current) {
+      playInboxChime();
+    }
+    previousRef.current = next;
+  }, [pending.data, chime]);
 
   // The count is a pill at the right end of the navigation row (the row is `relative`), amber because it means
   // "needs you" (nocosolution/frontend/nocobase3-frontend-best-practices.md §2.1); in the desktop icon mode it moves to the icon's corner.

@@ -17,6 +17,7 @@ const realtime = vi.hoisted(() => ({
   onOpen: vi.fn(() => () => {}),
 }));
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
+const chime = vi.hoisted(() => ({ play: vi.fn() }));
 
 vi.mock('@nocobase/app-client', async (original) => ({
   ...(await original<typeof import('@nocobase/app-client')>()),
@@ -24,11 +25,19 @@ vi.mock('@nocobase/app-client', async (original) => ({
   useService: () => realtime,
 }));
 vi.mock('@/components/ui/toast', () => ({ toast }));
+vi.mock('../../client/pages/np/inbox/inbox-chime.js', async (original) => ({
+  ...(await original<
+    typeof import('../../client/pages/np/inbox/inbox-chime.js')
+  >()),
+  playInboxChime: chime.play,
+}));
 
 afterEach(() => {
   api.request.mockReset();
   toast.add.mockReset();
   realtime.subscribe.mockClear();
+  chime.play.mockReset();
+  localStorage.clear();
 });
 
 describe('inbox', () => {
@@ -181,6 +190,25 @@ describe('inbox', () => {
         }),
       ),
     );
+  });
+
+  it('mutes the chime from the header and plays it once when turned back on', async () => {
+    const user = userEvent.setup();
+    api.request.mockImplementation(respond);
+    await renderInbox();
+    await screen.findByRole('list', { name: 'Needs my decision' });
+
+    const mute = screen.getByRole('button', { name: 'Turn off the chime' });
+    expect(mute).toHaveAttribute('aria-pressed', 'true');
+    await user.click(mute);
+    expect(localStorage.getItem('np:inbox:chime')).toBe('off');
+    expect(chime.play).not.toHaveBeenCalled();
+
+    const unmute = screen.getByRole('button', { name: 'Turn on the chime' });
+    expect(unmute).toHaveAttribute('aria-pressed', 'false');
+    await user.click(unmute);
+    expect(localStorage.getItem('np:inbox:chime')).toBe('on');
+    expect(chime.play).toHaveBeenCalledWith({ preview: true });
   });
 
   it('renders iteration 2 cards from type and payload, falling back to the English body', async () => {

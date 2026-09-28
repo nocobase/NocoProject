@@ -139,6 +139,12 @@ const npCollabZhCN: NpCollabResource = {
     unread: '未读',
     unreadCount: '{{count}} 条未读',
     pendingDecisions: '{{count}} 项待处理',
+    chime: {
+      on: '有新的待决定事项时响铃：开',
+      off: '有新的待决定事项时响铃：关',
+      mute: '关闭提示音',
+      unmute: '开启提示音',
+    },
     count: '×{{count}}',
     resolved: '已处理',
     actionsFor: '{{title}} 的操作',
