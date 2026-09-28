@@ -2,9 +2,16 @@ import { ApiClientError, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircleIcon } from 'lucide-react';
-import { type FormEvent, type ReactElement, useState } from 'react';
+import { type FormEvent, type ReactElement, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
+import type { FileRecord } from '@nocobase/app-plugin-file/client';
+
+import {
+  FileUploadField,
+  type FileUploadFieldHandle,
+  type FileUploadStatus,
+} from '@/extensions/nocobase-file-component-ui';
 import { NpExecutorSelect } from '@/components/np-executor-select';
 import {
   NpStartDialog,
@@ -34,6 +41,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { useRouteOverlay } from '@/components/use-route-overlay';
 
+import {
+  ATTACHMENT_MAX_FILES,
+  ATTACHMENT_MAX_FILE_SIZE,
+} from '../api-attachments.js';
 import { fetchMembers } from '../api-collab.js';
 import { fetchWorkspaceSettings } from '../api-iter2.js';
 import { readDefaultProcess } from '../api-iter4.js';
@@ -41,6 +52,12 @@ import { createIssue, fetchAgents, fetchMe, fetchProjects } from '../api.js';
 import { ISSUE_PRIORITIES, npKeys } from '../constants.js';
 import type { ExecutorRef, IssuePriority, StartDecision } from '../types.js';
 import type { ProcessChoice } from '../types-iter4.js';
+import {
+  usePasteDrop,
+  uploadErrorTitle,
+  useAttachmentRepository,
+  useFileLabels,
+} from './detail/use-attachments.js';
 import { PropertySelect } from './detail/property-fields.js';
 import { ProcessSelect } from './process-fields.js';
 
@@ -49,7 +66,9 @@ const FORM_ID = 'np-issue-new-form';
 /**
  * The 手动 tab of "新建任务" (iteration 4 §D; the iteration 1–3 form): title, description, priority, project (`?project=`
  * preselects it), owner (the signed-in user by default), executor (an agent asks "start now?" before creating),
- * process (iteration 4 §B, starting at the workspace default) and session mode (iteration 2 §J).
+ * process (iteration 4 §B, starting at the workspace default) and session mode (iteration 2 §J). NP-78: attachments
+ * upload as they are chosen, dropped or pasted into the description, and are attached by `attachmentIds` when the
+ * issue is created; submitting waits for them.
  */
 export function ManualIssueForm({
   onSubmittingChange,
@@ -83,6 +102,12 @@ export function ManualIssueForm({
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const repository = useAttachmentRepository();
+  const fileLabels = useFileLabels();
+  const uploadRef = useRef<FileUploadFieldHandle>(null);
+  const pasteDrop = usePasteDrop(uploadRef);
+  const [files, setFiles] = useState<readonly FileRecord[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<FileUploadStatus>('idle');
   const [priority, setPriority] = useState<IssuePriority>('none');
   // Opened from a project, or from the list filtered by one, the new issue starts in that project.
   const [searchParams] = useSearchParams();
@@ -125,6 +150,16 @@ export function ManualIssueForm({
       return;
     }
     setTitleError(undefined);
+    if (uploadStatus !== 'idle') {
+      setFormError(
+        t(
+          uploadStatus === 'uploading'
+            ? 'np.attachments.stillUploading'
+            : 'np.attachments.fixFailed',
+        ),
+      );
+      return;
+    }
     if (executor.type === 'agent' && executor.id) {
       const agent = agents.data?.find((item) => item.id === executor.id);
       setStartRequest({
@@ -150,6 +185,8 @@ export function ManualIssueForm({
         executionMode: sessionMode ? 'session' : undefined,
         // Always explicit: 自动 asks the server's classifier even when the workspace default is another process.
         process,
+        attachmentIds:
+          files.length > 0 ? files.map((file) => file.id) : undefined,
         ...(decision ?? {}),
       });
       onSubmittingChange(false);
@@ -167,7 +204,10 @@ export function ManualIssueForm({
           : error instanceof ApiClientError &&
               error.code === 'MANAGER_NOT_EXECUTOR'
             ? t('np.agentForm.managerNotExecutor')
-            : t('np.common.requestFailed'),
+            : error instanceof ApiClientError &&
+                error.code === 'INVALID_ATTACHMENT'
+              ? t('np.attachments.invalid')
+              : t('np.common.requestFailed'),
       );
     }
   }
@@ -205,6 +245,28 @@ export function ManualIssueForm({
             value={description}
             placeholder={t('np.issueForm.descriptionPlaceholder')}
             onChange={(event) => setDescription(event.target.value)}
+            {...pasteDrop}
+          />
+        </Field>
+        <Field>
+          <FieldLabel>{t('np.attachments.title')}</FieldLabel>
+          <FileUploadField
+            ref={uploadRef}
+            repository={repository}
+            value={files}
+            onChange={setFiles}
+            onStatusChange={setUploadStatus}
+            multiple
+            maxFiles={ATTACHMENT_MAX_FILES}
+            maxSize={ATTACHMENT_MAX_FILE_SIZE}
+            labels={fileLabels}
+            onError={(error) =>
+              toast.add({
+                type: 'error',
+                priority: 'high',
+                title: uploadErrorTitle(t, error),
+              })
+            }
           />
         </Field>
         <div className='grid gap-4 sm:grid-cols-2'>

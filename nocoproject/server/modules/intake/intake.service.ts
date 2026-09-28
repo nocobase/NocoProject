@@ -5,7 +5,9 @@
  * A batch belongs to the member who entered it; only they (or an owner/admin) may edit, confirm, cancel or revert
  * it. Confirming creates parents before children (`intake.confirm.ts`); reverting soft-deletes the issues it created
  * that never had a run and keeps the others. Iteration 4: `process` on the request is written into every draft that
- * has none; confirming selects each issue's process (heuristic only, `issue/process.ts`).
+ * has none; confirming selects each issue's process (heuristic only, `issue/process.ts`). NP-78: `attachmentIds`
+ * hands the member's own uploads to the batch (`attachment/attachment.intake.ts`); they start on the first top-level
+ * draft (`fields.attachmentIds`) and are attached when the batch is confirmed.
  */
 import type { Actor, ActivityRecorder } from '../shared/activity.js';
 import {
@@ -25,8 +27,10 @@ import type {
   CreateIntakeBatchRequestV4,
   CreateIntakeBatchResponse,
   IntakeBatch,
+  IntakeBatchAttachmentsField,
   IntakeBatchDetail,
   IntakeDraft,
+  IntakeDraftFieldsV4,
   RevertIntakeResponse,
 } from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
@@ -35,9 +39,22 @@ import type { TriggerService } from '../trigger/trigger.service.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 import type { IssueService } from '../issue/issue.service.js';
 import { validateProcess } from '../issue/process.js';
+import {
+  claimFilesForBatch,
+  intakeBatchAttachments,
+} from '../attachment/attachment.intake.js';
+import { validateFileIds } from '../attachment/attachment.service.js';
 import type { AiIntakeParser } from './ai-parser.js';
 import type { ProcessClassifier } from './process-classifier.js';
+import type { AttachmentTextReader } from './attachment-text.js';
+import {
+  fileNamedDraft,
+  hasReadableText,
+  readIntakeAttachments,
+  readStatuses,
+} from './intake.attachments.js';
 import { confirmBatch } from './intake.confirm.js';
+import { parseInput, parseIntake } from './intake.parse.js';
 import {
   draftsOf,
   findBatch,
@@ -46,22 +63,24 @@ import {
   setBatchStatus,
 } from './intake.records.js';
 import { validateDrafts } from './intake.validation.js';
-import type {
-  IntakeParseInput,
-  IntakeParseOutcome,
-  IntakeParser,
-} from './parser.js';
+import type { IntakeParser } from './parser.js';
 
 const MAX_RAW_CONTENT = 200_000;
 const LIST_LIMIT = 50;
+
+/** NP-78: the batch views carry the files that travel with the batch. */
+export type IntakeBatchDetailV4 = IntakeBatchDetail &
+  IntakeBatchAttachmentsField;
+export type CreateIntakeBatchResponseV4 = CreateIntakeBatchResponse &
+  IntakeBatchAttachmentsField;
 
 export interface IntakeService {
   create(
     actor: Actor,
     input: CreateIntakeBatchRequestV4,
-  ): Promise<CreateIntakeBatchResponse>;
+  ): Promise<CreateIntakeBatchResponseV4>;
   list(actor: Actor, mine: boolean): Promise<IntakeBatch[]>;
-  get(actor: Actor, id: string): Promise<IntakeBatchDetail>;
+  get(actor: Actor, id: string): Promise<IntakeBatchDetailV4>;
   putDrafts(actor: Actor, id: string, drafts: unknown): Promise<IntakeDraft[]>;
   confirm(
     actor: Actor,
@@ -88,86 +107,15 @@ export interface IntakeDeps {
   readonly aiConfigured: () => boolean;
   /** Iteration 4: the process of each confirmed draft (heuristic only). */
   readonly classifier: ProcessClassifier;
-}
-
-function errorMessage(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  return text.slice(0, 500) || 'The AI parser failed.';
-}
-
-/** Runs the AI parser when it is available and allowed, falling back to the heuristic (never failing). */
-export async function parseIntake(
-  deps: IntakeDeps,
-  conn: Conn,
-  input: IntakeParseInput,
-  userId: string,
-): Promise<IntakeParseOutcome> {
-  let parseError: string | null = null;
-  let aiSessionId: string | null = null;
-  const useAi =
-    deps.ai !== null &&
-    deps.aiConfigured() &&
-    (await deps.settings.read(conn)).intakeParser === 'auto';
-  if (useAi && deps.ai) {
-    try {
-      const result = await deps.ai.parseAs(input, userId);
-      aiSessionId = result.sessionId || null;
-      if (result.drafts.length > 0)
-        return {
-          drafts: result.drafts,
-          parser: 'ai',
-          parseError: null,
-          aiSessionId,
-        };
-      parseError = 'The AI parser returned no drafts.';
-    } catch (error) {
-      parseError = errorMessage(error);
-    }
-  }
-  return {
-    drafts: await deps.heuristic.parse(input),
-    parser: 'heuristic',
-    parseError,
-    aiSessionId,
-  };
-}
-
-async function parseInput(
-  conn: Conn,
-  workflows: WorkflowService,
-  projectId: string | null,
-  rawContent: string,
-) {
-  const project = projectId
-    ? await conn.query
-        .selectFrom('projects')
-        .select(['name', 'description'])
-        .where('id', '=', projectId)
-        .executeTakeFirst()
-    : null;
-  const view = await workflows.forProject(conn, projectId);
-  const labels = await conn.query
-    .selectFrom('issueLabels')
-    .select('name')
-    .orderBy('name', 'asc')
-    .execute();
-  return {
-    rawContent,
-    project: project
-      ? { name: str(project.name) ?? '', description: str(project.description) }
-      : null,
-    workflow: {
-      name: view.workflow.name,
-      statuses: view.catalog.map((entry) => entry.key),
-    },
-    labels: labels.map((row) => str(row.name) ?? ''),
-  };
+  /** NP-78: reads attached files for the AI parser; null = files travel with the batch unread. */
+  readonly attachmentText: AttachmentTextReader | null;
 }
 
 async function source(
   conn: Conn,
   viewer: Viewer,
   input: CreateIntakeBatchRequestV4,
+  allowEmpty = false,
 ): Promise<{
   rawContent: string;
   projectId: string | null;
@@ -185,8 +133,13 @@ async function source(
   }
   if (input?.source !== 'paste')
     throw invalid('INVALID_FIELD', 'source must be paste or issue.');
-  if (typeof input.rawContent !== 'string' || !input.rawContent.trim())
+  if (typeof input.rawContent !== 'string')
     throw invalid('INVALID_FIELD', 'rawContent is required.');
+  if (!input.rawContent.trim() && !allowEmpty)
+    throw invalid(
+      'INVALID_FIELD',
+      'rawContent is required unless an attached file can be read.',
+    );
   if (input.rawContent.length > MAX_RAW_CONTENT)
     throw invalid('INVALID_FIELD', 'rawContent is too long.');
   const projectId = input.projectId ?? null;
@@ -206,22 +159,61 @@ async function create(
   deps: IntakeDeps,
   actor: Actor,
   input: CreateIntakeBatchRequestV4,
-): Promise<CreateIntakeBatchResponse> {
+): Promise<CreateIntakeBatchResponseV4> {
+  const attachmentIds =
+    input?.attachmentIds === undefined
+      ? []
+      : validateFileIds(input.attachmentIds, 'attachmentIds');
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
-  const origin = await source(conn, viewer, input);
+  // NP-78: the files are checked to be the caller's own before any is read, then read for the AI parser.
+  const attachments = await readIntakeAttachments(
+    deps.attachmentText,
+    conn,
+    actor,
+    attachmentIds,
+  );
+  const origin = await source(
+    conn,
+    viewer,
+    input,
+    hasReadableText(attachments),
+  );
   const outcome = await parseIntake(
     deps,
     conn,
-    await parseInput(conn, deps.workflows, origin.projectId, origin.rawContent),
+    {
+      ...(await parseInput(
+        conn,
+        deps.workflows,
+        origin.projectId,
+        origin.rawContent,
+      )),
+      ...(attachments.texts
+        ? {
+            attachments: {
+              documents: attachments.texts.documents,
+              unreadNames: attachments.texts.unreadNames,
+            },
+          }
+        : {}),
+    },
     viewer.userId,
   );
+  const drafts =
+    outcome.drafts.length === 0 && !origin.rawContent.trim()
+      ? fileNamedDraft(attachments)
+      : outcome.drafts;
   const process =
     input?.process === undefined || input.process === null
       ? undefined
       : validateProcess(input.process, true);
   // A batch split from an issue hangs every draft directly under that issue; `process` fills the drafts' gaps.
-  const parsed = outcome.drafts.map((draft) => ({
+  const parsed: {
+    position: number;
+    parentPosition: number | null;
+    fields: IntakeDraftFieldsV4;
+  }[] = drafts.map((draft) => ({
     ...draft,
     parentPosition: origin.sourceIssueId ? null : draft.parentPosition,
     fields:
@@ -229,6 +221,14 @@ async function create(
         ? { ...draft.fields, process }
         : draft.fields,
   }));
+  // NP-78: every uploaded file starts on the first top-level draft; the editor can move it to another one.
+  const holder =
+    parsed.find((draft) => draft.parentPosition === null) ?? parsed[0];
+  if (holder && attachmentIds.length > 0)
+    parsed[parsed.indexOf(holder)] = {
+      ...holder,
+      fields: { ...holder.fields, attachmentIds },
+    };
   const id = deps.ids.next();
   await deps.tx.run(async (tx) => {
     const drafts = await validateDrafts(
@@ -259,6 +259,13 @@ async function create(
         updatedAt: timestamp,
       })
       .execute();
+    await claimFilesForBatch(
+      tx,
+      actor,
+      id,
+      attachmentIds,
+      readStatuses(attachments),
+    );
     await replaceDrafts(tx, deps.ids, id, drafts);
   });
   const read = deps.tx.read();
@@ -266,6 +273,7 @@ async function create(
     batch: await findBatch(read, id),
     drafts: await draftsOf(read, id),
     parser: outcome.parser,
+    attachments: await intakeBatchAttachments(read, id),
   };
 }
 
@@ -375,7 +383,11 @@ export function createIntakeService(deps: IntakeDeps): IntakeService {
     async get(actor, id) {
       const conn = deps.tx.read();
       const { batch } = await ownBatch(conn, actor, id);
-      return { batch, drafts: await draftsOf(conn, id) };
+      return {
+        batch,
+        drafts: await draftsOf(conn, id),
+        attachments: await intakeBatchAttachments(conn, id),
+      };
     },
     async putDrafts(actor, id, drafts) {
       return deps.tx.run(async (tx) => {

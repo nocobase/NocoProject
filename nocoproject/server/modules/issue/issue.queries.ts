@@ -36,6 +36,7 @@ import {
 import type { SettingsService } from '../system/settings.service.js';
 import type { UserDirectory } from '../shared/users.js';
 import type { CommentService } from '../collaboration/comment.service.js';
+import { agentAttachments } from '../attachment/attachment.records.js';
 import { claimedPullRequests } from '../git/git.records.js';
 import { claimedProject } from '../project/project.records.js';
 import { agentNames, runSummariesForIssue } from '../run/run.queries.js';
@@ -201,6 +202,7 @@ async function forAgent(
     pullRequests: await claimedPullRequests(conn, issue.id),
     process: issue.process,
     designApprovedAt: issue.designApprovedAt,
+    attachments: await agentAttachments(conn, issue.id),
   };
 }
 

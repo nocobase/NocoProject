@@ -96,6 +96,7 @@ const npDesignEnUS = {
     subtask: 'Sub-issue',
     dependency: 'Blocker',
     pullRequest: 'Pull request',
+    attachment: 'Attachment',
     none: 'none',
   },
   live: {

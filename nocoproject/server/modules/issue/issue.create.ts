@@ -16,6 +16,7 @@ import {
   validateStage,
 } from '../shared/validate.js';
 import { requireLabels } from '../label/label.service.js';
+import { validateFileIds } from '../attachment/attachment.service.js';
 import {
   resolveExecutor,
   resolveOwner,
@@ -43,6 +44,8 @@ export function validateCreate(input: CreateIssueRequestV4): void {
     validateBoolean(input.autoExecuteSubtasks, 'autoExecuteSubtasks');
   if (input.blockedBy !== undefined) stringList(input.blockedBy, 'blockedBy');
   if (input.labelIds !== undefined) stringList(input.labelIds, 'labelIds');
+  if (input.attachmentIds !== undefined)
+    validateFileIds(input.attachmentIds, 'attachmentIds');
   if (
     input.executionMode !== undefined &&
     !EXECUTION_MODES.includes(input.executionMode)
