@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 从开发机手动把当前检出部署到 ali-agents 服务器（https://project.nocobase.cn/main）。说明见 docs/deploy.md。
-# CI 自动部署接入之前这是唯一的发布方式；接入之后用于同步服务器脚本和应急发布。
+# 平时由 CI 在 main 通过后自动部署（.github/workflows/ci.yml 的 deploy 作业）；这个脚本用于同步服务器脚本和应急发布。
 #
 #   pnpm deploy:server                          # 构建、上传、部署
 #   NP_DEPLOY_SKIP_BUILD=1 pnpm deploy:server   # 复用已有的 linux-x64 dist/

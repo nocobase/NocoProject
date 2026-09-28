@@ -30,11 +30,18 @@ Docker 是 rootless 的：容器以 `--user 0:0` 运行，对应宿主机的 `ag
 
 ## 发布新版本
 
-在开发机的 `nocoproject/` 目录，检出要发布的提交（通常是 main）：
+**自动：** 推到 main（合并 PR）后，CI 的 `app` 与 `cli` 通过，`deploy` 作业就在 GitHub 的机器上构建 `linux-x64` 的 `dist/`，打成 tar 经 SSH 传给服务器的 `np-deploy`（镜像标签是 7 位提交号）。结果在 Actions 运行记录和仓库的 production 环境里看，失败时 GitHub 发邮件。main 上的 CI 运行不会被新推送取消，部署作业串行排队。
+
+- 部署密钥：仓库 secret `NP_DEPLOY_SSH_KEY`（私钥）与 `NP_DEPLOY_KNOWN_HOSTS`（服务器主机指纹），走公网 `agents@47.236.77.169`。服务器 `~/.ssh/authorized_keys` 里这把公钥带 `command="/home/agents/nocoproject/bin/np-ci-deploy",restrict`，只能执行 `deploy <提交号>`，不能开 shell、转发端口。
+- 换密钥：`ssh-keygen -t ed25519` 生成新的一对，替换 authorized_keys 里注释为 `github-actions deploy zhouyanliang/NocoProject` 的那行，再 `gh secret set NP_DEPLOY_SSH_KEY < 私钥`，删掉本地私钥。
+
+**手动（应急、或同步服务器脚本）：** 在开发机的 `nocoproject/` 目录，检出要发布的提交：
 
 ```bash
 pnpm deploy:server
 ```
+
+`scripts/server/` 里的脚本只由手动部署同步到服务器，改了它们要手动部署一次（或 `NP_DEPLOY_SCRIPTS_ONLY=1 pnpm deploy:server`）。
 
 `scripts/deploy-server.sh` 按 `linux-x64` / Node 24 构建 `dist/`，rsync 到服务器，用仓库的 Dockerfile（`DIST=prebuilt`）打镜像 `nocoproject:<短提交号>`，替换应用容器并等健康检查通过。约 3 分钟；替换期间服务中断约 30 秒，守护进程会自动重连。迁移随应用启动自动执行。`NP_DEPLOY_SKIP_BUILD=1` 复用已有的 linux-x64 构建。
 

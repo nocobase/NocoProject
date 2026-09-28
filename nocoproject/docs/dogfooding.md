@@ -46,6 +46,7 @@ Agent 跑在谁的电脑上，就在那台电脑的检出里看效果；服务�
 
 - CI：`.github/workflows/ci.yml`（`app` 带 PostgreSQL 服务容器；`cli`），每次推送与 PR 都跑。分支保护在私有仓库需要 GitHub Pro，未开启；合并前看 PR 上的检查结果。
 - Webhook：仓库设置里的正式 webhook（id 686895797）推到 `https://project.nocobase.cn/main/np/webhooks/github`，事件 `pull_request`、`check_suite`、`status`；secret 与“设置 → GitHub”里保存的一致，原件在开发机 `~/.nocoproject/github-webhook-secret`（600）。投递记录：`gh api repos/zhouyanliang/NocoProject/hooks/686895797/deliveries`。
+- 发布：合并到 main 后 CI 通过即自动部署到服务器（部署前备份、失败自动回滚，见 [deploy.md](deploy.md)）。Agent 只到开 PR 为止，不部署。
 - 合并 PR 由负责人做；合并后 webhook 把任务改为 done（`prMergedStatus`）。
 
 ## 设置
