@@ -1136,3 +1136,9 @@ export * from './protocol.phase1-iter3-server.js';
 export * from './protocol.phase1-iter4.js';
 // 服务端专用的组合类型（CLI 的 sync-protocol 去掉这一行）
 export * from './protocol.phase1-iter4-server.js';
+
+// ---------- Phase 2 工作流阶段动作（NP-77） ----------
+
+export * from './protocol.phase2-workflow.js';
+// 服务端专用的组合类型（CLI 的 sync-protocol 去掉这一行）
+export * from './protocol.phase2-workflow-server.js';

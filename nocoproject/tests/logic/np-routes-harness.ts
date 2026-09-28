@@ -15,6 +15,7 @@ import {
   npAgentEnvServiceToken,
   npAgentIssueServiceToken,
   npAgentServiceToken,
+  npAttachmentServiceToken,
   npApprovalGatewayToken,
   npGitConnectionServiceToken,
   npIntakeServiceToken,
@@ -24,6 +25,7 @@ import {
   npUsageServiceToken,
   npWorkspaceSettingsServiceToken,
   npDeliveryServiceToken,
+  npChecklistServiceToken,
   npDesignServiceToken,
   npPmServiceToken,
   npPullRequestMergeServiceToken,
@@ -251,6 +253,8 @@ export async function build(
   container.instance(npDesignServiceToken, {} as never);
   container.instance(npPmServiceToken, {} as never);
   container.instance(npPullRequestMergeServiceToken, {} as never);
+  container.instance(npChecklistServiceToken, {} as never);
+  container.instance(npAttachmentServiceToken, {} as never);
   const router = await contribution.createRouter({
     container,
     publicBasePath: '/main',

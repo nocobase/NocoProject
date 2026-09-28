@@ -22,7 +22,7 @@ import type {
   AgentContextResponseV1,
   BoardGroupV3Server,
   CommentPage,
-  IssueDetailV4Paged,
+  IssueDetailV5Paged,
   IssueForAgentV4,
   IssueListItemV2,
   IssueListPageV3,
@@ -40,6 +40,7 @@ import {
 import type { SettingsService } from '../system/settings.service.js';
 import type { UserDirectory } from '../shared/users.js';
 import type { CommentService } from '../collaboration/comment.service.js';
+import { agentAttachments } from '../attachment/attachment.records.js';
 import { claimedPullRequests } from '../git/git.records.js';
 import { claimedProject } from '../project/project.records.js';
 import { agentNames, runSummariesForIssue } from '../run/run.queries.js';
@@ -81,7 +82,7 @@ export interface IssueQueries {
     filter: IssueListFilter,
     options?: BoardOptions,
   ): Promise<{ groups: BoardGroupV3Server[] }>;
-  detail(actor: Actor, idOrKey: string): Promise<IssueDetailV4Paged>;
+  detail(actor: Actor, idOrKey: string): Promise<IssueDetailV5Paged>;
   /** `GET /np/issues/:id/activities`. */
   activities(
     actor: Actor,
@@ -205,13 +206,14 @@ async function forAgent(
     pullRequests: await claimedPullRequests(conn, issue.id),
     process: issue.process,
     designApprovedAt: issue.designApprovedAt,
+    attachments: await agentAttachments(conn, issue.id),
   };
 }
 
 async function issueQueryDetail(
   deps: IssueQueryDeps,
   ...[actor, idOrKey]: Parameters<IssueQueries['detail']>
-): Promise<IssueDetailV4Paged> {
+): Promise<IssueDetailV5Paged> {
   const conn = deps.tx.read();
   const viewer = await viewerOf(conn, actor);
   const issue = await requireVisibleIssue(conn, viewer, idOrKey);

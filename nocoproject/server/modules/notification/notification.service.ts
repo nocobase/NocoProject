@@ -23,6 +23,7 @@
  * | knowledge_proposal  | decision | project lead(s), else owner/admin | an agent proposed a knowledge change (iteration 3) |
  * | knowledge_decided   | info     | source issue owner | the proposal was accepted or rejected                     |
  * | design_review       | decision | owner              | the issue enters proposal_review (iteration 4, `design-notices.ts`) |
+ * | stage_entered, stage_action_problem, approval_stale | info | owner / approvers | workflow stage actions (Phase 2, `stage-notices.ts`) |
  *
  * Nobody is notified of their own action. Decision items resolve when the matching action is done (status leaves
  * in_review / blocked; every proposal on the parent decided; the approval request decided or cancelled; the PR merged
@@ -62,6 +63,11 @@ import {
   onKnowledgeProposed,
 } from './knowledge-notices.js';
 import { Round, type NotificationDeps } from './round.js';
+import {
+  onApprovalStale,
+  onStageActionReported,
+  onStageEntered,
+} from './stage-notices.js';
 
 export type { NotificationDeps } from './round.js';
 
@@ -330,7 +336,9 @@ async function onProposal(
   await round.notify(
     anchor,
     [anchor.ownerUserId],
-    { type: 'agent', id: event.proposedByAgentId },
+    event.proposedByAgentId
+      ? { type: 'agent', id: event.proposedByAgentId }
+      : SYSTEM,
     {
       type: 'proposal_pending',
       kind: 'decision',
@@ -417,6 +425,12 @@ async function handle(round: Round, event: DomainEvent): Promise<void> {
       return onDesignProposed(round, event);
     case 'design.decided':
       return onDesignDecided(round, event);
+    case 'issue.stageEntered':
+      return onStageEntered(round, event);
+    case 'issue.stageActionReported':
+      return onStageActionReported(round, event);
+    case 'approval.stale':
+      return onApprovalStale(round, event);
     default:
       return;
   }

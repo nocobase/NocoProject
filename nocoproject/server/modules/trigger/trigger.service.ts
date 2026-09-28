@@ -17,6 +17,7 @@
  * | Run failed with a retryable reason, attempts left                   | new run, `retryOfRunId`, `retry` (never gated) |
  * | A new `blockedBy` dependency leaves the issue blocked               | its queued / deferred runs are withdrawn (cancelled, `blocked`); activity `run_deferred_blocked` |
  * | Design approved; issue enters done (iteration 4)                    | `designApproved` / `retrospective` (`trigger/retrospective.ts`) |
+ * | Any status write enters a status with stage actions (Phase 2)       | `stageEntered` and the other effects (`workflow/stage-actions.ts`) |
  *
  * Coalescing into an existing pending run, and "a running run makes the new one wait", are enforced by
  * `run.enqueue` and the claim SQL.
@@ -44,6 +45,9 @@ import type {
 import { blockersOf } from '../subtask/blocking.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 import type { SettingsService } from '../system/settings.service.js';
+import type { IdSource } from '../shared/ids.js';
+import type { UserDirectory } from '../shared/users.js';
+import { onStageEntered } from '../workflow/stage-actions.js';
 import { onTerminalEntered, releaseIfUnblocked } from './release.js';
 import { designApprovedRun, retrospectiveRun } from './retrospective.js';
 
@@ -109,8 +113,11 @@ export interface TriggerDeps {
   readonly runs: () => RunService;
   readonly workflows: WorkflowService;
   readonly activity: ActivityRecorder;
-  /** Iteration 4: `retrospectiveOnDone`, `pmAgentId`. */
+  /** Iteration 4: `retrospectiveOnDone`, `pmAgentId`; Phase 2: the stage run loop guard. */
   readonly settings: SettingsService;
+  /** Phase 2: the stage effects (checklist rows, workflow suggestions, executor names). */
+  readonly ids: IdSource;
+  readonly users: UserDirectory;
 }
 
 export interface EnqueueTarget {
@@ -388,12 +395,17 @@ export function createTriggerService(deps: TriggerDeps): TriggerService {
       const { before, after } = change;
       if (before.statusKey === after.statusKey) return [];
       const view = await deps.workflows.forIssue(tx.conn, after);
+      const staged = await onStageEntered({ ...deps, enqueue }, tx, {
+        ...change,
+        view,
+      });
       if (
         !view.isTerminal(after.statusKey) ||
         view.isTerminal(before.statusKey)
       )
-        return [];
+        return staged;
       return [
+        ...staged,
         ...(await onTerminalEntered({ ...deps, enqueue }, tx, after)),
         ...(await retrospectiveRun({ ...deps, enqueue }, tx, change)),
       ];

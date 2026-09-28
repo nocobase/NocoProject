@@ -2,6 +2,7 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { ExternalLinkIcon, SendIcon } from 'lucide-react';
 import { type ReactElement, useState } from 'react';
 
+import { modifierKeyLabel } from '@/components/np-shortcut-keys';
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Spinner } from '@/components/ui/spinner';
@@ -95,7 +96,7 @@ export function DecisionActionsBar({
         />
         <div className='flex flex-wrap items-center justify-end gap-2'>
           <span className='mr-auto text-xs text-muted-foreground'>
-            <Kbd>⌘</Kbd> <Kbd>Enter</Kbd>
+            <Kbd>{modifierKeyLabel()}</Kbd> <Kbd>Enter</Kbd>
           </span>
           <Button
             variant='ghost'

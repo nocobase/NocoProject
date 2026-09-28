@@ -19,3 +19,12 @@ export function isSearchShortcut(
     event.key.toLowerCase() === 'k'
   );
 }
+
+/** The modifier to show next to a shortcut that accepts ⌘ or Ctrl: ⌘ on Apple devices, Ctrl elsewhere. */
+export function modifierKeyLabel(
+  platform: string = typeof navigator === 'undefined'
+    ? ''
+    : navigator.platform || navigator.userAgent,
+): '⌘' | 'Ctrl' {
+  return /mac|iphone|ipad|ipod/iu.test(platform) ? '⌘' : 'Ctrl';
+}

@@ -38,7 +38,7 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 - A record's page is a covering `RouteChildPage`. The issue and knowledge details use `NpDetailLayout` (main column `flex-1 min-w-0`, side column fixed `20rem` holding small cards, sticky below the page header from `lg` up unless taller than the viewport, one column below `lg`); the project detail is a header, `NpTabBar` and the tab's content.
 - **One scroll container.** The covering page scrolls as a whole; neither column scrolls on its own. The issue composer is `sticky bottom-0` inside the main column.
 - The main column starts with `Breadcrumbs` and the record's `text-2xl` title, then one meta line (identifier, status, project, and `NpLiveRun` while a run is active). Blocks are bordered cards (`rounded-lg border bg-card p-4`) headed by `NpSectionHeading`, `space-y-6` apart.
-- **Empty sections take no room.** No description is one muted row with "edit"; empty sub-issues fold into one dashed row with its actions; pull requests and dependencies render only with content or once revealed from the "添加" chips under the description; approvals and proposals render only when pending.
+- **Empty sections take no room.** No description is one muted row with "edit"; empty sub-issues fold into one dashed row with its actions; attachments (right under the description, NP-78), pull requests and dependencies render only with content or once revealed from the "添加" chips under the description; approvals and proposals render only when pending.
 - Loading uses `NpDetailSkeleton`; 404/403 uses an error with "back to the list".
 
 ## 4. Decisions

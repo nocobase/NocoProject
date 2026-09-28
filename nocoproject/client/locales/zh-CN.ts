@@ -344,6 +344,8 @@ const zhCN: AppResource = {
         designSkipped: '跳过了方案设计',
         retrospectiveDone: '写了任务总结',
         prMergeRequested: '请求合并（squash）',
+        attachmentAdded: '添加了附件',
+        attachmentRemoved: '移除了附件',
         updated: '更新了任务',
       },
       run: {

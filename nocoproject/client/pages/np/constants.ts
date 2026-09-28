@@ -179,6 +179,8 @@ export const npKeys = {
     ['np', 'issues', 'list', filters] as const,
   board: (filters: IssueFilters) => ['np', 'issues', 'board', filters] as const,
   issue: (id: string) => ['np', 'issue', id] as const,
+  /** NP-78: under `issue(id)`, so the issue's realtime refresh refetches it. */
+  issueAttachments: (id: string) => ['np', 'issue', id, 'attachments'] as const,
   agents: ['np', 'agents'] as const,
   runtimes: ['np', 'runtimes'] as const,
   run: (id: string) => ['np', 'run', id] as const,

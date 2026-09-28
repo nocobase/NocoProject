@@ -91,6 +91,7 @@ const npDesignZhCN: NpDesignResource = {
     subtask: '子任务',
     dependency: '前置依赖',
     pullRequest: '关联 PR',
+    attachment: '附件',
     none: '无',
   },
   live: {

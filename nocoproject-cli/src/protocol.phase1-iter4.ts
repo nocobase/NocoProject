@@ -240,11 +240,15 @@ export type UpdateWorkspaceSettingsRequestV4 =
 /** 草稿字段追加 `process`（缺省 = settings.defaultProcess；auto 在确认时用启发式分类） */
 export type IntakeDraftFieldsV4 = IntakeDraftFields & {
   readonly process?: DefaultProcess;
+  /** NP-78：确认时挂到这条草稿建出的任务的批次附件 */
+  readonly attachmentIds?: readonly string[];
 };
 
 /** `POST /np/intake/batches` 追加 `process`：写进每条没有 `process` 的草稿 */
 export type CreateIntakeBatchRequestV4 = CreateIntakeBatchRequest & {
   readonly process?: DefaultProcess;
+  /** NP-78：见 `IntakeBatchAttachment` */
+  readonly attachmentIds?: readonly string[];
 };
 
 // ---------- 在任务页与收件箱合并 PR（NP-85） ----------
@@ -323,6 +327,91 @@ export type InboxActionV4 = InboxAction & {
   /** `confirm: 'prMerge'` 时：要合并的 PR */
   readonly pullRequestId?: string;
 };
+// ---------- 任务附件（NP-78） ----------
+
+/**
+ * `GET /np/issues/:id/attachments` 的一项。文件本身由 `POST /api/npFiles:uploadOne`（multipart，字段名 `file`，每次一个）上传，
+ * 上传后未挂任务，只有上传者可见；`contentUrl`（`/uploads/np/<uuid>.<ext>`，含应用前缀）按所属任务的可见性鉴权。
+ */
+export interface IssueAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly ext: string;
+  readonly mimeType: string;
+  readonly size: number;
+  readonly contentUrl: string;
+  readonly uploadedById: string | null;
+  readonly uploadedByName: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  /** 调用者可以移除（上传者、任务负责人、项目负责人、owner/admin） */
+  readonly canDelete: boolean;
+}
+
+/** `POST /np/issues/:id/attachments`：只能挂调用者自己上传、尚未挂任务的文件 */
+export interface AttachFilesRequest {
+  readonly fileIds: readonly string[];
+}
+
+/** `POST /np/issues` 追加：建任务时一并挂上的文件（同上规则） */
+export interface CreateIssueAttachmentFields {
+  readonly attachmentIds?: readonly string[];
+}
+
+/** Agent 读任务时看到的附件元数据（本期不提供内容下载） */
+export interface AgentAttachmentInfo {
+  readonly filename: string;
+  readonly mimeType: string;
+  readonly size: number;
+}
+export interface IssueForAgentAttachmentFields {
+  readonly attachments: readonly AgentAttachmentInfo[];
+}
+
+/**
+ * AI 整理（批量录入）带附件：`POST /np/intake/batches` 追加 `attachmentIds`（调用者自己上传、未挂任务、未进其它批次），
+ * 文件跟着批次走；解析出的第一条顶层草稿的 `fields.attachmentIds` 先拿到全部文件，可以在草稿之间移动。确认时每个文件挂到
+ * 它所在草稿建出的任务；不在任何草稿里的文件挂到第一个建出的任务。
+ *
+ * 批次详情（`GET /np/intake/batches/:id`、创建的响应）追加 `attachments`，每项如下。
+ */
+export interface IntakeBatchAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly ext: string;
+  readonly mimeType: string;
+  readonly size: number;
+  readonly contentUrl: string;
+  /** 已挂到的任务（批次确认后） */
+  readonly issueId: string | null;
+  /** AI 整理读取这个文件的结果（批次创建时写入；旧批次为 null） */
+  readonly readStatus: IntakeAttachmentReadStatus | null;
+}
+
+/**
+ * AI 整理读附件的结果：`read` 已读、`truncated` 已读但截断、`empty` 没读到文字（如扫描版 PDF）、`unsupported`
+ * 不支持的格式（图片等，只把文件名给模型）、`legacy` 老 Office 格式（doc / xls / ppt）、`failed` 读取失败、
+ * `skipped` 合计字数已满未读。
+ */
+export type AttachmentReadState =
+  | 'read'
+  | 'truncated'
+  | 'empty'
+  | 'unsupported'
+  | 'legacy'
+  | 'failed'
+  | 'skipped';
+export interface IntakeAttachmentReadStatus {
+  readonly state: AttachmentReadState;
+  /** 交给模型的字数 */
+  readonly chars: number;
+}
+export interface IntakeBatchAttachmentsField {
+  readonly attachments: readonly IntakeBatchAttachment[];
+}
+
+/** 单次最多挂的文件数 */
+export const MAX_ATTACHMENTS_PER_REQUEST = 10;
 
 // ---------- 追加的枚举值 ----------
 
@@ -339,7 +428,9 @@ export type ActivityActionPhase1Iter4 =
   | 'design_approved'
   | 'design_changes_requested'
   | 'retrospective_done'
-  | 'pr_merge_requested';
+  | 'pr_merge_requested'
+  | 'attachment_added'
+  | 'attachment_removed';
 
 // ---------- 错误码 ----------
 
@@ -357,3 +448,4 @@ export const ERROR_PR_NOT_MERGEABLE = 'PR_NOT_MERGEABLE';
 export const ERROR_PR_CHANGED = 'PR_CHANGED';
 /** 409：令牌缺少 Contents 与 Pull requests 的写权限 */
 export const ERROR_GITHUB_MERGE_FORBIDDEN = 'GITHUB_MERGE_FORBIDDEN';
+export const ERROR_INVALID_ATTACHMENT = 'INVALID_ATTACHMENT';

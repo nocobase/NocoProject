@@ -305,9 +305,26 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
       defaultProcess: 'auto',
       pmAgentId: null,
       retrospectiveOnDone: true,
+      // Phase 2 (NP-77): the stage run loop guard.
+      stageRunLimit: 3,
+      stageRunWindowHours: 24,
       issuePrefix: 'NP',
       canEdit: false,
     });
+    await expect(
+      services.workspaceSettings.update(ALICE, { stageRunLimit: 0 }),
+    ).rejects.toMatchObject({ code: 'INVALID_FIELD' });
+    await expect(
+      services.workspaceSettings.update(ALICE, {
+        stageRunWindowHours: 1.5,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_FIELD' });
+    expect(
+      await services.workspaceSettings.update(ALICE, {
+        stageRunLimit: 5,
+        stageRunWindowHours: 12,
+      }),
+    ).toMatchObject({ stageRunLimit: 5, stageRunWindowHours: 12 });
     await expect(
       services.workspaceSettings.update(BOB, { intakeParser: 'heuristic' }),
     ).rejects.toMatchObject({

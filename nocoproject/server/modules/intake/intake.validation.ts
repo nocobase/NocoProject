@@ -7,7 +7,8 @@
  * title required and at most 200 characters; `parentPosition` must name an earlier draft; `stage` only on a draft
  * with a parent (a batch split from an issue gives every draft one); priority in the enum; labels are short
  * strings; an agent executor must be one the member who entered the batch may invoke; users must exist. Iteration 4:
- * `process` is auto, direct or design_first; a project manager agent cannot be the executor.
+ * `process` is auto, direct or design_first; a project manager agent cannot be the executor. NP-78: `attachmentIds`
+ * holds at most 10 file ids (which of them belong to the batch is decided when it is confirmed).
  */
 import { canInvokeAgent, loadAgentAccess } from '../shared/authz.js';
 import type { Conn } from '../shared/db.js';
@@ -17,9 +18,13 @@ import type {
   IntakeDraftFieldsV4,
   IntakeDraftInput,
 } from '../shared/protocol.js';
-import { DEFAULT_PROCESSES } from '../shared/protocol.js';
+import {
+  DEFAULT_PROCESSES,
+  MAX_ATTACHMENTS_PER_REQUEST,
+} from '../shared/protocol.js';
 import type { UserDirectory } from '../shared/users.js';
 import { isIssuePriority } from '../issue/issue.records.js';
+import { isFileId } from '../attachment/attachment.records.js';
 import { MAX_DRAFTS, MAX_TITLE_LENGTH } from './parser.js';
 
 const MAX_LABEL_LENGTH = 64;
@@ -120,6 +125,15 @@ function fieldErrors(
     !(DEFAULT_PROCESSES as readonly unknown[]).includes(fields.process)
   )
     errors.push('process must be auto, direct or design_first');
+  if (fields.attachmentIds !== undefined) {
+    const ids = fields.attachmentIds as unknown;
+    if (
+      !Array.isArray(ids) ||
+      ids.length > MAX_ATTACHMENTS_PER_REQUEST ||
+      ids.some((id) => typeof id !== 'string' || !isFileId(id))
+    )
+      errors.push('attachmentIds must be up to 10 file ids');
+  }
   return errors;
 }
 
