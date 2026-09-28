@@ -38,7 +38,15 @@ pnpm deploy:server
 
 `scripts/deploy-server.sh` 按 `linux-x64` / Node 24 构建 `dist/`，rsync 到服务器，用仓库的 Dockerfile（`DIST=prebuilt`）打镜像 `nocoproject:<短提交号>`，替换应用容器并等健康检查通过。约 3 分钟；替换期间服务中断约 30 秒，守护进程会自动重连。迁移随应用启动自动执行。`NP_DEPLOY_SKIP_BUILD=1` 复用已有的 linux-x64 构建。
 
-回滚：服务器保留最近 3 个镜像，`docker images nocoproject` 查看，按脚本里的 `docker run` 参数换成旧标签重建容器即可（迁移不会自动回退）。
+服务器端的步骤在 `scripts/server/np-deploy`（部署时同步到 `~/nocoproject/bin/`，`NP_DEPLOY_SCRIPTS_ONLY=1 pnpm deploy:server` 只同步脚本）：先把数据库备份到 `~/nocoproject/backups/pre-deploy-<时间>-<提交>.dump`（留最近 10 份），再打镜像、替换容器、等健康检查；3 分钟内不健康就自动换回上一个镜像并以非零退出。自动回滚不回退数据库迁移，迁移出错时用这份备份恢复。同一时间只允许一个部署。
+
+回滚到更早的版本：服务器保留最近 3 个镜像（`docker images nocoproject`），`ssh ali-agents-ts '~/nocoproject/bin/np-deploy <旧标签>'` 直接用那个镜像替换容器（同样先备份、失败回滚）；更早的版本先检出那个提交再 `pnpm deploy:server`。
+
+## 备份
+
+- 每次部署前一份（见上）。
+- 每日一份：systemd 用户定时器 `nocoproject-backup.timer`（UTC 19:30，即北京时间 03:30）运行 `~/nocoproject/bin/np-backup`，写 `~/nocoproject/backups/daily-<日期>.dump`，保留 14 天。
+- 恢复：`docker exec -i nocoproject-postgres pg_restore -U nocoproject -d nocoproject --clean --if-exists < <备份文件>`，然后 `docker restart nocoproject-app`。备份只在这台服务器上，重要节点前可以 scp 一份到别处。
 
 ## 常用操作
 

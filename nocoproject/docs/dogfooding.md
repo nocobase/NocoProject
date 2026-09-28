@@ -6,11 +6,11 @@ NocoProject 的开发从此在 NocoProject 自己里进行。本文记录常驻�
 
 2026-09-28 起应用部署在 ali-agents 服务器：`https://project.nocobase.cn/main`（国内机器用 Tailscale 地址 `http://100.89.167.29:13001/main`）。布局、发布（`pnpm deploy:server`）、回滚与日志见 [deploy.md](deploy.md)。
 
-| 机器                 | 守护进程                                                                                                                   | 连接地址                           | 日志                                      |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------- |
-| ali-agents（服务器） | systemd 用户服务 `nocoproject-daemon`（claude、codex、opencode）                                                           | Tailscale 地址                     | `journalctl --user -u nocoproject-daemon` |
-| 开发机 zhou-air      | launchd `ai.nocobase.nocoproject-daemon`，等服务器健康检查通过后启动，显式 Node 24 路径（`/opt/homebrew/opt/node@24/bin`） | `https://project.nocobase.cn/main` | `~/Library/Logs/nocoproject/daemon.log`   |
-| dev                  | `nocoproject daemon start`（PATH 要含 `~/.local/bin`、`~/.opencode/bin`，否则找不到 codex / opencode）                     | Tailscale 地址                     | `~/.nocoproject/logs/daemon.log`          |
+| 机器                 | 守护进程                                                                                                                                  | 连接地址                           | 日志                                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| ali-agents（服务器） | systemd 用户服务 `nocoproject-daemon`（claude、codex、opencode，`--max-concurrent 3`：服务器 4 核 7G 还要跑应用），适合服务端与迁移类任务 | Tailscale 地址                     | `journalctl --user -u nocoproject-daemon`                                   |
+| 开发机 zhou-air      | launchd `ai.nocobase.nocoproject-daemon`，等服务器健康检查通过后启动，显式 Node 24 路径（`/opt/homebrew/opt/node@24/bin`）                | `https://project.nocobase.cn/main` | `~/Library/Logs/nocoproject/daemon.log`                                     |
+| dev（主力开发机）    | systemd 用户服务 `nocoproject-daemon`：claude（主力开发）与 opencode（项目经理），不跑 codex                                              | Tailscale 地址                     | `journalctl --user -u nocoproject-daemon`、`~/.nocoproject/logs/daemon.log` |
 
 开发机上原来的 `ai.nocobase.nocoproject-dev`（`pnpm dev`）与 `-webhook`（`gh webhook forward`）已停用，plist 仍在 `~/Library/LaunchAgents/`。本机开发需要时手动 `pnpm dev`，它连的是本机的开发库，不是服务器的数据。
 
