@@ -30,16 +30,16 @@ realtime.subscribe.mockImplementation(
 );
 
 describe('inbox navigation badge', () => {
-  it('shows the unread decision count and refreshes on np:inbox', async () => {
+  it('shows the pending decision count and refreshes on np:inbox', async () => {
     let decision = 3;
     api.request.mockImplementation(
       answer({
-        'GET np/inbox/unread-count': () => ({ data: { decision, info: 9 } }),
+        'GET np/inbox/pending-count': () => ({ data: { decision } }),
       }),
     );
     await renderNp(<NpInboxNavIcon />);
     expect(await screen.findByTestId('np-inbox-badge')).toHaveTextContent('3');
-    expect(screen.getByText('3 unread decisions')).toBeInTheDocument();
+    expect(screen.getByText('3 pending')).toBeInTheDocument();
 
     decision = 120;
     realtime.listeners.get('np:inbox')?.({
@@ -50,10 +50,10 @@ describe('inbox navigation badge', () => {
     );
   });
 
-  it('shows no badge without unread decisions or when the count fails', async () => {
+  it('shows no badge without pending decisions or when the count fails', async () => {
     api.request.mockImplementation(
       answer({
-        'GET np/inbox/unread-count': { data: { decision: 0, info: 4 } },
+        'GET np/inbox/pending-count': { data: { decision: 0 } },
       }),
     );
     const view = await renderNp(<NpInboxNavIcon />);

@@ -138,7 +138,7 @@ const npCollabZhCN: NpCollabResource = {
     emptyDescription: '验收请求、Agent 受阻和执行者建议会出现在这里。',
     unread: '未读',
     unreadCount: '{{count}} 条未读',
-    unreadDecisions: '{{count}} 条未读的待决定事项',
+    pendingDecisions: '{{count}} 项待处理',
     count: '×{{count}}',
     resolved: '已处理',
     actionsFor: '{{title}} 的操作',

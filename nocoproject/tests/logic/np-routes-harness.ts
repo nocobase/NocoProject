@@ -163,6 +163,7 @@ export function createDoubles() {
       nextCursor: null,
     })),
     unreadCount: vi.fn(async () => ({ decision: 1, info: 2 })),
+    pendingCount: vi.fn(async () => ({ decision: 3 })),
     mark: vi.fn(),
     readAll: vi.fn(),
     subscribe: vi.fn(),

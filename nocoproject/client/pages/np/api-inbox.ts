@@ -4,6 +4,7 @@ import type {
   InboxItem,
   InboxKind,
   InboxListResponse,
+  InboxPending,
   InboxUnread,
 } from './types.js';
 
@@ -65,6 +66,17 @@ export async function fetchInboxUnread(
   >({ path: 'np/inbox/unread-count', signal });
   const counts = body.data ?? body;
   return { decision: counts.decision ?? 0, info: counts.info ?? 0 };
+}
+
+/** `GET /np/inbox/pending-count`; accepts `{ data: { decision } }` or the count at the top level. */
+export async function fetchInboxPending(
+  api: ApiClient,
+  signal?: AbortSignal,
+): Promise<InboxPending> {
+  const body = await api.request<
+    { data?: Partial<InboxPending> } & Partial<InboxPending>
+  >({ path: 'np/inbox/pending-count', signal });
+  return { decision: (body.data ?? body).decision ?? 0 };
 }
 
 export async function applyInboxAction(

@@ -31,6 +31,9 @@ export function createInboxRoutes(inbox: InboxService): Hono<AuthEnv> {
   routes.get('/unread-count', async (context) =>
     context.json({ data: await inbox.unreadCount(sessionActor(context)) }),
   );
+  routes.get('/pending-count', async (context) =>
+    context.json({ data: await inbox.pendingCount(sessionActor(context)) }),
+  );
   routes.post('/read-all', async (context) => {
     let kind: unknown = null;
     const text = await context.req.text();

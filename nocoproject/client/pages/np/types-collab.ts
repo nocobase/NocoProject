@@ -153,6 +153,11 @@ export interface InboxUnread {
   readonly info: number;
 }
 
+/** `GET /np/inbox/pending-count`: decisions still waiting on the viewer (not resolved, not archived, read or not). */
+export interface InboxPending {
+  readonly decision: number;
+}
+
 export interface InboxListResponse {
   readonly data: readonly InboxItem[];
   readonly unread?: InboxUnread;

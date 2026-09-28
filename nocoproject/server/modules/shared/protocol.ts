@@ -1073,6 +1073,11 @@ export interface InboxUnreadCounts {
   readonly info: number;
 }
 
+/** `GET /np/inbox/pending-count`：仍等当前用户决定的项（未解决、未归档，已读也算），导航收件箱角标用 */
+export interface InboxPendingCounts {
+  readonly decision: number;
+}
+
 /** `GET /np/inbox` 的完整响应体（`unread`、`nextCursor` 与 `data` 同级） */
 export interface InboxListResponse {
   readonly data: readonly InboxItem[];
