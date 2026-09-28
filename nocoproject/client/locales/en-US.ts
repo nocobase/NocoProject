@@ -315,6 +315,10 @@ const enUS = {
       empty: 'No activity yet.',
       system: 'System',
       loadOlder: 'Load older activity',
+      via: {
+        cli: 'via CLI',
+        api_key: 'via API key',
+      },
       actions: {
         created: 'created the issue',
         statusChanged: 'changed the status',

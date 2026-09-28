@@ -11,13 +11,14 @@ import { registerPmCommands } from './pm.js';
 import { registerPrCommands } from './pr.js';
 import { registerProjectCommands } from './project.js';
 import { registerRepoCommands } from './repo.js';
+import { registerUserCommands } from './user.js';
 import { EXIT, printJson, printLine } from './output.js';
 
 export function buildProgram(): Command {
   const program = new Command();
   program
     .name('nocoproject')
-    .description('NocoProject CLI: local agent daemon and agent write-back commands')
+    .description('NocoProject CLI: local agent daemon, agent write-back commands, and the user mode (`user`)')
     .version(CLI_VERSION, '-v, --version', 'print the version')
     .showHelpAfterError()
     .exitOverride((err) => {
@@ -41,6 +42,7 @@ export function buildProgram(): Command {
   registerPrCommands(program);
   registerKbCommands(program);
   registerPmCommands(program);
+  registerUserCommands(program);
   return program;
 }
 
