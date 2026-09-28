@@ -30,6 +30,7 @@ import {
 } from '../constants.js';
 import { PropertySelect } from '../issues/detail/property-fields.js';
 import type { IntakeParserSetting, WorkspaceSettings } from '../types.js';
+import { ChimePreferenceSection } from './chime-preference.js';
 import { ConfigSectionHeading } from './config-section.js';
 import { ModelPricesTable } from './model-prices-table.js';
 import { PmSettingsFields } from './pm-settings-fields.js';
@@ -48,6 +49,7 @@ import { useWorkspaceViewer } from '../use-workspace-viewer.js';
  * moves its issue to, whether new issues let agents run the sub-issues they create, how batch entry parses text, the
  * model prices usage costs are estimated from, the metric thresholds (§C), and since iteration 4 the default process,
  * the project manager agent and the retrospective switch. Owner/admin edit; everyone else sees the values read-only.
+ * Above them sits the viewer's own inbox chime switch (NP-108), which every member can change.
  */
 export default function GeneralConfigTab(): ReactElement {
   const { t } = useTranslation();
@@ -81,14 +83,20 @@ export default function GeneralConfigTab(): ReactElement {
     );
   }
   return (
-    <section className='space-y-4' aria-labelledby='np-config-general-heading'>
-      <ConfigSectionHeading
-        id='np-config-general-heading'
-        title={t('np.settingsPage.title')}
-        description={t('np.settingsPage.description')}
-      />
-      {content}
-    </section>
+    <>
+      <ChimePreferenceSection />
+      <section
+        className='space-y-4 pt-4'
+        aria-labelledby='np-config-general-heading'
+      >
+        <ConfigSectionHeading
+          id='np-config-general-heading'
+          title={t('np.settingsPage.title')}
+          description={t('np.settingsPage.description')}
+        />
+        {content}
+      </section>
+    </>
   );
 }
 

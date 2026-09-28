@@ -292,8 +292,11 @@ describe('settings in the front end (§G)', () => {
       expect(within(tabs).queryByRole('link', { name: 'GitHub' })).toBeNull(),
     );
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    // Workspace switches are read-only; the viewer's own sound reminder stays editable (NP-108).
+    const chime = screen.getByRole('switch', { name: 'Sound reminder' });
+    expect(chime).not.toHaveAttribute('data-disabled');
     for (const control of screen.getAllByRole('switch')) {
-      expect(control).toHaveAttribute('data-disabled');
+      if (control !== chime) expect(control).toHaveAttribute('data-disabled');
     }
   });
 
