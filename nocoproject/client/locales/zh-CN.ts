@@ -302,6 +302,10 @@ const zhCN: AppResource = {
       empty: '暂无动态。',
       system: '系统',
       loadOlder: '加载更早的动态',
+      via: {
+        cli: '通过 CLI',
+        api_key: '通过 API Key',
+      },
       actions: {
         created: '创建了任务',
         statusChanged: '修改了状态',

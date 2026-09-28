@@ -637,3 +637,55 @@ describe('attachments (NP-78)', () => {
     );
   });
 });
+
+describe('activity source (NP-86)', () => {
+  it('marks activities written through the CLI or an API key, and only those', async () => {
+    api.request.mockImplementation(
+      (options: { path: string; method?: string }) => {
+        if (options.path === 'np/issues/101' && !options.method) {
+          return Promise.resolve({
+            data: {
+              ...DETAIL,
+              activities: [
+                {
+                  id: 'act-cli',
+                  actorType: 'user',
+                  actorId: 'u1',
+                  actorName: 'Ada',
+                  action: 'priority_changed',
+                  details: { via: 'cli' },
+                  createdAt: NOW,
+                },
+                {
+                  id: 'act-key',
+                  actorType: 'user',
+                  actorId: 'u1',
+                  actorName: 'Ada',
+                  action: 'title_changed',
+                  details: { via: 'api_key' },
+                  createdAt: NOW,
+                },
+                {
+                  id: 'act-browser',
+                  actorType: 'user',
+                  actorId: 'u1',
+                  actorName: 'Ada',
+                  action: 'description_changed',
+                  details: null,
+                  createdAt: NOW,
+                },
+              ],
+            },
+          });
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+
+    expect(await screen.findByText('via CLI')).toBeVisible();
+    expect(screen.getByText('via API key')).toBeVisible();
+    expect(screen.getAllByText(/^via /)).toHaveLength(2);
+    expect(screen.getByText('edited the description')).toBeVisible();
+  });
+});

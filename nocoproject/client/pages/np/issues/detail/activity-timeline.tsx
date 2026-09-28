@@ -67,6 +67,14 @@ export function ActivityTimeline({
   );
 }
 
+/** `details.via` (NP-86): set when the actor used an API key — the CLI user mode or another client — not the browser. */
+function activityVia(
+  details: IssueActivity['details'],
+): 'cli' | 'api_key' | null {
+  const via = details?.via;
+  return via === 'cli' || via === 'api_key' ? via : null;
+}
+
 export function ActivityRow({
   activity,
   statusCatalog,
@@ -86,11 +94,17 @@ export function ActivityRow({
       ? t('np.activity.system')
       : t('np.common.unknown'));
   const change = activityChange(activity.details);
+  const via = activityVia(activity.details);
   return (
     <div className='flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-sm text-muted-foreground'>
       <CircleDotIcon className='size-3.5 shrink-0' aria-hidden='true' />
       <NpActorAvatar type={activity.actorType} name={actor} size='xs' />
       <span className='font-medium text-foreground'>{actor}</span>
+      {via ? (
+        <span className='text-xs' data-np-via={via}>
+          {t(`np.activity.via.${via}`)}
+        </span>
+      ) : null}
       <span>{t(`np.activity.actions.${label}`)}</span>
       {STATUS_CHANGE_LABELS.has(label) && change.to ? (
         <>

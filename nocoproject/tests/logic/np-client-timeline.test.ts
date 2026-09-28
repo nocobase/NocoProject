@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeIssueDetail } from '../../client/pages/np/detail-normalize.ts';
+import {
+  DETAIL_POLL_MS,
+  detailRefetchInterval,
+  normalizeIssueDetail,
+  withComment,
+} from '../../client/pages/np/detail-normalize.ts';
 import {
   activityChange,
   activityLabel,
@@ -138,5 +143,72 @@ describe('mergeRunEvents', () => {
   it('returns the same list for an empty batch', () => {
     const current = [event(1)];
     expect(mergeRunEvents(current, [])).toBe(current);
+  });
+});
+
+describe('detail after posting a comment', () => {
+  const issue = {
+    id: '1',
+    identifier: 'NP-1',
+    title: 'T',
+    description: null,
+    statusKey: 'todo',
+    priority: 'none',
+    ownerUserId: 'u1',
+    executorType: 'none',
+    executorId: null,
+    revision: 1,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  } as const;
+  const comment = (id: string, parentId: string | null, at: string) => ({
+    id,
+    authorType: 'user' as const,
+    authorId: 'u1',
+    content: id,
+    parentId,
+    createdAt: at,
+  });
+
+  it('adds a new top-level comment and a reply into its thread, once', () => {
+    const detail = normalizeIssueDetail({
+      issue,
+      comments: [comment('c1', null, '2026-01-01T00:00:00Z')],
+    });
+    const withRoot = withComment(
+      detail,
+      comment('c2', null, '2026-01-02T00:00:00Z'),
+    );
+    expect(withRoot.threads.map((thread) => thread.root.id)).toEqual([
+      'c1',
+      'c2',
+    ]);
+    const withReply = withComment(
+      withRoot,
+      comment('c3', 'c1', '2026-01-03T00:00:00Z'),
+    );
+    expect(withReply.threads[0]?.replies.map((reply) => reply.id)).toEqual([
+      'c3',
+    ]);
+    expect(
+      withComment(withReply, comment('c3', 'c1', '2026-01-03T00:00:00Z')),
+    ).toBe(withReply);
+  });
+
+  it('polls only while a run is queued, dispatched or running', () => {
+    const run = (status: string) => ({
+      id: status,
+      agentId: 'a',
+      status,
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    const detailWith = (status: string) =>
+      normalizeIssueDetail({ issue, runs: [run(status)] as never });
+    expect(detailRefetchInterval(undefined)).toBe(false);
+    expect(detailRefetchInterval(normalizeIssueDetail({ issue }))).toBe(false);
+    for (const status of ['queued', 'dispatched', 'running'])
+      expect(detailRefetchInterval(detailWith(status))).toBe(DETAIL_POLL_MS);
+    for (const status of ['deferred', 'completed', 'failed', 'cancelled'])
+      expect(detailRefetchInterval(detailWith(status))).toBe(false);
   });
 });

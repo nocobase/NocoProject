@@ -148,6 +148,58 @@ nocoproject pm knowledge [--project <id>] [--q <text>] [--json]
 - Every command accepts `--json`. Errors are printed as `{"error":{"code","message","exitCode"}}`.
 - Exit codes: `0` ok, `1` other (including git failures), `2` network, `3` auth (missing or invalid token, 401/403, `MANAGER_ONLY`), `4` not found, `5` validation (bad input, 400/409/422, `TRANSITION_NOT_ALLOWED`, `DESIGN_NOT_APPROVED`, `REPO_NOT_ALLOWED`, `CONTEXT_MISSING`).
 
+## User mode (`nocoproject user`, NP-86)
+
+For a person at their own terminal, and for the Claude Code / Codex sessions they drive there. The commands call the
+browser API (`/api/np/*`) with the API key saved by `nocoproject login` (or `NOCOPROJECT_API_KEY`), so they act **as
+that person**, with exactly the permissions they have in the UI; the server adds none. There is no `--api-key` flag:
+change the key with `login --api-key-stdin`.
+
+```bash
+nocoproject user whoami [--json]                    # GET /np/me (+ serverUrl; never the key)
+nocoproject user issues [--mine] [--owner me|<userId>] [--project <name|id>] [--status <key>] [--label <name|id>] \
+  [--executor <agent name|id>] [--q <text>] [--limit n] [--cursor c] [--json]
+                                                    # GET /np/issues → { data, nextCursor }; no filter = --mine
+nocoproject user issue <NP-12> [--comments <n>|all] [--json]
+                                                    # GET /np/issues/:id (+ older /comments pages for `all`)
+nocoproject user inbox [--kind decision|info] [--all] [--cursor c] [--json]
+                                                    # GET /np/inbox (resolved=false unless --all)
+nocoproject user create --title T [--description-file F | --description D] [--project <name|id>] [--label a,b] \
+  [--executor <agent name|id>|none] [--owner me|<userId>] [--priority p] [--status key] [--parent NP-1] \
+  [--blocked-by NP-2,NP-3] [--json]                 # POST /np/issues (owner defaults to you on the server)
+nocoproject user comment <NP-12> (--content-file F | --content T) [--parent <commentId>] [--json]
+                                                    # POST /np/issues/:id/comments
+nocoproject user status <NP-12> <statusKey> [--json]
+                                                    # GET revision → PATCH /np/issues/:id { statusKey, revision }
+nocoproject user projects | labels | agents [--json]
+                                                    # names and ids for --project / --label / --executor
+nocoproject user skill install [--claude] [--codex] [--force] [--json]
+```
+
+- **Refused inside agent runs.** When `NOCOPROJECT_TOKEN` or `NOCOPROJECT_RUN_ID` is set (the daemon sets both for
+  every run), every `user` command exits 3 `USER_MODE_IN_RUN` before reading the config or sending anything; runs use
+  the run-token commands above. This guards the normal path only: an agent runs as the same OS user and could read
+  `~/.nocoproject/config.json` itself. Real isolation needs a separate OS user for the daemon or scoped keys.
+- **Traceable.** Requests send `x-api-key` and `x-np-client: nocoproject-cli/<version>` (never `Authorization`). The
+  server records the key owner as the actor and `details.via = 'cli'` on the activities the write produces (another
+  API-key client gets `'api_key'`); the issue timeline shows "via CLI". `via` is a label, never a permission.
+- **Handing work to an agent** (`create --executor <agent>`) is the person's own action, not "an agent triggering an
+  agent": it has their permissions, the run's asker is them, and the activity shows it came from the CLI. Agents
+  dispatched by NocoProject cannot take this path (see the refusal above), so delegation lists and approvals still hold
+  for them.
+- Names (`--project`, `--label`, `--executor`) match an id first, then a case-insensitive name; no match exits 4
+  `NAME_NOT_FOUND`, several exit 5 `AMBIGUOUS_NAME` — nothing is guessed. `--owner me` / the default "mine" use
+  `GET /np/me`. Labels are workspace-wide.
+- `status` retries once on `409 REVISION_CONFLICT`; `202` (approval gate) prints `approval pending (request <id>)` and
+  exits 0, like `issue status`.
+- `issue --comments <n>` (default 50) keeps the latest n of the detail's comments and adds `commentsOmitted` in JSON;
+  `all` pages through the older ones.
+- The key is registered for redaction as soon as it is read, so it never appears in output or errors.
+- `skill install` writes the bundled `nocoproject-user` skill (`skills/nocoproject-user/SKILL.md`, bundled into
+  `dist/cli.js` as text) to `~/.claude/skills/nocoproject-user/` and `~/.codex/skills/nocoproject-user/` (both unless
+  a flag picks one). An identical copy is left alone; a changed one needs `--force`. Re-run it after upgrading the CLI.
+- Exit codes and `--json` errors are the same as in run-token mode; `3` also covers `NOT_LOGGED_IN`.
+
 ## Repository checkout
 
 `nocoproject repo checkout <url>` runs in the agent process, not through the daemon:
