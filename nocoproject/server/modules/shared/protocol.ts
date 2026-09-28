@@ -1146,3 +1146,8 @@ export * from './protocol.phase2-workflow-server.js';
 // ---------- Phase 2 工作流模板提议（NP-77 stage 2） ----------
 
 export * from './protocol.phase2-workflow-proposals.js';
+
+// ---------- 邮箱邀请（NP-88） ----------
+
+// 服务端与浏览器专用（CLI 的 sync-protocol 去掉这一行）
+export * from './protocol.invitations-server.js';

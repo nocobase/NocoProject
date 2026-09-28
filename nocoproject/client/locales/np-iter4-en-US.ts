@@ -172,6 +172,83 @@ const npIter4EnUS = {
     defaultProcessHint:
       'Used when a new issue does not choose one. Automatic decides from the title and description.',
   },
+  // NP-88: email invitations (settings → members) and the page an invitation links to.
+  invitations: {
+    invite: 'Invite members',
+    dialogTitle: 'Invite members',
+    dialogDescription:
+      'Each address gets an email with a link to set a name and password. The link is valid for 7 days.',
+    emails: 'Email addresses',
+    emailsHint: 'One per line, or separated by commas or spaces. Up to 50.',
+    emailsRequired: 'Enter at least one email address.',
+    emailsInvalid: 'Not a valid email address: {{emails}}',
+    emailsTooMany: 'Up to 50 addresses at a time.',
+    projects: 'Projects',
+    projectsPlaceholder: 'Choose projects',
+    projectsHint: 'Invitees join these projects as members.',
+    noProjects: 'No projects',
+    projectRequired: 'Choose at least one project you lead.',
+    send: 'Send invitations',
+    sent: 'Invitations processed: {{number}}',
+    forbidden: 'You cannot invite into these projects.',
+    done: 'Done',
+    resultsLabel: 'Invitation results',
+    link: 'Invitation link',
+    linkTitle: 'Forward this link',
+    outcome: {
+      sent: 'Email sent',
+      notSent: 'Email not sent — copy the link',
+      added: 'Has an account — added to the projects',
+      alreadyMember: 'Already a member',
+    },
+    title: 'Pending invitations',
+    loadFailed: 'Unable to load invitations',
+    status: 'Status',
+    pending: 'Waiting',
+    notSent: 'Email not sent',
+    expired: 'Expired',
+    invitedBy: 'Invited by',
+    expiresAt: 'Expires',
+    actions: 'Actions',
+    resend: 'Send again',
+    resent: 'Invitation sent again to {{email}}',
+    revoke: 'Revoke',
+    revoked: 'Invitation for {{email}} revoked',
+    revokeTitle: 'Revoke the invitation for {{email}}?',
+    revokeDescription:
+      'The link stops working. You can invite the address again later.',
+  },
+  invite: {
+    title: 'Join NocoProject',
+    description: '{{inviter}} invited you to NocoProject.',
+    descriptionProjects:
+      '{{inviter}} invited you to NocoProject and the projects {{projects}}.',
+    loading: 'Opening the invitation…',
+    email: 'Email',
+    name: 'Name',
+    password: 'Password',
+    nameRequired: 'Enter your name.',
+    passwordTooShort: 'The password needs at least {{min}} characters.',
+    submit: 'Join',
+    submitting: 'Joining…',
+    goToLogin: 'Go to sign in',
+    existingAccount:
+      'This email already has an account and has been added to the projects. Sign in with your existing password.',
+    signedIn:
+      'You are signed in as {{name}}. Sign out to accept this invitation.',
+    signOut: 'Sign out',
+    signOutFailed: 'Unable to sign out. Please try again.',
+    errors: {
+      notFound: 'This invitation link is not valid. Ask for a new invitation.',
+      expired: 'This invitation has expired. Ask for a new invitation.',
+      accepted: 'This invitation has already been used. Sign in instead.',
+      revoked: 'This invitation has been revoked.',
+      password: 'The password does not meet the requirements.',
+      accountConflict:
+        'An account with this email already exists. Sign in instead.',
+      failed: 'Something went wrong. Please try again.',
+    },
+  },
 };
 
 export default npIter4EnUS;

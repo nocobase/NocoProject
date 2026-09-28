@@ -273,10 +273,7 @@ export type PullRequestMergeBlocker =
 
 /** 合并后任务为什么不变：设置为不改 / 还有未合并的 PR / 本 PR 关闭了自动完成 / 任务已是终态 */
 export type PullRequestMergeKeepReason =
-  | 'setting'
-  | 'otherPrs'
-  | 'optedOut'
-  | 'terminal';
+  'setting' | 'otherPrs' | 'optedOut' | 'terminal';
 
 /** 合并后任务会怎样：`statusKey` 非空时改为该状态，否则按 `keepReason` 不变 */
 export interface PullRequestMergeOutcome {

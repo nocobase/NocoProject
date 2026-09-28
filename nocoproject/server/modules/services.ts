@@ -19,31 +19,15 @@ import {
   createAgentService,
   type AgentService,
 } from './agent/agent.service.js';
-import {
-  createAgentEnvService,
-  type AgentEnvService,
-} from './agent/env.service.js';
-import { createDbApprovalGateway } from './approval/approval.gateway.js';
-import {
-  createReactionService,
-  type ReactionService,
-} from './collaboration/reaction.service.js';
-import {
-  createGitConnectionService,
-  type GitConnectionService,
-} from './git/connection.service.js';
+import { type AgentEnvService } from './agent/env.service.js';
+import { type ReactionService } from './collaboration/reaction.service.js';
+import { type GitConnectionService } from './git/connection.service.js';
 import {
   createFetchGitHubClient,
   type GitHubClient,
 } from './git/github-client.js';
-import {
-  createPullRequestService,
-  type PullRequestService,
-} from './git/pull-request.service.js';
-import {
-  createWebhookService,
-  type WebhookService,
-} from './git/webhook.service.js';
+import { type PullRequestService } from './git/pull-request.service.js';
+import { type WebhookService } from './git/webhook.service.js';
 import type { AiIntakeParser } from './intake/ai-parser.js';
 import type { AiProcessClassifier } from './intake/process-classifier.js';
 import {
@@ -51,24 +35,11 @@ import {
   createIteration4Services,
   type Iteration4Services,
 } from './services.iter4.js';
-import { createHeuristicIntakeParser } from './intake/heuristic-parser.js';
-import {
-  createIntakeService,
-  type IntakeService,
-} from './intake/intake.service.js';
-import {
-  createDeliveryService,
-  type DeliveryService,
-} from './issue/delivery.service.js';
+import { type IntakeService } from './intake/intake.service.js';
+import { type DeliveryService } from './issue/delivery.service.js';
 import { findIssue } from './issue/issue.records.js';
-import {
-  createKnowledgeService,
-  type KnowledgeService,
-} from './knowledge/knowledge.service.js';
-import {
-  createMetricsService,
-  type MetricsService,
-} from './metrics/metrics.service.js';
+import { type KnowledgeService } from './knowledge/knowledge.service.js';
+import { type MetricsService } from './metrics/metrics.service.js';
 import type { ApprovalGateway, ApprovalHooks } from './shared/approval.js';
 import { resolveApproverIds } from './shared/authz.js';
 import {
@@ -78,18 +49,9 @@ import {
 } from './shared/crypto.js';
 import type { Tx } from './shared/db.js';
 import type { DomainEvent } from './shared/events.js';
-import {
-  createSkillService,
-  type SkillService,
-} from './skill/skill.service.js';
-import {
-  createWorkspaceSettingsService,
-  type WorkspaceSettingsService,
-} from './system/settings.admin.js';
-import {
-  createUsageService,
-  type UsageService,
-} from './usage/usage.service.js';
+import { type SkillService } from './skill/skill.service.js';
+import { type WorkspaceSettingsService } from './system/settings.admin.js';
+import { type UsageService } from './usage/usage.service.js';
 import {
   createCommentService,
   type CommentService,
@@ -102,6 +64,15 @@ import {
   createMemberService,
   type MemberService,
 } from './member/member.service.js';
+import {
+  createInvitationService,
+  type InvitationAccounts,
+  type InvitationService,
+} from './member/invitation.service.js';
+import {
+  unconfiguredMailer,
+  type InvitationMailer,
+} from './member/invitation.mail.js';
 import {
   createInboxService,
   type InboxService,
@@ -154,6 +125,10 @@ import type { RunService } from './run/run.service.js';
 import type { SweeperService } from './run/sweeper.js';
 import type { RunTokenService } from './run/token.js';
 import { createRunModules } from './services.runs.js';
+import {
+  createIteration2Services,
+  createIteration3Services,
+} from './services.iter2.js';
 import {
   createRuntimeService,
   type RuntimeService,
@@ -229,6 +204,8 @@ export interface NpServices {
   readonly workflowProposals: WorkflowProposalService;
   // NP-78.
   readonly attachments: AttachmentService;
+  // NP-88.
+  readonly invitations: InvitationService;
 }
 
 /** What an alternative approval gateway gets to build itself (tests: the in-memory double). */
@@ -256,6 +233,9 @@ export interface NpServiceDeps {
   readonly onFileObjectError?: (error: unknown) => void;
   /** NP-78: reads files attached on the AI 整理 tab for the AI parser; absent = files are not read. */
   readonly attachmentText?: AttachmentTextReader | null;
+  /** NP-88: invitation email and account creation; absent = no email is sent, no account can be created. */
+  readonly mailer?: () => InvitationMailer;
+  readonly accounts?: () => InvitationAccounts | null;
   /** Replaces the database approval gateway (the replacement checklist test). */
   readonly approvalGateway?: (
     context: ApprovalGatewayContext,
@@ -409,102 +389,14 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       objects: deps.fileObjects ?? { remove: async () => undefined },
       onObjectError: deps.onFileObjectError,
     }),
+    invitations: createInvitationService({
+      tx,
+      ids,
+      users,
+      mailer: deps.mailer ?? (() => unconfiguredMailer),
+      accounts: deps.accounts ?? (() => null),
+    }),
   } satisfies NpServices);
 
   return services;
-}
-
-interface Iteration2Inputs {
-  readonly deps: NpServiceDeps;
-  readonly tx: TxRunner;
-  readonly ids: ReturnType<typeof createIdSource>;
-  readonly users: ReturnType<typeof createUserDirectory>;
-  readonly activity: ReturnType<typeof createActivityRecorder>;
-  readonly settings: SettingsService;
-  readonly workflows: WorkflowService;
-  readonly secrets: SecretBox;
-  readonly github: GitHubClient;
-}
-
-/** The iteration 2 modules (git, approval, intake, reactions, env, skills, usage, workspace settings). */
-function createIteration2Services(
-  input: Iteration2Inputs,
-  services: NpServices,
-  hooks: () => ApprovalHooks,
-) {
-  const {
-    deps,
-    tx,
-    ids,
-    users,
-    activity,
-    settings,
-    workflows,
-    secrets,
-    github,
-  } = input;
-  const flow = { activity, settings, workflows, issues: () => services.issues };
-  return {
-    approvals: deps.approvalGateway
-      ? deps.approvalGateway({ tx, hooks })
-      : createDbApprovalGateway({ tx, ids, users, activity, hooks }),
-    gitConnections: createGitConnectionService({ tx, ids, secrets, github }),
-    pullRequests: createPullRequestService({
-      tx,
-      ids,
-      users,
-      activity,
-      secrets,
-      github,
-    }),
-    webhooks: createWebhookService({ ...flow, tx, ids, secrets, github }),
-    intake: createIntakeService({
-      tx,
-      ids,
-      users,
-      activity,
-      settings,
-      workflows,
-      issues: () => services.issues,
-      triggers: () => services.triggers,
-      heuristic: createHeuristicIntakeParser(),
-      ai: deps.aiIntake ?? null,
-      aiConfigured: deps.aiConfigured ?? (() => false),
-      classifier: buildProcessClassifier(null, undefined),
-      attachmentText: deps.attachmentText ?? null,
-    }),
-    reactions: createReactionService({ tx, ids, activity }),
-    agentEnv: createAgentEnvService({ tx, ids, users, secrets }),
-    skills: createSkillService({ tx, ids, users }),
-    usage: createUsageService({ tx, settings }),
-    workspaceSettings: createWorkspaceSettingsService({
-      tx,
-      settings,
-      workflows,
-    }),
-  };
-}
-
-/** The iteration 3 modules (knowledge, acceptance metrics, delivery decisions). */
-function createIteration3Services(
-  input: Omit<Iteration2Inputs, 'deps' | 'secrets' | 'github'>,
-  services: NpServices,
-) {
-  const { tx, ids, users, activity, settings, workflows } = input;
-  return {
-    knowledge: createKnowledgeService({ tx, ids, users, activity }),
-    metrics: createMetricsService({
-      tx,
-      settings,
-      workflows,
-      usage: () => services.usage,
-    }),
-    deliveries: createDeliveryService({
-      tx,
-      activity,
-      workflows,
-      issues: () => services.issues,
-      comments: () => services.comments,
-    }),
-  };
 }

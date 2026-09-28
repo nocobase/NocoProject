@@ -94,6 +94,11 @@ import {
 import type { RunTokenService } from '../modules/run/token.js';
 import type { RuntimeService } from '../modules/runtime/runtime.service.js';
 import { createNpServices, type NpServices } from '../modules/services.js';
+import type { InvitationService } from '../modules/member/invitation.service.js';
+import {
+  createNotificationMailer,
+  createPluginAccounts,
+} from './np-invitations.js';
 import { createDomainEventBus } from '../modules/shared/events.js';
 import {
   connectRealtime,
@@ -192,6 +197,8 @@ export const npWorkflowProposalServiceToken: ServiceToken<WorkflowProposalServic
   );
 export const npAttachmentServiceToken: ServiceToken<AttachmentService> =
   createServiceToken<AttachmentService>('nocoproject/attachment-service');
+export const npInvitationServiceToken: ServiceToken<InvitationService> =
+  createServiceToken<InvitationService>('nocoproject/invitation-service');
 
 /** Binds a module token to the member of `NpServices` it exposes. */
 function bindModule<K extends keyof NpServices>(
@@ -229,6 +236,8 @@ export default class NpProvider extends ServiceProvider<Application> {
           this.logError(error, 'NocoProject attachment object delete failed.'),
         aiIntake: ai ? createAiIntakeParser(ai) : null,
         aiProcess: ai ? createAiProcessClassifier(ai) : null,
+        mailer: () => createNotificationMailer(this.app),
+        accounts: () => createPluginAccounts(this.app),
         aiConfigured: () =>
           (this.app.config.get<AIApplicationConfig>('ai')?.llmServices
             ?.length ?? 0) > 0,
@@ -274,6 +283,7 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npChecklistServiceToken, 'checklists');
     bindModule(container, npWorkflowProposalServiceToken, 'workflowProposals');
     bindModule(container, npAttachmentServiceToken, 'attachments');
+    bindModule(container, npInvitationServiceToken, 'invitations');
   }
 
   /** NP-78: the AI 整理 tab's files are read through the Drive manager, on the row's own disk, for the AI parser. */

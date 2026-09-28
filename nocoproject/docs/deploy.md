@@ -10,7 +10,7 @@
 | 国内机器（dev）的守护进程  | `http://100.89.167.29:13001/main`    | 服务器的 Tailscale 地址。国内连公网域名的 443 会被重置，走 Tailscale |
 | SSH                        | `ssh ali-agents-ts`（用户 `agents`） | `~/.ssh/config` 里的别名，经 Tailscale                               |
 
-自助注册已关闭（`auth.emailAndPassword.disableSignUp: true`），成员由管理员在“设置 → 成员”添加。
+自助注册已关闭（`auth.emailAndPassword.disableSignUp: true`），新成员由 owner/admin 或项目负责人在“设置 → 成员 → 邀请成员”按邮箱邀请（NP-88，[phase2/invitations.md](phase2/invitations.md)）。邀请邮件走 Brevo SMTP：在 `app.env` 里设 `NOCOPROJECT_SMTP_ENABLED=true`、`NOCOPROJECT_SMTP_USER`、`NOCOPROJECT_SMTP_PASSWORD`（Brevo 的 SMTP key）、`NOCOPROJECT_SMTP_FROM`（Brevo 验证过的发件人）；不设时邀请照常创建，邀请人复制链接转发。
 
 ## 服务器上的布局（`/home/agents/nocoproject`）
 

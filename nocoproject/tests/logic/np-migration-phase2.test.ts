@@ -3,13 +3,14 @@
  * The Phase 2 migrations against a real PostgreSQL. NP-77 stage actions: up (the checklist table and its unique index,
  * the new proposal columns, a nullable proposing agent) and down (workflow suggestions removed, NOT NULL again).
  * NP-77 stage 2 workflow proposals: up (template `revision` / `isSystem` with their defaults, the revision and proposal
- * tables and indexes) and down (tables and columns gone).
+ * tables and indexes) and down (tables and columns gone). NP-88: the invitations table with its unique token index.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { createMigrator } from '@nocobase/db';
 
 import {
   MIGRATIONS_DIR,
+  NP_INVITATION_TABLES,
   NP_PHASE2_PROPOSAL_TABLES,
   NP_PHASE2_WORKFLOW_TABLES,
   openNpTestDatabase,
@@ -115,6 +116,39 @@ describe.skipIf(!db)('NocoProject Phase 2 migrations (PostgreSQL)', () => {
       ),
     ).rejects.toThrow(/null value/u);
     await db!.knex.raw(`DELETE FROM "${db!.schema}".executor_proposals`);
+    await migrator().latest();
+  });
+
+  it('creates the invitations table and rolls it back alone', async () => {
+    while ((await migrator().rollback()).rolledBack.length > 0);
+    await migrator().upTo('2026100400002_np_file_intake_batch');
+    const applied = await migrator().upTo('2026100500001_np_invitations');
+    expect(applied.executed).toEqual(['2026100500001_np_invitations']);
+    expect(await tables()).toEqual(
+      expect.arrayContaining([...NP_INVITATION_TABLES]),
+    );
+    expect(await columns(db!, 'np_invitations')).toEqual(
+      expect.arrayContaining([
+        'email',
+        'token_hash',
+        'project_ids',
+        'status',
+        'invited_by_id',
+        'expires_at',
+        'sent_at',
+        'send_error',
+        'accepted_user_id',
+        'accepted_at',
+      ]),
+    );
+    const defs = await indexes();
+    expect(defs.get('np_invitations_token_unique')).toMatch(
+      /UNIQUE.*\(token_hash\)/u,
+    );
+    expect(defs.get('np_invitations_email_idx')).toContain('(email, status)');
+    const rolledBack = await migrator().rollback();
+    expect(rolledBack.rolledBack).toEqual(['2026100500001_np_invitations']);
+    expect(await tables()).not.toContain('np_invitations');
     await migrator().latest();
   });
 

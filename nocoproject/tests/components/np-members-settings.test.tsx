@@ -26,7 +26,9 @@ async function renderAs(userId: string) {
     Promise.resolve(
       options.path === 'np/me'
         ? { data: { userId, name: userId } }
-        : { data: MEMBERS },
+        : options.path === 'np/members'
+          ? { data: MEMBERS }
+          : { data: [] },
     ),
   );
   const runtime = new I18nRuntime({

@@ -185,6 +185,8 @@ export const npKeys = {
   runtimes: ['np', 'runtimes'] as const,
   run: (id: string) => ['np', 'run', id] as const,
   members: ['np', 'members'] as const,
+  /** NP-88: pending invitations; under `members`, so a members refresh refetches them. */
+  invitations: ['np', 'members', 'invitations'] as const,
   labels: ['np', 'labels'] as const,
   workflows: ['np', 'workflows'] as const,
   inbox: ['np', 'inbox'] as const,
