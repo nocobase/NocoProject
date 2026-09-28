@@ -4,7 +4,13 @@ import { ApiClientError } from '@nocobase/app-client';
 import { I18nRuntime } from '@nocobase/i18n';
 import { I18nProvider } from '@nocobase/i18n/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,9 +19,12 @@ import locales from '../../client/locales/index.js';
 import IssueDetailPage from '../../client/pages/np/issues/detail/index.js';
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
+// One stand-in for every resolved service: the realtime client and (NP-78) the file repository manager.
+const fileRepository = vi.hoisted(() => ({ uploadOne: vi.fn() }));
 const realtime = vi.hoisted(() => ({
   subscribe: vi.fn(() => () => {}),
   onOpen: vi.fn(() => () => {}),
+  repository: () => fileRepository,
 }));
 
 const toast = vi.hoisted(() => ({ add: vi.fn() }));
@@ -101,6 +110,9 @@ function respond(options: { path: string; method?: string }) {
   if (options.path === 'np/me') {
     return Promise.resolve({ data: { userId: 'u1', name: 'Zhou' } });
   }
+  if (options.path === 'np/issues/101/attachments' && !options.method) {
+    return Promise.resolve({ data: [] });
+  }
   return Promise.reject(new Error(`unexpected ${options.path}`));
 }
 
@@ -141,6 +153,7 @@ beforeEach(() => {
 
 afterEach(() => {
   api.request.mockReset();
+  fileRepository.uploadOne.mockReset();
   toast.add.mockReset();
   vi.unstubAllGlobals();
 });
@@ -476,6 +489,151 @@ describe('older activity (iteration 3 §D)', () => {
       expect(
         screen.queryByRole('button', { name: 'Load older activity' }),
       ).toBeNull(),
+    );
+  });
+});
+
+describe('attachments (NP-78)', () => {
+  const ATTACHMENT = {
+    id: 'f1',
+    filename: 'spec.pdf',
+    ext: 'pdf',
+    mimeType: 'application/pdf',
+    size: 2048,
+    contentUrl: '/main/uploads/np/f1.pdf',
+    uploadedById: 'u1',
+    uploadedByName: 'Zhou',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    canDelete: true,
+  };
+
+  it('lists the attachments with download links and removes one after confirming', async () => {
+    const user = userEvent.setup();
+    let attachments = [
+      ATTACHMENT,
+      { ...ATTACHMENT, id: 'f2', filename: 'notes.txt', canDelete: false },
+    ];
+    api.request.mockImplementation(
+      (options: { path: string; method?: string }) => {
+        if (options.path === 'np/issues/101/attachments' && !options.method)
+          return Promise.resolve({ data: attachments });
+        if (
+          options.path === 'np/issues/101/attachments/f1' &&
+          options.method === 'DELETE'
+        ) {
+          attachments = attachments.filter((item) => item.id !== 'f1');
+          return Promise.resolve(undefined);
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+
+    const section = await screen.findByRole('region', { name: /Attachments/ });
+    expect(within(section).getByText('spec.pdf')).toBeVisible();
+    expect(within(section).getAllByText(/2\.0 KB · Zhou/u)).toHaveLength(2);
+    expect(
+      within(section).getByRole('link', { name: 'Download: spec.pdf' }),
+    ).toHaveAttribute('href', '/main/uploads/np/f1.pdf');
+    // Only files the viewer may remove offer the action.
+    expect(
+      within(section).queryByRole('button', { name: 'Remove: notes.txt' }),
+    ).toBeNull();
+    await user.click(
+      within(section).getByRole('button', { name: 'Remove: spec.pdf' }),
+    );
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    await waitFor(() =>
+      expect(api.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'np/issues/101/attachments/f1',
+          method: 'DELETE',
+        }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText('spec.pdf')).toBeNull());
+    expect(toast.add).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'success', title: 'Attachment removed' }),
+    );
+  });
+
+  it('reveals the section from the Add chip and attaches each finished upload', async () => {
+    const user = userEvent.setup();
+    const attached: unknown[] = [];
+    fileRepository.uploadOne.mockResolvedValue({
+      record: {
+        ...ATTACHMENT,
+        id: 'f9',
+        filename: 'shot.png',
+        disk: '',
+        key: '',
+      },
+      createdTargets: [],
+    });
+    api.request.mockImplementation(
+      (options: { path: string; method?: string; json?: unknown }) => {
+        if (
+          options.path === 'np/issues/101/attachments' &&
+          options.method === 'POST'
+        ) {
+          attached.push(options.json);
+          return Promise.resolve({ data: [] });
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+
+    expect(screen.queryByRole('region', { name: /Attachments/ })).toBeNull();
+    await user.click(await screen.findByRole('button', { name: 'Attachment' }));
+    const section = await screen.findByRole('region', { name: /Attachments/ });
+    const input = section.querySelector<HTMLInputElement>('input[type=file]');
+    expect(input).not.toBeNull();
+    await user.upload(
+      input!,
+      new File(['png'], 'shot.png', { type: 'image/png' }),
+    );
+    await waitFor(() => expect(attached).toEqual([{ fileIds: ['f9'] }]));
+    expect(fileRepository.uploadOne).toHaveBeenCalledTimes(1);
+  });
+  it('uploads and attaches a file dropped onto the attachments card', async () => {
+    const attached: unknown[] = [];
+    fileRepository.uploadOne.mockResolvedValue({
+      record: {
+        ...ATTACHMENT,
+        id: 'f7',
+        filename: 'drop.png',
+        disk: '',
+        key: '',
+      },
+      createdTargets: [],
+    });
+    api.request.mockImplementation(
+      (options: { path: string; method?: string; json?: unknown }) => {
+        if (options.path === 'np/issues/101/attachments' && !options.method)
+          return Promise.resolve({ data: [ATTACHMENT] });
+        if (
+          options.path === 'np/issues/101/attachments' &&
+          options.method === 'POST'
+        ) {
+          attached.push(options.json);
+          return Promise.resolve({ data: [] });
+        }
+        return respond(options);
+      },
+    );
+    await renderDetail();
+    const section = await screen.findByRole('region', { name: /Attachments/ });
+    const dropped = new File(['png'], 'drop.png', { type: 'image/png' });
+    fireEvent.drop(section, {
+      dataTransfer: { files: [dropped], types: ['Files'] },
+    });
+    await waitFor(() => expect(attached).toEqual([{ fileIds: ['f7'] }]));
+    expect(fileRepository.uploadOne).toHaveBeenCalledWith(
+      { file: dropped },
+      expect.anything(),
     );
   });
 });

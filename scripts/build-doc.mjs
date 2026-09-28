@@ -150,6 +150,7 @@ pre code { background: none; padding: 0; font-size: inherit; }
 .diagram { overflow-x: auto; margin: 16px 0 24px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
 .diagram pre.mermaid { background: none; padding: 0; font-size: 13px; color: var(--muted); }
 .diagram svg { max-width: 100%; height: auto; }
+.doc img { display: block; max-width: 100%; height: auto; margin: 12px 0 24px; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
 .tag { display: inline-block; font-size: 12px; font-weight: 600; line-height: 1.3; padding: 2px 8px; border-radius: 999px; vertical-align: 1px; white-space: nowrap; }
 .tag-temp { color: var(--temp); background: var(--temp-soft); }
 .tag-no { color: var(--no); background: var(--no-soft); }

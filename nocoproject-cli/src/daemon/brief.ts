@@ -16,6 +16,7 @@ import {
   workflowSection,
 } from './brief-sections.js';
 import { captureLearningsSection, knowledgeCommands, knowledgeSection } from './brief-knowledge.js';
+import { stageChecklistSection, stageEnteredLines } from './brief-workflow.js';
 import {
   approvedProposalLines,
   DESIGN_APPROVED_OPENING,
@@ -50,7 +51,7 @@ function coderParts(input: BriefInput): { commands: string[]; sections: string[]
   const key = input.issue.identifier;
   return {
     commands: [`- \`nocoproject issue status ${key} <statusKey>\` — change the issue status`, ...designCommands(input), ...phase1Commands(key)],
-    sections: [...repositoriesSection(input), '', ...skillsSection(input), ...knowledgeSection(input)],
+    sections: [...stageChecklistSection(input), ...repositoriesSection(input), '', ...skillsSection(input), ...knowledgeSection(input)],
     workflow: [
       ...(designPendingOf(input) ? designWorkflowSection(input) : workflowSection(input)),
       '',
@@ -197,6 +198,8 @@ export function buildTurnPrompt(input: PromptInput, opts: { readonly resumed: bo
       rootId = trigger.comment.rootId;
       lines.push(`[NEW COMMENT] from ${trigger.comment.authorName} (reply with --parent ${trigger.comment.rootId}):`);
       lines.push(quote(trigger.comment.content));
+    } else if (trigger.type === 'stageEntered') {
+      lines.push(...stageEnteredLines(trigger, quote));
     } else {
       const note = TRIGGER_NOTES[trigger.type];
       if (note) lines.push(note(key));

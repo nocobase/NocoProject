@@ -3,7 +3,8 @@
  * travels on the daemon route), `agent.skills`, `issue.executionMode` and `issue.pullRequests`; iteration 3 the
  * `knowledge` index (the run's project documents, then system-level ones; no content) from the knowledge service;
  * iteration 4 `agent.kind`, `agent.reasoningEffort`, `issue.process`, `issue.designApprovedAt`,
- * `issue.designProposal` (the latest proposal, for the brief) and `issue.originType`.
+ * `issue.designProposal` (the latest proposal, for the brief) and `issue.originType`; Phase 2 (NP-77) the current
+ * status's `issue.checklist` and, on `stageEntered` triggers, `stage` (from, to and the rendered stage instruction).
  *
  * Each claimed run is its own short transaction: runtime advisory lock → claim SQL → run token insert. The payload
  * for the daemon is assembled after commit; if that fails the run stays `dispatched` and the lease rule re-queues it.
@@ -11,6 +12,7 @@
 import type { SecretBox } from '../shared/crypto.js';
 import type { Conn, Tx, TxRunner } from '../shared/db.js';
 import {
+  fromJson,
   isArrayValue,
   isPostgres,
   knexOf,
@@ -30,7 +32,9 @@ import {
   type ClaimedRunPhase2Extras,
   type ClaimedRunPhase3Extras,
   type ClaimedRunPhase4Extras,
+  type ClaimedRunWorkflowExtras,
   type ClaimedTriggerComment,
+  type ClaimedTriggerPhase2Extras,
   type DaemonClaimRequest,
   type DaemonClaimResponse,
   type RunTriggerType,
@@ -51,6 +55,7 @@ import {
   claimLockKey,
   type ClaimedRow,
 } from './claim.sql.js';
+import { currentChecklist } from '../workflow/checklist.js';
 import { findRun } from './run.records.js';
 import { emitRunStatus } from './run.service.js';
 import { findSession } from './sessions.js';
@@ -87,6 +92,25 @@ export type ClaimedRunV2 = ClaimedRunV1 & ClaimedRunPhase2Extras;
 export type ClaimedRunV3 = ClaimedRunV2 & ClaimedRunPhase3Extras;
 /** ...and the iteration-4 agent kind, reasoning effort and design state (iteration-4 contract §B, §C). */
 export type ClaimedRunV4 = ClaimedRunV3 & ClaimedRunPhase4Extras;
+/** ...and the Phase 2 checklist and stage instruction (NP-77 §6). */
+export type ClaimedRunV5 = ClaimedRunV4 &
+  ClaimedRunWorkflowExtras & {
+    readonly triggers: readonly (ClaimedRun['triggers'][number] &
+      ClaimedTriggerPhase2Extras)[];
+  };
+
+/** The `stage` of a `stageEntered` trigger, from its payload. */
+function stageOf(type: unknown, payload: unknown): ClaimedTriggerPhase2Extras {
+  if (type !== 'stageEntered') return {};
+  const value = fromJson<Record<string, unknown>>(payload) ?? {};
+  return {
+    stage: {
+      from: str(value.from) ?? '',
+      to: str(value.to) ?? '',
+      instruction: str(value.instruction),
+    },
+  };
+}
 
 async function delegationTargets(
   conn: Conn,
@@ -223,7 +247,7 @@ async function buildClaimedRun(
   runId: string,
   token: string,
   serverUrl: string,
-): Promise<ClaimedRunV4 | null> {
+): Promise<ClaimedRunV5 | null> {
   const conn = deps.tx.read();
   const run = await findRun(conn, runId);
   if (!run || !run.runtimeId) return null;
@@ -237,7 +261,7 @@ async function buildClaimedRun(
   const ownerNames = await deps.users.names(conn, [issue.ownerUserId]);
   const triggerRows = await conn.query
     .selectFrom('runTriggers')
-    .select(['type', 'commentId'])
+    .select(['type', 'commentId', 'payload'])
     .where('runId', '=', runId)
     .orderBy('createdAt', 'asc')
     .execute();
@@ -295,6 +319,7 @@ async function buildClaimedRun(
       designApprovedAt: issue.designApprovedAt,
       designProposal: await latestProposal(conn, issue.id),
       originType: issue.originType,
+      checklist: await currentChecklist(conn, deps.users, issue),
     },
     project: await claimedProject(conn, issue.projectId),
     statusCatalog: view.catalog,
@@ -303,9 +328,10 @@ async function buildClaimedRun(
       const comment = row.commentId
         ? comments.get(str(row.commentId) ?? '')
         : undefined;
+      const stage = stageOf(row.type, row.payload);
       return comment
-        ? { type: str(row.type) as RunTriggerType, comment }
-        : { type: str(row.type) as RunTriggerType };
+        ? { type: str(row.type) as RunTriggerType, comment, ...stage }
+        : { type: str(row.type) as RunTriggerType, ...stage };
     }),
     session: {
       providerSessionId: fresh ? null : (session?.providerSessionId ?? null),
@@ -355,7 +381,7 @@ export function createClaimService(deps: ClaimDeps): ClaimService {
           claimed.push(result);
         }
       }
-      const runs: ClaimedRunV4[] = [];
+      const runs: ClaimedRunV5[] = [];
       for (const { runId, token } of claimed) {
         const payload = await buildClaimedRun(deps, runId, token, serverUrl);
         if (payload) runs.push(payload);

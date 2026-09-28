@@ -17,12 +17,20 @@ export type NpErrorKind =
 export class NpError extends Error {
   public readonly kind: NpErrorKind;
   public readonly code: string;
+  /** Structured detail for the client body (Phase 2: field-level workflow validation issues). */
+  public readonly details?: Readonly<Record<string, unknown>>;
 
-  public constructor(kind: NpErrorKind, code: string, message: string) {
+  public constructor(
+    kind: NpErrorKind,
+    code: string,
+    message: string,
+    details?: Readonly<Record<string, unknown>>,
+  ) {
     super(message);
     this.name = 'NpError';
     this.kind = kind;
     this.code = code;
+    if (details) this.details = details;
   }
 }
 
