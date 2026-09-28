@@ -3,13 +3,7 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldLabel,
-} from '@/components/ui/field';
-import { Switch } from '@/components/ui/switch';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 
 import { isManagerAgent } from '../api-iter4.js';
 import { fetchAgents } from '../api.js';
@@ -20,7 +14,7 @@ import type { PmSettingsDraft } from './pm-settings-model.js';
 
 /**
  * 设置 → 通用, iteration 4 (§A, §C): the process a new issue gets when it chooses none, the project manager agent
- * (manager-kind agents only) and whether it writes a retrospective when an agent's issue is done.
+ * (manager-kind agents only). Executors summarize their own deliveries (NP-115).
  */
 export function PmSettingsFields({
   draft,
@@ -71,24 +65,6 @@ export function PmSettingsFields({
           onChange={(pmAgentId) => onChange({ ...draft, pmAgentId })}
         />
         <FieldDescription>{t('np.pmSettings.agentHint')}</FieldDescription>
-      </Field>
-      <Field orientation='horizontal'>
-        <FieldContent>
-          <FieldLabel htmlFor='np-settings-retrospective'>
-            {t('np.pmSettings.retrospective')}
-          </FieldLabel>
-          <FieldDescription>
-            {t('np.pmSettings.retrospectiveHint')}
-          </FieldDescription>
-        </FieldContent>
-        <Switch
-          id='np-settings-retrospective'
-          checked={draft.retrospectiveOnDone}
-          disabled={!canEdit}
-          onCheckedChange={(retrospectiveOnDone) =>
-            onChange({ ...draft, retrospectiveOnDone })
-          }
-        />
       </Field>
     </>
   );

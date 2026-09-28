@@ -51,7 +51,7 @@ export function captureLearningsSection(): string[] {
   return [
     '## Capture learnings',
     '',
-    'Before you finish the task, ask yourself whether you found something the next person or agent on this project should know: a convention, a pitfall, or a decision and why it was made. If so, propose it to the knowledge base:',
+    'Before you finish the task, consider only problems actually encountered and durable lessons learned during this work. Request a knowledge-base or project-documentation update only when those findings justify a specific correction or reusable convention; explain the evidence and why it matters. Do not update knowledge or documentation merely to produce an update. If nothing warrants an update, skip it. For knowledge-base changes:',
     '',
     '- Update an existing document: `nocoproject kb propose --doc <slug> --content-file ./kb.md --reason "..." --json`. The file holds the whole new content, so start from `nocoproject kb get <slug>` and edit that.',
     '- Add a new document: `nocoproject kb propose --title "..." [--slug <slug>] --content-file ./kb.md --reason "..." [--summary "..."] --json`.',

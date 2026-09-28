@@ -304,7 +304,7 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
       // Iteration 4 §A (np-pm.test.ts covers PATCH).
       defaultProcess: 'auto',
       pmAgentId: null,
-      retrospectiveOnDone: true,
+      retrospectiveOnDone: false,
       // Phase 2 (NP-77): the stage run loop guard.
       stageRunLimit: 3,
       stageRunWindowHours: 24,

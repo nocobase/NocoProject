@@ -23,7 +23,7 @@ const npIter4ZhCN: NpIter4Resource = {
     maxInvalid: '请输入 1 到 100 之间的整数。',
     created: '已创建 Agent {{name}}',
     kind: '类型',
-    kindHint: '项目经理只回答问题、写总结，不执行任务。',
+    kindHint: '项目经理回答跨项目问题，不执行任务。',
     kinds: {
       coder: '编码',
       manager: '项目经理',
@@ -72,7 +72,7 @@ const npIter4ZhCN: NpIter4Resource = {
   },
   pm: {
     title: '项目经理',
-    description: '跨项目回答进展、任务和度量问题，任务完成后写总结。',
+    description: '跨项目回答进展、任务和度量问题。',
     emptyTitle: '还没有项目经理',
     emptyDescription:
       '项目经理是一个类型为「项目经理」的 Agent，在工作区设置里指定。',
@@ -152,9 +152,6 @@ const npIter4ZhCN: NpIter4Resource = {
     agent: '项目经理 Agent',
     agentHint: '只列出类型为项目经理的 Agent。',
     none: '不设置',
-    retrospective: '任务完成后自动总结',
-    retrospectiveHint:
-      'Agent 执行的任务进入已完成后，项目经理在任务上写一条内部备注。',
     defaultProcess: '默认流程',
     defaultProcessHint: '新建任务没有选择流程时使用。自动：按标题和描述判断。',
   },

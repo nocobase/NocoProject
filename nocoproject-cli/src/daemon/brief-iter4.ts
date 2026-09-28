@@ -12,11 +12,6 @@ export type Iter4BriefInput = Pick<ClaimedRunV1, 'agent' | 'issue'>;
 /** Opening line of a run triggered by the design approval (§B). */
 export const DESIGN_APPROVED_OPENING = '方案已批准，按方案实现';
 
-/** Opening line of a retrospective run (§C). */
-export function retrospectiveOpening(key: string): string {
-  return `任务 ${key} 已完成，请做总结`;
-}
-
 export const isManager = (input: Pick<ClaimedRunV1, 'agent'>): boolean => agentKindOf(input) === 'manager';
 
 /** `issue design-proposal` in `## Available Commands` (design-first issues only). */
@@ -87,7 +82,7 @@ export function managerSection(input: Iter4BriefInput): string[] {
   return [
     '## Project manager',
     '',
-    'You are the project manager of this NocoProject workspace. You do not write code: you read across all projects, answer questions, write retrospectives and suggest knowledge. You see exactly what the person who asked you can see.',
+    'You are the project manager of this NocoProject workspace. You do not write code: you read across all projects, answer questions and suggest knowledge when actual findings justify it. Task executors summarize their own work; do not automatically summarize or revise completed tasks. You see exactly what the person who asked you can see.',
     '',
     '- Lead with the conclusion, then the supporting facts. Keep it short.',
     '- Answer in the language the person asked in.',
@@ -120,17 +115,11 @@ type PromptInput = Pick<ClaimedRunV1, 'run' | 'issue' | 'triggers'>;
 
 export const hasTrigger = (input: PromptInput, type: string): boolean => input.triggers.some((t) => t.type === type);
 
-/** The whole prompt of a retrospective run (§C). */
+/** Safely finish legacy retrospective runs queued before NP-115, without writing a summary. */
 export function retrospectivePrompt(input: PromptInput): string {
-  const key = input.issue.identifier;
   return [
-    retrospectiveOpening(key),
-    `Issue ${key} "${input.issue.title}" is done; you are writing its retrospective as the project manager. Run: ${input.run.id}.`,
-    `1. Read everything about it: \`nocoproject pm issue ${key} --json\` (issue, comments, activities, runs with usage, pull requests, sub-issues).`,
-    `2. Write exactly one internal note: a comment whose first line is \`/note\` (it notifies no one), posted with \`nocoproject issue comment add ${key} --content-file ./note.md\`. Cover what was done, how long it took and what the runs used, conventions or pitfalls worth keeping, and whether the team's conventions need updating.`,
-    `3. Propose each durable convention or pitfall with \`nocoproject kb propose ... --json\` (it goes to the project lead; at most ${KB_PROPOSALS_PER_RUN}).`,
-    '4. Do not change the status, do not @-mention anyone and do not post anything else.',
-    '5. Use only the `nocoproject` commands; never read configuration files, keys or the CLI source, and never call the server API directly.',
+    `This legacy retrospective run for ${input.issue.identifier} is obsolete. Run: ${input.run.id}.`,
+    'Task executors now summarize their own work in their delivery comments. End this turn without posting comments, proposing knowledge or documentation updates, or changing the issue status.',
   ].join('\n');
 }
 

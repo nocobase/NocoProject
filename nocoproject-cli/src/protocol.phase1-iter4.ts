@@ -226,6 +226,7 @@ export const PM_DETAIL_TAIL = 50;
 export interface WorkspaceSettingsPhase4Fields {
   readonly defaultProcess: DefaultProcess;
   readonly pmAgentId: string | null;
+  /** @deprecated NP-115: retained for older clients; always false. Executors summarize their own work. */
   readonly retrospectiveOnDone: boolean;
 }
 

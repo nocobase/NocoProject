@@ -3,8 +3,7 @@
  * The project manager agent (iteration-4 contract §C) on a real PostgreSQL: agent `kind` / `reasoningEffort`
  * (validation, claim payload, `MANAGER_NOT_EXECUTOR`), the workspace settings, the conversation (404 / create /
  * idempotent / private to its owner / follows `pmAgentId`), the manager's reads filtered by the asking member's
- * visibility (`MANAGER_ONLY` for other agents), and the retrospective on done with its exclusions and
- * `retrospective_done`.
+ * visibility (`MANAGER_ONLY` for other agents), and no automatic retrospective on done (NP-115).
  */
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -196,7 +195,7 @@ describe.skipIf(!db)('workspace settings (PostgreSQL)', () => {
     expect(view.body.data).toMatchObject({
       defaultProcess: 'auto',
       pmAgentId: null,
-      retrospectiveOnDone: true,
+      retrospectiveOnDone: false,
     });
     expect(
       (await bob('PATCH', '/np/settings', { pmAgentId: manager })).status,
@@ -467,77 +466,5 @@ describe.skipIf(!db)("the manager's reads (PostgreSQL)", () => {
     );
     expect(denied.status).toBe(403);
     expect(denied.body.code).toBe('MANAGER_ONLY');
-  });
-});
-
-describe.skipIf(!db)('retrospective (PostgreSQL)', () => {
-  async function doneBy(issue: IssueV4) {
-    const current = (await services.issueQueries.detail(ALICE, issue.id)).issue;
-    await services.issues.update(ALICE, issue.id, {
-      statusKey: 'done',
-      revision: current.revision,
-    });
-  }
-
-  it('asks the manager for a retrospective when an agent-executed issue is done', async () => {
-    await setPm();
-    const issue = (await services.issues.create(ALICE, {
-      title: 'Ship it',
-      executor: { type: 'agent', id: coder },
-    })) as IssueV4;
-    await doneBy(issue);
-    const [retro] = await runRows(db!, `agent_id = '${manager}'`);
-    expect(retro).toMatchObject({
-      subject_id: issue.id,
-      thread_scope: 'retro',
-      actor_user_id: ALICE.id,
-      status: 'queued',
-    });
-    const [trigger] = await triggerRows(db!, String(retro!.id));
-    expect(trigger?.type).toBe('retrospective');
-
-    const claimed = await claimOne(services, CAROL, pmRuntime);
-    expect(claimed!.triggers.map((item) => item.type)).toEqual([
-      'retrospective',
-    ]);
-    const pm = agentApi4(services, claimed!.token);
-    expect((await pm('GET', `/pm/issues/${issue.identifier}`)).status).toBe(
-      200,
-    );
-    const inboxBefore = await rows(db!, 'inbox_items');
-    const note = await pm<Data<{ id: string }>>(
-      'POST',
-      `/issues/${issue.id}/comments`,
-      { content: '/note 总结：一次通过，无返工。' },
-    );
-    expect(note.status).toBe(201);
-    // The manager's note notifies nobody.
-    expect(await rows(db!, 'inbox_items')).toHaveLength(inboxBefore.length);
-    expect(await parsedActivities(issue.id, 'retrospective_done')).toEqual([]);
-    await services.runs.complete(claimed!.run.id, { workDir: '/tmp/pm' });
-    expect(await parsedActivities(issue.id, 'retrospective_done')).toEqual([
-      { commentId: note.body.data.id, runId: claimed!.run.id },
-    ]);
-  });
-
-  it('skips issues no agent worked on, conversations, and a disabled setting', async () => {
-    await setPm();
-    const manual = (await services.issues.create(ALICE, {
-      title: 'By hand',
-    })) as IssueV4;
-    await doneBy(manual);
-    const { issueId } = await services.pm.conversation(ALICE, true);
-    const conversation = (await services.issueQueries.detail(ALICE, issueId))
-      .issue as unknown as IssueV4;
-    await doneBy(conversation);
-    await services.workspaceSettings.update(CAROL, {
-      retrospectiveOnDone: false,
-    });
-    const coded = (await services.issues.create(ALICE, {
-      title: 'Coded',
-      executor: { type: 'agent', id: coder },
-    })) as IssueV4;
-    await doneBy(coded);
-    expect(await runRows(db!, `agent_id = '${manager}'`)).toEqual([]);
   });
 });

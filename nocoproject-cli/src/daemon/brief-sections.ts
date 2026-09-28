@@ -96,7 +96,7 @@ export function workflowSection(input: Phase1BriefInput): string[] {
       '',
       '1. Read the new comment(s) quoted in this turn’s prompt. Read the issue and earlier comments only when you need more context.',
       '2. If the issue is still `todo`, set it to `in_progress` once you start producing work.',
-      '3. Reply with a short comment using `comment add`, in the triggering thread (`--parent <rootId>`).',
+      '3. Reply with a short comment using `comment add`, in the triggering thread (`--parent <rootId>`). When you complete work, summarize what changed, what you verified and the results, and any remaining issues yourself; the project manager does not perform a follow-up summary or revision.',
       '4. Leave the status alone after replying; the owner decides when the issue is done. If you are stuck, say what you need in your reply.',
     ];
   }
@@ -106,7 +106,7 @@ export function workflowSection(input: Phase1BriefInput): string[] {
     '1. Read the issue first.',
     '2. Catch up on the comments, especially the thread you were asked in.',
     '3. As soon as you start producing work, set the status to `in_progress`.',
-    '4. Deliver your result as a comment with `comment add`, replying to the triggering thread with `--parent <rootId>`.',
+    '4. Summarize your own work in the delivery comment: what changed, what you verified and the results, and any remaining issues or limitations. Post it with `comment add`, replying to the triggering thread with `--parent <rootId>`. The project manager does not perform a follow-up summary or revision.',
     '5. After delivering, set the status to `in_review`. If you are stuck, set `blocked` and leave a comment explaining what you need.',
     '6. If you were only asked a question, answer it with a comment and do not change the status.',
   ];

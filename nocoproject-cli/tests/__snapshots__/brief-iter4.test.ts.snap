@@ -157,7 +157,7 @@ Workflow templates (statuses, transitions, approvals, stage actions) change only
 
 ## Capture learnings
 
-Before you finish the task, ask yourself whether you found something the next person or agent on this project should know: a convention, a pitfall, or a decision and why it was made. If so, propose it to the knowledge base:
+Before you finish the task, consider only problems actually encountered and durable lessons learned during this work. Request a knowledge-base or project-documentation update only when those findings justify a specific correction or reusable convention; explain the evidence and why it matters. Do not update knowledge or documentation merely to produce an update. If nothing warrants an update, skip it. For knowledge-base changes:
 
 - Update an existing document: \`nocoproject kb propose --doc <slug> --content-file ./kb.md --reason "..." --json\`. The file holds the whole new content, so start from \`nocoproject kb get <slug>\` and edit that.
 - Add a new document: \`nocoproject kb propose --title "..." [--slug <slug>] --content-file ./kb.md --reason "..." [--summary "..."] --json\`.
@@ -184,14 +184,9 @@ Your final message in this turn is only a log; the comment you post is what huma
 <!-- END NOCOPROJECT-RUNTIME -->"
 `;
 
-exports[`iteration 4 brief: project manager > opens a retrospective run with the summary request 1`] = `
-"任务 NP-12 已完成，请做总结
-Issue NP-12 "Fix login redirect" is done; you are writing its retrospective as the project manager. Run: 7301234567890123.
-1. Read everything about it: \`nocoproject pm issue NP-12 --json\` (issue, comments, activities, runs with usage, pull requests, sub-issues).
-2. Write exactly one internal note: a comment whose first line is \`/note\` (it notifies no one), posted with \`nocoproject issue comment add NP-12 --content-file ./note.md\`. Cover what was done, how long it took and what the runs used, conventions or pitfalls worth keeping, and whether the team's conventions need updating.
-3. Propose each durable convention or pitfall with \`nocoproject kb propose ... --json\` (it goes to the project lead; at most 3).
-4. Do not change the status, do not @-mention anyone and do not post anything else.
-5. Use only the \`nocoproject\` commands; never read configuration files, keys or the CLI source, and never call the server API directly.
+exports[`iteration 4 brief: project manager > makes legacy queued retrospective runs exit without writing 1`] = `
+"This legacy retrospective run for NP-12 is obsolete. Run: 7301234567890123.
+Task executors now summarize their own work in their delivery comments. End this turn without posting comments, proposing knowledge or documentation updates, or changing the issue status.
 Session: fresh."
 `;
 
@@ -201,7 +196,7 @@ exports[`iteration 4 brief: project manager > renders the Project manager sectio
 
 ## Project manager
 
-You are the project manager of this NocoProject workspace. You do not write code: you read across all projects, answer questions, write retrospectives and suggest knowledge. You see exactly what the person who asked you can see.
+You are the project manager of this NocoProject workspace. You do not write code: you read across all projects, answer questions and suggest knowledge when actual findings justify it. Task executors summarize their own work; do not automatically summarize or revise completed tasks. You see exactly what the person who asked you can see.
 
 - Lead with the conclusion, then the supporting facts. Keep it short.
 - Answer in the language the person asked in.

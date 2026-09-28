@@ -148,11 +148,11 @@ async function phase4Values(
   }
   if (patch.pmAgentId !== undefined)
     values.pmAgentId = await validatePmAgent(conn, patch.pmAgentId);
-  if (patch.retrospectiveOnDone !== undefined)
-    values.retrospectiveOnDone = validateBoolean(
-      patch.retrospectiveOnDone,
-      'retrospectiveOnDone',
-    );
+  if (patch.retrospectiveOnDone !== undefined) {
+    validateBoolean(patch.retrospectiveOnDone, 'retrospectiveOnDone');
+    // Accept the legacy field without re-enabling automatic PM summaries.
+    values.retrospectiveOnDone = false;
+  }
 }
 
 function boundedInt(value: unknown, field: string, max: number): number {

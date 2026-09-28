@@ -84,14 +84,12 @@ describe('iteration 4 brief: project manager', () => {
     expect(prompt).toContain('you do not need to set `in_review` and never change the status');
   });
 
-  it('opens a retrospective run with the summary request', () => {
+  it('makes legacy queued retrospective runs exit without writing', () => {
     const prompt = buildTurnPrompt(manager({ executionMode: 'task' }, { triggers: [{ type: 'retrospective' }] }), { resumed: false });
     expect(prompt).toMatchSnapshot();
-    expect(prompt.split('\n')[0]).toBe('任务 NP-12 已完成，请做总结');
-    expect(prompt).toContain('`nocoproject pm issue NP-12 --json`');
-    expect(prompt).toContain('a comment whose first line is `/note`');
-    expect(prompt).toContain('`nocoproject kb propose ... --json`');
-    expect(prompt).toContain('Do not change the status');
-    expect(prompt).not.toContain('When done, deliver via');
+    expect(prompt).toContain('legacy retrospective run for NP-12 is obsolete');
+    expect(prompt).toContain('End this turn without posting comments, proposing knowledge or documentation updates, or changing the issue status');
+    expect(prompt).not.toContain('nocoproject kb propose');
+    expect(prompt).not.toContain('nocoproject issue comment add');
   });
 });

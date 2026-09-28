@@ -126,6 +126,17 @@ describe('iteration 3 brief', () => {
     expect(brief.indexOf('## Capture learnings')).toBeLessThan(brief.indexOf('## Status Rules'));
   });
 
+  it('asks task and session executors to summarize actual work without manufacturing knowledge updates', () => {
+    for (const executionMode of ['task', 'session'] as const) {
+      const brief = buildBrief(iter3Run({ issue: { ...iter3Run().issue, executionMode } }));
+      expect(brief).toContain('what changed, what you verified and the results');
+      expect(brief).toContain('does not perform a follow-up summary or revision');
+      expect(brief).toContain('problems actually encountered');
+      expect(brief).toContain('Do not update knowledge or documentation merely to produce an update');
+      expect(brief).toContain('If nothing warrants an update, skip it');
+    }
+  });
+
   it('says when there are no documents and still asks to capture learnings', () => {
     const brief = buildBrief(claimedRun());
     expect(brief).toContain('No knowledge documents are available to this run yet.');

@@ -48,7 +48,7 @@ import { useWorkspaceViewer } from '../use-workspace-viewer.js';
  * Tab `/config/general` (iteration 2 §I settings, moved to the front end in iteration 3 §G): the status a merged PR
  * moves its issue to, whether new issues let agents run the sub-issues they create, how batch entry parses text, the
  * model prices usage costs are estimated from, the metric thresholds (§C), and since iteration 4 the default process,
- * the project manager agent and the retrospective switch. Owner/admin edit; everyone else sees the values read-only.
+ * the project manager agent. Owner/admin edit; everyone else sees the values read-only.
  * Above them sits the viewer's own inbox chime switch (NP-108), which every member can change.
  */
 export default function GeneralConfigTab(): ReactElement {

@@ -339,17 +339,15 @@ describe('project manager conversation', () => {
     expect(pmSettingsDraft({})).toEqual({
       defaultProcess: 'auto',
       pmAgentId: null,
-      retrospectiveOnDone: true,
     });
     const draft = pmSettingsDraft({
       defaultProcess: 'design_first',
       pmAgentId: 'pm',
-      retrospectiveOnDone: false,
+      retrospectiveOnDone: true,
     });
     expect(pmSettingsInput(draft)).toEqual({
       defaultProcess: 'design_first',
       pmAgentId: 'pm',
-      retrospectiveOnDone: false,
     });
   });
 });

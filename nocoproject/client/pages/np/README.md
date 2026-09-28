@@ -52,6 +52,7 @@ NocoBase ships compact as the default preset: it sets `--spacing: 0.2rem` (20% u
 ## 5. Identifiers, tags, people, empty values
 
 - Identifiers, slugs, versions, branches: `font-mono text-xs`.
+- Task executors summarize their own deliveries (NP-115); settings expose no automatic project-manager summary switch. Historical retrospective notes retain their timeline tags.
 - The process is marked only when it changes what happens next: `NpProcessBadge` ("先出方案", blue, compass icon) beside the status in the issue header and on board cards, nothing for direct issues. Timeline comments that are a design proposal or a retrospective note carry `NpCommentTag` ("方案" / "总结").
 - Executor pickers (`NpExecutorSelect`) never offer a project manager agent (`kind: 'manager'`), except one already set.
 - Every tag is `NpTag` (tinted pill: pale background, darker text of the same hue, 12px, dot for statuses) with its tone from one map. Status: `NpStatusBadge` (tone by meaning via `statusTone`: unstarted grey, started blue, in review violet, blocked amber, done green, cancelled slate). Priority: `NpPriorityLabel` (urgent red, high orange, medium blue, low grey). Runs: `NpRunStatusBadge`. Labels: `NpLabelChip`. Never a solid fill, never a dot on a neutral pill, never the shadcn `Badge` on these pages.

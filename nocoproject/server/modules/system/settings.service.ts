@@ -46,9 +46,9 @@ export interface WorkspaceSettings {
   readonly metricThresholds: MetricThresholds;
   /** Iteration 4: the process of a new issue that names none (`auto` = the classifier). */
   readonly defaultProcess: DefaultProcess;
-  /** Iteration 4: the project manager agent (conversations and retrospectives), or null. */
+  /** Iteration 4: the project manager agent (conversations), or null. */
   readonly pmAgentId: string | null;
-  /** Iteration 4: a done issue an agent worked on gets a retrospective run of the project manager. */
+  /** @deprecated NP-115: retained for older clients; always false. Executors summarize their own work. */
   readonly retrospectiveOnDone: boolean;
   /** Phase 2: at most this many `runExecutor` stage runs per issue and status within `stageRunWindowHours`. */
   readonly stageRunLimit: number;
@@ -63,7 +63,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   metricThresholds: DEFAULT_METRIC_THRESHOLDS,
   defaultProcess: 'auto',
   pmAgentId: null,
-  retrospectiveOnDone: true,
+  retrospectiveOnDone: false,
   stageRunLimit: DEFAULT_STAGE_RUN_LIMIT,
   stageRunWindowHours: DEFAULT_STAGE_RUN_WINDOW_HOURS,
 };
@@ -165,10 +165,8 @@ function normalize(stored: Partial<WorkspaceSettings>): WorkspaceSettings {
       typeof stored.pmAgentId === 'string' && stored.pmAgentId
         ? stored.pmAgentId
         : null,
-    retrospectiveOnDone:
-      typeof stored.retrospectiveOnDone === 'boolean'
-        ? stored.retrospectiveOnDone
-        : DEFAULT_WORKSPACE_SETTINGS.retrospectiveOnDone,
+    // NP-115: old stored settings must not restore the retired PM summary flow.
+    retrospectiveOnDone: false,
     stageRunLimit: positiveInt(
       stored.stageRunLimit,
       DEFAULT_WORKSPACE_SETTINGS.stageRunLimit,

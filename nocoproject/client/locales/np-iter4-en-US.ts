@@ -30,7 +30,7 @@ const npIter4EnUS = {
     created: 'Agent {{name}} created',
     kind: 'Kind',
     kindHint:
-      'A project manager answers questions and writes retrospectives; it never executes issues.',
+      'A project manager answers questions across projects; it never executes issues.',
     kinds: {
       coder: 'Coding',
       manager: 'Project manager',
@@ -82,7 +82,7 @@ const npIter4EnUS = {
   pm: {
     title: 'Project manager',
     description:
-      'Answers questions about progress, issues and metrics across projects, and writes a retrospective when an issue is done.',
+      'Answers questions about progress, issues and metrics across projects.',
     emptyTitle: 'No project manager yet',
     emptyDescription:
       'The project manager is an agent of the project manager kind, chosen in the workspace settings.',
@@ -165,9 +165,6 @@ const npIter4EnUS = {
     agent: 'Project manager agent',
     agentHint: 'Only agents of the project manager kind are listed.',
     none: 'None',
-    retrospective: 'Retrospective when an issue is done',
-    retrospectiveHint:
-      'When an issue an agent executed moves to done, the project manager writes an internal note on it.',
     defaultProcess: 'Default process',
     defaultProcessHint:
       'Used when a new issue does not choose one. Automatic decides from the title and description.',
