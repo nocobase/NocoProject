@@ -91,7 +91,7 @@ export const NP_PHASE1_ITER3_TABLES = [
 
 /** Tables of the Phase 2 stage actions migration (NP-77). */
 export const NP_PHASE2_WORKFLOW_TABLES = ['issue_checklist_items'] as const;
-/** NP-78: issue attachments (`2026100200001_np_attachments`). */
+/** NP-78: issue attachments (`2026100400001_np_attachments`). */
 export const NP_ATTACHMENT_TABLES = ['np_files'] as const;
 
 /** A fixed test key for stored secrets (32 bytes of 0x11). */

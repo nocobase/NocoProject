@@ -10,7 +10,7 @@ import { defineMigration, type MigrationDefinition } from '@nocobase/db';
 const ID = { length: 32 } as const;
 
 const migration: MigrationDefinition = defineMigration({
-  name: '2026100300001_np_file_intake_batch',
+  name: '2026100400002_np_file_intake_batch',
 
   async up({ builder }) {
     await builder.alterCollection('npFiles', (table) => {

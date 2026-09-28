@@ -71,7 +71,9 @@ describe.skipIf(!db)('NocoProject Phase 2 migrations (PostgreSQL)', () => {
   it('rolls back the Phase 2 stage actions batch alone', async () => {
     while ((await migrator().rollback()).rolledBack.length > 0);
     await migrator().upTo('2026100100001_np_phase1_iter4');
-    const applied = await migrator().latest();
+    const applied = await migrator().upTo(
+      '2026100200001_np_phase2_stage_actions',
+    );
     expect(applied.executed).toEqual(['2026100200001_np_phase2_stage_actions']);
     expect(await tables()).toEqual(
       expect.arrayContaining([...NP_PHASE2_WORKFLOW_TABLES]),

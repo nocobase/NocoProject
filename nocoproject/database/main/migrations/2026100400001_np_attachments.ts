@@ -13,7 +13,7 @@ const ID = { length: 32 } as const;
 const USER_ID = { length: 64 } as const;
 
 const migration: MigrationDefinition = defineMigration({
-  name: '2026100200001_np_attachments',
+  name: '2026100400001_np_attachments',
 
   async up({ builder }) {
     await builder.createCollection('npFiles', (table) => {
