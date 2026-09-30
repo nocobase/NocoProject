@@ -5,7 +5,11 @@
  * runs a fixed agent with a Zod response format when an LLM service is configured and `settings.intakeParser` is
  * `auto`; on failure or timeout the service falls back to the heuristic and reports why.
  */
-import type { IntakeDraftInput, IntakeParserKind } from '../shared/protocol.js';
+import type {
+  AiModelRef,
+  IntakeDraftInput,
+  IntakeParserKind,
+} from '../shared/protocol.js';
 
 export interface IntakeParseInput {
   readonly rawContent: string;
@@ -19,6 +23,8 @@ export interface IntakeParseInput {
   } | null;
   /** Names of the labels that exist. */
   readonly labels: readonly string[];
+  /** NP-205: the model to call (`null` = the AI plugin's default); only the AI parser reads it. */
+  readonly model?: AiModelRef | null;
   /** NP-78: text of the files attached on the AI draft tab (np.newIssue.tabs.ai; only the AI parser reads it). */
   readonly attachments?: {
     readonly documents: readonly {

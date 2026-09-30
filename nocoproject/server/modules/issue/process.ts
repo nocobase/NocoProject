@@ -83,11 +83,18 @@ export async function selectProcess(
       ? 'auto'
       : validateProcess(input.process, true);
   if (requested !== 'auto') return { process: requested, by: 'user' };
-  const fallback = (await deps.settings.read(conn)).defaultProcess;
+  const settings = await deps.settings.read(conn);
+  const fallback = settings.defaultProcess;
   if (fallback !== 'auto') return { process: fallback, by: 'default' };
+  // NP-205: the classifier follows the new issue AI feature (switch, parser and model).
+  const feature = settings.intakeAi;
   const decision = await deps.classifier.classify(
     { title: input.title, description: input.description },
-    options,
+    {
+      userId: options.userId,
+      useAi: options.useAi && feature.enabled && feature.parser === 'auto',
+      model: feature.model,
+    },
   );
   return { process: decision.process, by: decision.by, rule: decision.rule };
 }

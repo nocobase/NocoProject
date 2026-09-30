@@ -18,6 +18,8 @@ import {
   toJson,
 } from '../shared/db.js';
 import type {
+  AiFeatureSetting,
+  AiModelRef,
   DefaultProcess,
   IntakeParserSetting,
   MetricThresholds,
@@ -46,7 +48,12 @@ export interface WorkspaceSettings {
   /** PR merged → this status; `'none'` leaves the status alone (iteration 2). */
   readonly prMergedStatus: string;
   readonly modelPrices: readonly ModelPrice[];
+  /** Legacy (before NP-205): the one parser setting; it seeds both AI features until they are saved. */
   readonly intakeParser: IntakeParserSetting;
+  /** NP-205: the new issue AI draft tab and the process classifier. */
+  readonly intakeAi: AiFeatureSetting;
+  /** NP-205: the sub-issue section's AI breakdown. */
+  readonly breakdownAi: AiFeatureSetting;
   /** Iteration 3: acceptance metric thresholds (missing keys take the defaults). */
   readonly metricThresholds: MetricThresholds;
   /** Iteration 4: the process of a new issue that names none (`auto` = the classifier). */
@@ -68,6 +75,8 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   prMergedStatus: 'done',
   modelPrices: [],
   intakeParser: 'auto',
+  intakeAi: { enabled: true, parser: 'auto', model: null },
+  breakdownAi: { enabled: true, parser: 'auto', model: null },
   metricThresholds: DEFAULT_METRIC_THRESHOLDS,
   defaultProcess: 'auto',
   pmAgentId: null,
@@ -81,6 +90,34 @@ function positiveInt(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0
     ? value
     : fallback;
+}
+
+function normalizeModel(value: unknown): AiModelRef | null {
+  const model = (value ?? {}) as Partial<Record<keyof AiModelRef, unknown>>;
+  return typeof model.llmService === 'string' &&
+    model.llmService &&
+    typeof model.model === 'string' &&
+    model.model
+    ? { llmService: model.llmService, model: model.model }
+    : null;
+}
+
+/** A stored feature; a feature never saved takes the legacy `intakeParser` as its parser. */
+function normalizeFeature(
+  value: unknown,
+  legacyParser: IntakeParserSetting,
+): AiFeatureSetting {
+  const stored = (value ?? {}) as Partial<
+    Record<keyof AiFeatureSetting, unknown>
+  >;
+  return {
+    enabled: typeof stored.enabled === 'boolean' ? stored.enabled : true,
+    parser:
+      stored.parser === 'heuristic' || stored.parser === 'auto'
+        ? stored.parser
+        : legacyParser,
+    model: normalizeModel(stored.model),
+  };
 }
 
 function normalizeThresholds(value: unknown): MetricThresholds {
@@ -147,6 +184,10 @@ async function incrementPortable(conn: Conn): Promise<CounterRow | undefined> {
   return { issue_counter: next, issue_prefix: row.issuePrefix };
 }
 
+function legacyParser(stored: Partial<WorkspaceSettings>): IntakeParserSetting {
+  return stored.intakeParser === 'heuristic' ? 'heuristic' : 'auto';
+}
+
 function normalize(stored: Partial<WorkspaceSettings>): WorkspaceSettings {
   return {
     agentEntries: stored.agentEntries ?? EMPTY_ENTRIES,
@@ -165,6 +206,8 @@ function normalize(stored: Partial<WorkspaceSettings>): WorkspaceSettings {
       stored.intakeParser === 'heuristic'
         ? 'heuristic'
         : DEFAULT_WORKSPACE_SETTINGS.intakeParser,
+    intakeAi: normalizeFeature(stored.intakeAi, legacyParser(stored)),
+    breakdownAi: normalizeFeature(stored.breakdownAi, legacyParser(stored)),
     metricThresholds: normalizeThresholds(stored.metricThresholds),
     defaultProcess:
       stored.defaultProcess === 'direct' ||

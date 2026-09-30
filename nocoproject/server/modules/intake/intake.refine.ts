@@ -24,7 +24,7 @@ import {
 import { intakeBatchAttachments } from '../attachment/attachment.intake.js';
 import { AiTimeoutError } from './ai-parser.js';
 import { ownBatch, requireStatus, storeDrafts } from './intake.access.js';
-import { aiEnabled, parseInput } from './intake.parse.js';
+import { aiState, featureOf, parseInput } from './intake.parse.js';
 import type { IntakeDeps } from './intake.service.js';
 import { draftStructure } from './intake.validation.js';
 import type { RefinedDraft } from './parser.js';
@@ -145,7 +145,8 @@ export async function refineDrafts(
   const conn = deps.tx.read();
   const { batch, viewer } = await ownBatch(conn, actor, id);
   requireStatus(batch, 'draft');
-  if (!deps.ai || !(await aiEnabled(deps, conn)))
+  const ai = await aiState(deps, conn, featureOf(batch.sourceIssueId));
+  if (!deps.ai || !ai.enabled)
     throw conflict(ERROR_AI_UNAVAILABLE, 'AI is not available for intake.');
   const underIssue = !!batch.sourceIssueId;
   const files = await intakeBatchAttachments(conn, id);
@@ -158,6 +159,7 @@ export async function refineDrafts(
         batch.projectId,
         batch.rawContent,
       )),
+      model: ai.model,
       drafts: current,
       instruction,
       attachmentNames: files.map((file) => file.filename),

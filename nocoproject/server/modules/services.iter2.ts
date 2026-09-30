@@ -24,6 +24,7 @@ import type { TxRunner } from './shared/db.js';
 import type { createIdSource } from './shared/ids.js';
 import type { createUserDirectory } from './shared/users.js';
 import { createSkillService } from './skill/skill.service.js';
+import { NO_AI_MODELS } from './intake/ai-features.js';
 import { createWorkspaceSettingsService } from './system/settings.admin.js';
 import type { SettingsService } from './system/settings.service.js';
 import { createUsageService } from './usage/usage.service.js';
@@ -91,6 +92,7 @@ export function createIteration2Services(
       heuristic: createHeuristicIntakeParser(),
       ai: deps.aiIntake ?? null,
       aiConfigured: deps.aiConfigured ?? (() => false),
+      aiModels: deps.aiModels ?? null,
       classifier: buildProcessClassifier(null, undefined),
       attachmentText: deps.attachmentText ?? null,
     }),
@@ -102,6 +104,7 @@ export function createIteration2Services(
       tx,
       settings,
       workflows,
+      aiModels: deps.aiModels ?? NO_AI_MODELS,
     }),
   };
 }

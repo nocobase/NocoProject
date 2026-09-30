@@ -99,11 +99,64 @@ export interface SignalKindInfo {
 }
 /** GET adds the known kinds, so the settings page lists what the server can report. */
 export type WorkspaceSettingsViewV6 = WorkspaceSettingsViewV5 &
-  WorkspaceSettingsSignalFields & {
+  WorkspaceSettingsSignalFields &
+  WorkspaceSettingsAiFields &
+  WorkspaceSettingsAiView & {
     readonly signalKinds: readonly SignalKindInfo[];
   };
 export type UpdateWorkspaceSettingsRequestV6 =
-  UpdateWorkspaceSettingsRequestV5 & Partial<WorkspaceSettingsSignalFields>;
+  UpdateWorkspaceSettingsRequestV5 &
+    Partial<WorkspaceSettingsSignalFields> &
+    UpdateWorkspaceSettingsAiRequest;
+
+// ---------- Fast AI features (NP-205) ----------
+
+/** An LLM service (`ai.llmServices[].name`) and one of its enabled models. */
+export interface AiModelRef {
+  readonly llmService: string;
+  readonly model: string;
+}
+
+/**
+ * One fast, direct-model feature: `intakeAi` (the new issue dialog's AI draft tab and the process classifier) or
+ * `breakdownAi` (the sub-issue section's AI breakdown). `model: null` = the AI plugin's default model. `parser`
+ * `heuristic` never calls a model. A legacy `intakeParser` value seeds both `parser`s until they are saved.
+ */
+export interface AiFeatureSetting {
+  readonly enabled: boolean;
+  readonly parser: 'auto' | 'heuristic';
+  readonly model: AiModelRef | null;
+}
+export type AiFeatureKey = 'intakeAi' | 'breakdownAi';
+export type WorkspaceSettingsAiFields = Record<AiFeatureKey, AiFeatureSetting>;
+
+/** Why a feature answers with rules instead of a model (`null` = the model answers). */
+export type AiFeatureFallback = 'disabled' | 'rules_only' | 'no_model';
+/** `GET /np/settings`: what a feature actually uses right now. */
+export interface AiFeatureEffective {
+  readonly active: boolean;
+  readonly fallback: AiFeatureFallback | null;
+  readonly model:
+    | (AiModelRef & { readonly serviceTitle: string; readonly label: string })
+    | null;
+  /** `setting` = the model chosen for the feature; `default` = the AI plugin's default model. */
+  readonly source: 'setting' | 'default' | null;
+}
+/** An LLM service and the models enabled on it, for the model pickers. */
+export interface AiModelOption {
+  readonly llmService: string;
+  readonly title: string;
+  readonly models: readonly {
+    readonly label: string;
+    readonly value: string;
+  }[];
+}
+export interface WorkspaceSettingsAiView {
+  readonly aiModels: readonly AiModelOption[];
+  readonly aiEffective: Record<AiFeatureKey, AiFeatureEffective>;
+}
+export type UpdateWorkspaceSettingsAiRequest =
+  Partial<WorkspaceSettingsAiFields>;
 
 // ---------- Activity, inbox ----------
 
