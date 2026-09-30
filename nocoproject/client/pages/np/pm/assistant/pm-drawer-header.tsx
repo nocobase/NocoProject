@@ -57,6 +57,10 @@ export function PmDrawerHeader({
   const pmTitle = usePmTitle();
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState('');
+  // Mobile full-screen: 40px touch targets instead of the 28px desktop icon buttons.
+  const touchClass = compact
+    ? "size-10 [&_svg:not([class*='size-'])]:size-5"
+    : undefined;
   const history = assistant.view === 'history';
   const target = switchTarget(choice.data, conversation);
   const shownTitle = history
@@ -120,6 +124,7 @@ export function PmDrawerHeader({
         <Button
           variant='ghost'
           size='icon-sm'
+          className={touchClass}
           aria-label={t('np.pmAssistant.newConversation')}
           title={t('np.pmAssistant.newConversation')}
           onClick={() => {
@@ -135,6 +140,7 @@ export function PmDrawerHeader({
               <Button
                 variant='ghost'
                 size='icon-sm'
+                className={touchClass}
                 aria-label={t('np.pmAssistant.history.title')}
                 aria-pressed={history}
                 onClick={() => assistant.setView(history ? 'chat' : 'history')}
@@ -152,6 +158,7 @@ export function PmDrawerHeader({
           <Button
             variant='ghost'
             size='icon-sm'
+            className={touchClass}
             aria-label={
               assistant.mode === 'expanded'
                 ? t('np.pmAssistant.restoreSize')
@@ -182,6 +189,7 @@ export function PmDrawerHeader({
                 <Button
                   variant='ghost'
                   size='icon-sm'
+                  className={touchClass}
                   aria-label={t('np.pmAssistant.more')}
                 />
               }
@@ -227,6 +235,7 @@ export function PmDrawerHeader({
         <Button
           variant='ghost'
           size='icon-sm'
+          className={touchClass}
           aria-label={t('np.pmAssistant.close')}
           title={t('np.pmAssistant.close')}
           onClick={assistant.closeAssistant}
