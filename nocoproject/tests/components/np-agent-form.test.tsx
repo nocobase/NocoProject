@@ -190,4 +190,32 @@ describe('closing the new agent dialog with unsaved input (NP-200)', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(screen.getByText('Agent list')).toBeInTheDocument();
   });
+
+  it('treats a kind preselected by the link as the starting point, not as input', async () => {
+    const user = userEvent.setup();
+    api.request.mockImplementation(
+      answer({ 'GET np/runtimes': { data: [RUNTIME] } }),
+    );
+    await renderNpRoutes(
+      <Route
+        path='/agents'
+        element={
+          <>
+            <span>Agent list</span>
+            <Outlet />
+          </>
+        }
+      >
+        <Route path='new' element={<NewAgentPage />} />
+      </Route>,
+      { url: '/agents/new?kind=manager' },
+    );
+    await screen.findByRole('textbox', { name: 'Name' });
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Agent list')).toBeInTheDocument();
+  });
 });

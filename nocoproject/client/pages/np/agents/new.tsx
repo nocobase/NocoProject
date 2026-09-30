@@ -105,9 +105,11 @@ function NewAgentBody({
   const [maxConcurrentRuns, setMaxConcurrentRuns] = useState(
     String(DEFAULT_MAX_CONCURRENT_RUNS),
   );
-  const [kind, setKind] = useState<AgentKind>(
+  // `?kind=manager` (the project manager settings link) preselects the kind; it is where the form starts, not an edit.
+  const [initialKind] = useState<AgentKind>(
     useSearchParams()[0].get('kind') === 'manager' ? 'manager' : 'coder',
   );
+  const [kind, setKind] = useState<AgentKind>(initialKind);
   const [reasoningEffort, setReasoningEffort] =
     useState<ReasoningEffort | null>(null);
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
@@ -120,7 +122,7 @@ function NewAgentBody({
       capabilities.some((item) => !DEFAULT_CAPABILITIES.includes(item)) ||
       runtimeId !== null ||
       maxConcurrentRuns !== String(DEFAULT_MAX_CONCURRENT_RUNS) ||
-      kind !== 'coder' ||
+      kind !== initialKind ||
       reasoningEffort !== null,
   );
 
