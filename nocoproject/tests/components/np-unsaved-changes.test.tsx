@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Outlet, Route } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -150,5 +150,55 @@ describe('new issue dialog with unsaved input (NP-200)', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('closes an untouched form opened with a preset project without asking', async () => {
+    const user = userEvent.setup();
+    api.request.mockImplementation(
+      answer({ ...COMMON, 'GET np/settings': { data: {} } }),
+    );
+    await renderNewIssue('/issues/new?tab=manual&project=p1');
+    await screen.findByRole('textbox', { name: 'Title' });
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('drops the question when drafting finishes while it is asked', async () => {
+    const user = userEvent.setup();
+    let finish: (value: unknown) => void = () => {};
+    api.request.mockImplementation(
+      answer({
+        ...COMMON,
+        'POST np/intake/batches': () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      }),
+    );
+    await renderNewIssue('/issues/new?tab=ai');
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Requirements' }),
+      'Add a login page',
+    );
+    await user.click(screen.getByRole('button', { name: 'Draft issues' }));
+    await user.keyboard('{Escape}');
+    await expectAsked();
+    await act(async () =>
+      finish({
+        data: {
+          batch: BATCH,
+          parser: 'heuristic',
+          drafts: [
+            { position: 1, parentPosition: null, fields: { title: 'Login' } },
+          ],
+        },
+      }),
+    );
+    // The drafts are stored now: the question goes away and the table shows.
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(
+      await screen.findByRole('textbox', { name: 'Row 1 Title' }),
+    ).toHaveValue('Login');
   });
 });

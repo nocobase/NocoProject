@@ -45,21 +45,33 @@ export function useUnsavedChangesGuard(dirty = false): UnsavedChangesGuard {
   const resolveRef = useRef<((discard: boolean) => void) | null>(null);
   const [asking, setAsking] = useState(false);
 
-  const scope = useMemo<UnsavedChangesScope>(
-    () => ({
-      track: (source, dirty) => {
-        if (dirty) sourcesRef.current.add(source);
-        else sourcesRef.current.delete(source);
-      },
-    }),
-    [],
-  );
   const answer = useCallback((discard: boolean): void => {
     const resolve = resolveRef.current;
     resolveRef.current = null;
     setAsking(false);
     resolve?.(discard);
   }, []);
+  const scope = useMemo<UnsavedChangesScope>(
+    () => ({
+      track: (source, dirty) => {
+        if (dirty) {
+          sourcesRef.current.add(source);
+          return;
+        }
+        sourcesRef.current.delete(source);
+        // A submit that finished (or a form that went away) while asking leaves nothing to discard: let the close
+        // the member asked for go ahead.
+        if (
+          resolveRef.current &&
+          sourcesRef.current.size === 0 &&
+          !dirtyRef.current
+        ) {
+          answer(true);
+        }
+      },
+    }),
+    [answer],
+  );
   const confirmDiscard = useCallback((): Promise<boolean> => {
     if (sourcesRef.current.size === 0 && !dirtyRef.current) {
       return Promise.resolve(true);

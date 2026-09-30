@@ -1,6 +1,6 @@
 import { AlertDialog as AlertDialogPrimitive } from '@base-ui/react/alert-dialog';
 import { useTranslation } from '@nocobase/i18n/client';
-import type { ReactElement, ReactNode } from 'react';
+import { useEffect, type ReactElement, type ReactNode } from 'react';
 
 import {
   AlertDialog,
@@ -29,6 +29,9 @@ export function UnsavedChangesBoundary({
 }): ReactElement {
   const { t } = useTranslation();
   const { answer } = guard;
+  // A dialog held in component state keeps its guard while closed: a question still open when its content goes away
+  // (the submit closed it) must not come back when it reopens.
+  useEffect(() => () => answer(false), [answer]);
   return (
     <UnsavedChangesContext.Provider value={guard.scope}>
       {children}

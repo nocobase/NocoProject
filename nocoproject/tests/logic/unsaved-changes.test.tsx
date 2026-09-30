@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
@@ -218,5 +218,117 @@ describe('unsaved changes in a dialog held in component state', () => {
       await screen.findByRole('button', { name: 'unsavedChanges.discard' }),
     );
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
+  });
+});
+
+// A save the test finishes by hand, to close while the confirmation is up.
+let finishSave: () => void = () => {};
+
+function SlowForm({ onSaved }: { readonly onSaved: () => void }) {
+  const [name, setName] = useState('');
+  const markSaved = useUnsavedChanges(name !== '');
+  return (
+    <>
+      <input
+        aria-label='Name'
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+      />
+      <button
+        onClick={() => {
+          finishSave = () => {
+            markSaved();
+            onSaved();
+          };
+        }}
+      >
+        Save
+      </button>
+    </>
+  );
+}
+
+function SlowRouteForm() {
+  const { close } = useRouteOverlay();
+  return <SlowForm onSaved={() => void close()} />;
+}
+
+function SlowRouteDialog() {
+  const unsaved = useUnsavedChangesGuard();
+  return (
+    <RouteDialog title='New order' beforeClose={() => unsaved.confirmDiscard()}>
+      <UnsavedChangesBoundary guard={unsaved}>
+        <SlowRouteForm />
+      </UnsavedChangesBoundary>
+    </RouteDialog>
+  );
+}
+
+function SlowStateDialog() {
+  const [open, setOpen] = useState(false);
+  const unsaved = useUnsavedChangesGuard();
+  const close = () => setOpen(false);
+  const requestClose = useGuardedClose(unsaved, close);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Open</button>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) requestClose();
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Note</DialogTitle>
+          <UnsavedChangesBoundary guard={unsaved}>
+            {open ? <SlowForm onSaved={close} /> : null}
+          </UnsavedChangesBoundary>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+describe('a save that finishes while the confirmation is up', () => {
+  it('closes the route dialog instead of leaving the question open', async () => {
+    const user = userEvent.setup();
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/orders',
+          element: <Outlet />,
+          children: [{ path: 'new', element: <SlowRouteDialog /> }],
+        },
+      ],
+      { initialEntries: ['/orders/new'] },
+    );
+    render(<RouterProvider router={router} />);
+    await typeName('Draft');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.keyboard('{Escape}');
+    await screen.findByRole('alertdialog');
+    await act(async () => finishSave());
+    await waitFor(() => expect(router.state.location.pathname).toBe('/orders'));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('does not bring the question back when a component-state dialog reopens', async () => {
+    const user = userEvent.setup();
+    render(<SlowStateDialog />);
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    await typeName('Draft');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.keyboard('{Escape}');
+    await screen.findByRole('alertdialog');
+    await act(async () => finishSave());
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    expect(
+      await screen.findByRole('textbox', { name: 'Name' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 });
