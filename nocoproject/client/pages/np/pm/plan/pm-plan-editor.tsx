@@ -354,7 +354,7 @@ function IssueFields({
                       ? values.ownerUserId
                       : null
                   }
-                  noneLabel={t('np.intake.defaultOwner')}
+                  noneLabel={t('np.pmAssistant.plan.defaultOwner')}
                   onChange={(next) =>
                     onChange({ ownerUserId: next ?? undefined })
                   }

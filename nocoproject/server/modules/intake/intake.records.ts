@@ -1,25 +1,15 @@
 /**
- * Row mapping and writes for `intakeBatches` and `intakeDrafts`.
+ * Row mapping and reads for `intakeBatches` and `intakeDrafts`.
  */
-import type { Conn, Tx } from '../shared/db.js';
-import {
-  fromJson,
-  iso,
-  isoOrNull,
-  now,
-  num,
-  str,
-  toJson,
-} from '../shared/db.js';
+import type { Conn } from '../shared/db.js';
+import { fromJson, iso, isoOrNull, num, str } from '../shared/db.js';
 import { notFound } from '../shared/errors.js';
-import type { IdSource } from '../shared/ids.js';
 import type {
   IntakeBatch,
   IntakeBatchStatus,
   IntakeDraft,
   IntakeDraftFields,
 } from '../shared/protocol.js';
-import type { ValidatedDraft } from './intake.validation.js';
 
 const STATUSES: readonly IntakeBatchStatus[] = [
   'draft',
@@ -90,48 +80,4 @@ export async function draftsOf(
     .orderBy('position', 'asc')
     .execute();
   return rows.map(mapDraft);
-}
-
-/** Replaces every draft of a batch. */
-export async function replaceDrafts(
-  tx: Tx,
-  ids: IdSource,
-  batchId: string,
-  drafts: readonly ValidatedDraft[],
-): Promise<void> {
-  await tx.conn.query
-    .deleteFrom('intakeDrafts')
-    .where('batchId', '=', batchId)
-    .execute();
-  if (drafts.length === 0) return;
-  const timestamp = now();
-  await tx.conn.query
-    .insertInto('intakeDrafts')
-    .values(
-      drafts.map((draft) => ({
-        id: ids.next(),
-        batchId,
-        position: draft.position,
-        parentPosition: draft.parentPosition,
-        fields: toJson(draft.fields),
-        validation: toJson({ errors: draft.errors }),
-        createdIssueId: null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })),
-    )
-    .execute();
-}
-
-export async function setBatchStatus(
-  tx: Tx,
-  batchId: string,
-  status: IntakeBatchStatus,
-  extra: Record<string, unknown> = {},
-): Promise<void> {
-  await tx.conn.query
-    .updateTable('intakeBatches')
-    .set({ status, ...extra, updatedAt: now() })
-    .where('id', '=', batchId)
-    .execute();
 }

@@ -127,7 +127,7 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     children: [
       {
         // The detail is a covering child page (the list keeps its filters underneath); "New issue" (np.issues.new)
-        // is a route dialog (one issue or many, iteration 4 §D) and `intake` redirects into it; the run transcript
+        // is a route dialog and `intake` redirects into it; the run transcript
         // is a dialog over the detail.
         auth: 'required',
         authz: {
@@ -146,9 +146,9 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
             path: 'new',
           },
           {
-            // Iteration 3's batch entry drawer: the AI draft (np.newIssue.tabs.ai) tab of "New issue" since
-            // iteration 4 §D.
-            componentLoader: () => import('./pages/np/intake/redirect.js'),
+            // Iteration 3's batch entry drawer: retired in NP-186, the link opens the manual "New issue" dialog.
+            componentLoader: () =>
+              import('./pages/np/issues/intake-redirect.js'),
             name: 'np-issue-intake',
             path: 'intake',
           },
@@ -205,9 +205,10 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
                 path: 'resources/new',
               },
               {
-                // Iteration 3's "Batch add" (np-iter2 project.batchAdd): the AI draft tab of "New issue" with the
+                // Iteration 3's "Batch add": retired in NP-186, the link opens the manual "New issue" dialog with the
                 // project preselected.
-                componentLoader: () => import('./pages/np/intake/redirect.js'),
+                componentLoader: () =>
+                  import('./pages/np/issues/intake-redirect.js'),
                 name: 'np-project-intake',
                 path: 'intake',
               },
@@ -401,11 +402,10 @@ const appRoutes: AppClientRouteContribution = defineAppRoutes([
     ],
   },
   {
-    // Iteration 2's batch entry page is now the AI draft tab of "New issue" (iteration 4 §D); `?project` / `?batch`
-    // kept.
+    // Iteration 2's batch entry page: retired in NP-186, the link opens the manual "New issue" dialog (`?project` kept).
     auth: 'required',
     authz: 'skip',
-    componentLoader: () => import('./pages/np/intake/redirect.js'),
+    componentLoader: () => import('./pages/np/issues/intake-redirect.js'),
     name: 'np-intake-redirect',
     path: '/intake',
   },

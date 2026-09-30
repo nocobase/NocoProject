@@ -5,7 +5,7 @@ import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ApprovalsRedirect from '../../client/pages/np/inbox/approvals.js';
-import IntakeRedirect from '../../client/pages/np/intake/redirect.js';
+import IntakeRedirect from '../../client/pages/np/issues/intake-redirect.js';
 import MyIssuesPage from '../../client/pages/np/my-issues/index.js';
 import MyExecutingIssues from '../../client/pages/np/my-issues/executing.js';
 import MyOwnedIssues from '../../client/pages/np/my-issues/owned.js';
@@ -122,7 +122,7 @@ describe('my issues (§G)', () => {
 });
 
 describe('redirects kept for old links (§G)', () => {
-  it('sends /intake to the AI tab of the new issue dialog, keeping the project and the batch', async () => {
+  it('sends /intake to the manual new issue dialog, keeping the project and dropping the retired batch', async () => {
     await renderNpRoutes(
       <>
         <Route path='/intake' element={<IntakeRedirect />} />
@@ -131,7 +131,7 @@ describe('redirects kept for old links (§G)', () => {
       { url: '/intake?project=p1&batch=b1' },
     );
     expect(await screen.findByTestId('search')).toHaveTextContent(
-      '?tab=ai&project=p1&batch=b1',
+      '?project=p1',
     );
   });
 

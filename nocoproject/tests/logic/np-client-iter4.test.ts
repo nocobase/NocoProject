@@ -34,7 +34,6 @@ import {
   withoutIdleDesignColumns,
 } from '../../client/pages/np/issues/board/board-model.js';
 import { activityLabel } from '../../client/pages/np/issues/detail/timeline.js';
-import { resolveNewIssueTab } from '../../client/pages/np/issues/new-issue-model.js';
 import { pmNotConfigured } from '../../client/pages/np/pm/pm-model.js';
 import type {
   AgentListItem,
@@ -350,15 +349,5 @@ describe('project manager conversation', () => {
       defaultProcess: 'design_first',
       agentEntries: draft.agentEntries,
     });
-  });
-});
-
-describe('new issue dialog tab', () => {
-  it('reads ?tab=, then a draft batch, then the stored tab, then AI', () => {
-    const params = (search: string) => new URLSearchParams(search);
-    expect(resolveNewIssueTab(params('?tab=manual'), 'ai')).toBe('manual');
-    expect(resolveNewIssueTab(params('?batch=b1'), 'manual')).toBe('ai');
-    expect(resolveNewIssueTab(params(''), 'manual')).toBe('manual');
-    expect(resolveNewIssueTab(params('?tab=other'), null)).toBe('ai');
   });
 });

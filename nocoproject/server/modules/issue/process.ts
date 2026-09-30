@@ -2,7 +2,7 @@
  * The design-first process on issue writes (docs/phase1/iteration-4-contract.md §B):
  *
  * - creation: `process` from the request (`direct` / `design_first`, by `user`), else `settings.defaultProcess`
- *   (by `default`), and `auto` asks the classifier (`intake/process-classifier.ts`, by `heuristic` or `ai`); the
+ *   (by `default`), and `auto` asks the classifier (`process-classifier.ts`, by `heuristic`; older activity may say `ai`); the
  *   choice is recorded as the `process_selected` activity;
  * - `PATCH { process }` only while the issue is in backlog / todo (409 `PROCESS_LOCKED`), recorded as
  *   `process_selected` by `user`;
@@ -27,10 +27,7 @@ import {
   STATUS_PROPOSAL_REVIEW,
 } from '../shared/protocol.js';
 import type { SettingsService } from '../system/settings.service.js';
-import type {
-  ProcessClassifier,
-  ProcessRule,
-} from '../intake/process-classifier.js';
+import type { ProcessClassifier, ProcessRule } from './process-classifier.js';
 import type { ActivityEntry } from './issue.fields.js';
 
 /** `process_selected.details.by`: the request, the workspace default, or the classifier. */
@@ -65,8 +62,7 @@ export interface SelectProcessDeps {
 }
 
 /**
- * The process of a new issue. Runs outside any transaction: the classifier may make a model call of up to 30
- * seconds. `useAi: false` keeps it to the heuristic (intake batches).
+ * The process of a new issue: the request, else the workspace default, else the heuristic classifier.
  */
 export async function selectProcess(
   deps: SelectProcessDeps,
@@ -76,7 +72,6 @@ export async function selectProcess(
     readonly title: string;
     readonly description: string;
   },
-  options: { readonly userId: string; readonly useAi: boolean },
 ): Promise<ProcessSelection> {
   const requested =
     input.process === undefined || input.process === null
@@ -85,10 +80,10 @@ export async function selectProcess(
   if (requested !== 'auto') return { process: requested, by: 'user' };
   const fallback = (await deps.settings.read(conn)).defaultProcess;
   if (fallback !== 'auto') return { process: fallback, by: 'default' };
-  const decision = await deps.classifier.classify(
-    { title: input.title, description: input.description },
-    options,
-  );
+  const decision = await deps.classifier.classify({
+    title: input.title,
+    description: input.description,
+  });
   return { process: decision.process, by: decision.by, rule: decision.rule };
 }
 

@@ -165,28 +165,6 @@ describe.skipIf(!db)('agent kind and reasoning effort (PostgreSQL)', () => {
       revision: issue.revision,
     });
     expect(patched.body.code).toBe('MANAGER_NOT_EXECUTOR');
-    const batch = await alice<
-      Data<{ drafts: { validation: { errors: string[] } }[] }>
-    >('POST', '/np/intake/batches', {
-      source: 'paste',
-      rawContent: 'One task',
-    });
-    const batchId = (batch.body.data as unknown as { batch: { id: string } })
-      .batch.id;
-    const drafts = await alice<
-      Data<{ drafts: { validation: { errors: string[] } }[] }>
-    >('PUT', `/np/intake/batches/${batchId}/drafts`, {
-      drafts: [
-        {
-          position: 1,
-          parentPosition: null,
-          fields: { title: 'One', executor: { type: 'agent', id: manager } },
-        },
-      ],
-    });
-    expect(drafts.body.data.drafts[0]!.validation.errors).toContain(
-      'the agent needs issue.execute',
-    );
   });
 });
 

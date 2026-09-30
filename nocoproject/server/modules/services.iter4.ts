@@ -1,6 +1,5 @@
 /**
- * The iteration 4 modules (docs/phase1/iteration-4-contract.md): the process classifier (heuristic, plus the AI
- * classifier when the provider hands one in), the design proposals and decisions, and the project manager
+ * The iteration 4 modules (docs/phase1/iteration-4-contract.md): the design proposals and decisions, and the project manager
  * (conversation and the manager's reads). Wired by `createNpServices` (`services.ts`).
  */
 import type { ActivityRecorder } from './shared/activity.js';
@@ -14,11 +13,6 @@ import {
   createDesignService,
   type DesignService,
 } from './issue/design.service.js';
-import {
-  createProcessClassifier,
-  type AiProcessClassifier,
-  type ProcessClassifier,
-} from './intake/process-classifier.js';
 import type { GitHubClient } from './git/github-client.js';
 import {
   createPullRequestMergeService,
@@ -60,17 +54,6 @@ export interface Iteration4Inputs {
   readonly settings: SettingsService;
   readonly workflows: WorkflowService;
   readonly roles: () => RoleAssignments;
-}
-
-/** The classifier `IssueService.create` uses for `process: auto`. */
-export function buildProcessClassifier(
-  ai: AiProcessClassifier | null | undefined,
-  aiConfigured: (() => boolean) | undefined,
-): ProcessClassifier {
-  return createProcessClassifier({
-    ai: ai ?? null,
-    aiConfigured: aiConfigured ?? (() => false),
-  });
 }
 
 export function createIteration4Services(

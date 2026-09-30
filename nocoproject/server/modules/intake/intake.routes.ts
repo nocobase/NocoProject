@@ -1,29 +1,15 @@
 import type { AuthEnv } from '@nocobase/app-plugin-authentication';
 import type { Hono } from 'hono';
 
-import { invalid } from '../shared/errors.js';
-import { npRouter, readJson, sessionActor } from '../shared/http.js';
-import type {
-  ConfirmIntakeRequest,
-  CreateIntakeBatchRequestV4,
-  IntakeBatchAttachmentsField,
-  PutIntakeDraftsRequest,
-  RefineIntakeDraftsRequest,
-} from '../shared/protocol.js';
+import { NpError } from '../shared/errors.js';
+import { npRouter, sessionActor } from '../shared/http.js';
+import type { IntakeBatchAttachmentsField } from '../shared/protocol.js';
 import type { IntakeService } from './intake.service.js';
 
-function optionalBody<T>(text: string): T {
-  if (!text.trim()) return {} as T;
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw invalid('INVALID_JSON', 'Request body must be JSON.');
-  }
-}
-
 /**
- * `/np/intake/batches` (browser, contract §E). NP-78: the batch's `attachments[].contentUrl` gets the application's
- * base path. NP-120: `POST /batches/:id/refine` revises the drafts by one instruction.
+ * `/np/intake/batches`: read-only since NP-186. The AI draft tab, the draft editor, refine and confirm are retired and
+ * answer 410 `INTAKE_RETIRED`; `GET /batches/:id` still shows a batch from before. The batch's
+ * `attachments[].contentUrl` gets the application's base path.
  */
 export function createIntakeRoutes(
   intake: IntakeService,
@@ -38,19 +24,6 @@ export function createIntakeRoutes(
     })),
   });
   const routes = npRouter<AuthEnv>();
-  routes.post('/batches', async (context) =>
-    context.json(
-      {
-        data: withBase(
-          await intake.create(
-            sessionActor(context),
-            await readJson<CreateIntakeBatchRequestV4>(context),
-          ),
-        ),
-      },
-      201,
-    ),
-  );
   routes.get('/batches/:id', async (context) =>
     context.json({
       data: withBase(
@@ -58,43 +31,17 @@ export function createIntakeRoutes(
       ),
     }),
   );
-  routes.put('/batches/:id/drafts', async (context) => {
-    const body = await readJson<PutIntakeDraftsRequest>(context);
-    return context.json({
-      data: {
-        drafts: await intake.putDrafts(
-          sessionActor(context),
-          context.req.param('id'),
-          body.drafts,
-        ),
-      },
-    });
-  });
-  // NP-120: the model answers within 30 seconds (504 AI_TIMEOUT otherwise).
-  routes.post('/batches/:id/refine', async (context) =>
-    context.json({
-      data: {
-        drafts: await intake.refine(
-          sessionActor(context),
-          context.req.param('id'),
-          await readJson<RefineIntakeDraftsRequest>(context),
-        ),
-      },
-    }),
-  );
-  routes.post('/batches/:id/confirm', async (context) =>
-    context.json({
-      data: await intake.confirm(
-        sessionActor(context),
-        context.req.param('id'),
-        optionalBody<ConfirmIntakeRequest>(await context.req.text()),
-      ),
-    }),
-  );
-  routes.post('/batches/:id/cancel', async (context) =>
-    context.json({
-      data: await intake.cancel(sessionActor(context), context.req.param('id')),
-    }),
-  );
+  const retired = () => {
+    throw new NpError(
+      'gone',
+      'INTAKE_RETIRED',
+      'AI intake is retired; ask the project manager to plan the work instead.',
+    );
+  };
+  routes.post('/batches', retired);
+  routes.put('/batches/:id/drafts', retired);
+  routes.post('/batches/:id/refine', retired);
+  routes.post('/batches/:id/confirm', retired);
+  routes.post('/batches/:id/cancel', retired);
   return routes;
 }

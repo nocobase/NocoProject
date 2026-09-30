@@ -6,13 +6,10 @@ import type { AgentEntryBindings } from './agent-capabilities.js';
  * reason as `types.ts`: the client tsconfig must not reach into `server/`. Fields the contract states only in prose
  * are optional, and the normalizers in `api-iter2.ts` accept the plausible envelopes.
  */
-import type { ActorType, ExecutorRef, IssuePriority } from './types.js';
+import type { ActorType } from './types.js';
 import type { MetricThresholds } from './types-iter3.js';
 import type { SignalKindInfo, SignalRules } from './types-signals.js';
-import type {
-  ProcessChoice,
-  WorkspaceSettingsPhase1Iter4,
-} from './types-iter4.js';
+import type { WorkspaceSettingsPhase1Iter4 } from './types-iter4.js';
 
 export type ExecutionMode = 'task' | 'session';
 
@@ -201,94 +198,6 @@ export interface SkillInput {
   readonly content?: string;
 }
 
-// ---------- §E intake ----------
-
-export type IntakeSource = 'paste' | 'issue';
-export type IntakeParserKind = 'ai' | 'heuristic';
-export type IntakeBatchStatus =
-  'draft' | 'confirmed' | 'cancelled' | 'reverted';
-
-export interface IntakeDraftFields {
-  readonly title: string;
-  readonly description?: string;
-  readonly priority?: IssuePriority;
-  readonly labels?: readonly string[];
-  readonly stage?: number | null;
-  readonly executor?: ExecutorRef | null;
-  readonly ownerUserId?: string | null;
-  /** Iteration 4 §D: the draft's process; missing or `auto` lets the server decide. */
-  readonly process?: ProcessChoice | null;
-  /** NP-78: batch files attached to the issue created from this draft. */
-  readonly attachmentIds?: readonly string[];
-}
-
-export interface IntakeDraftInput {
-  readonly position: number;
-  readonly parentPosition: number | null;
-  readonly fields: IntakeDraftFields;
-}
-
-export interface IntakeDraft extends IntakeDraftInput {
-  readonly id?: string;
-  readonly validation?: { readonly errors: readonly string[] } | null;
-  readonly createdIssueId?: string | null;
-}
-
-export interface IntakeBatch {
-  readonly id: string;
-  readonly createdById?: string;
-  readonly projectId: string | null;
-  readonly projectName?: string | null;
-  readonly source: IntakeSource;
-  readonly rawContent?: string;
-  readonly parser: IntakeParserKind;
-  readonly status: IntakeBatchStatus;
-  readonly parseError?: string | null;
-  /** The issue a `source: 'issue'` batch breaks down (`issueId` is read as a fallback). */
-  readonly sourceIssueId?: string | null;
-  readonly issueId?: string | null;
-  readonly draftCount?: number;
-  readonly confirmedAt?: string | null;
-  readonly createdAt: string;
-}
-
-/** NP-78: a file travelling with a batch (`IntakeBatchAttachment` in the protocol). */
-export interface IntakeBatchAttachment {
-  readonly id: string;
-  readonly filename: string;
-  readonly ext: string;
-  readonly mimeType: string;
-  readonly size: number;
-  readonly contentUrl: string;
-  readonly issueId: string | null;
-  /** What AI draft read of the file; null on batches from before it was recorded. */
-  readonly readStatus?: {
-    readonly state:
-      | 'read'
-      | 'truncated'
-      | 'empty'
-      | 'unsupported'
-      | 'legacy'
-      | 'failed'
-      | 'skipped';
-    readonly chars: number;
-  } | null;
-}
-
-export interface IntakeBatchDetail {
-  readonly batch: IntakeBatch;
-  readonly drafts: readonly IntakeDraft[];
-  readonly parser?: IntakeParserKind;
-  readonly attachments?: readonly IntakeBatchAttachment[];
-  /** NP-120: the drafts can be revised by AI (an LLM is configured and the setting is auto). */
-  readonly aiRefine?: boolean;
-}
-
-export interface IntakeConfirmInput {
-  readonly ownerUserId?: string;
-  readonly defaultExecutor?: ExecutorRef;
-}
-
 // ---------- §I usage and settings ----------
 
 export type UsageGroupBy =
@@ -330,14 +239,11 @@ export interface ModelPrice {
   readonly cacheWritePerM: number;
 }
 
-export type IntakeParserSetting = 'auto' | 'heuristic';
-
 /** `GET /np/settings`. Only the fields the settings page edits are typed; the rest is carried through untouched. */
 export interface WorkspaceSettings {
   readonly agentEntries?: AgentEntryBindings;
   readonly prMergedStatus?: string;
   readonly autoExecuteSubtasksDefault?: boolean;
-  readonly intakeParser?: IntakeParserSetting;
   readonly modelPrices?: readonly ModelPrice[];
   readonly issuePrefix?: string;
   /** Iteration 3 §C: the targets the acceptance metrics are held to. */
@@ -359,7 +265,6 @@ export type WorkspaceSettingsInput = Partial<
     WorkspaceSettings,
     | 'prMergedStatus'
     | 'autoExecuteSubtasksDefault'
-    | 'intakeParser'
     | 'modelPrices'
     | 'metricThresholds'
     | 'defaultProcess'

@@ -11,6 +11,8 @@ export type NpErrorKind =
   | 'conflict'
   | 'unauthorized'
   | 'upgradeRequired'
+  /** A retired feature (NP-186 AI intake): 410. */
+  | 'gone'
   /** An upstream service (GitHub, the LLM) failed: 502. */
   | 'upstream'
   /** An upstream service did not answer in time: 504. */

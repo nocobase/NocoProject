@@ -215,46 +215,41 @@ describe.skipIf(!db)('issue attachments (PostgreSQL)', () => {
     expect(left.sort()).toEqual([fresh, kept].sort());
   });
 
-  it('attaches batch files nobody assigned to the first issue, and purges those of a cancelled batch', async () => {
-    const loose = await upload(ALICE.id!, 'loose.txt');
-    const batch = await services.intake.create(ALICE, {
-      source: 'paste',
-      rawContent: '- First\n- Second',
-      attachmentIds: [loose],
-    });
-    // The member takes the file off every draft (or deletes the draft that held it).
-    await services.intake.putDrafts(
-      ALICE,
-      batch.batch.id,
-      batch.drafts.map(({ position, parentPosition, fields }) => ({
-        position,
-        parentPosition,
-        fields: { ...fields, attachmentIds: [] },
-      })),
+  it('keeps the files of an open intake batch from the orphan sweep and purges those of a closed one (retired intake, NP-186)', async () => {
+    const batch = async (id: string, status: string): Promise<void> => {
+      await db!.knex.raw(
+        `INSERT INTO "${db!.schema}".intake_batches
+           (id, created_by_id, source, raw_content, parser, status, created_at, updated_at)
+         VALUES (?, ?, 'paste', 'text', 'heuristic', ?, now(), now())`,
+        [id, ALICE.id, status],
+      );
+    };
+    const inBatch = async (fileId: string, batchId: string): Promise<void> => {
+      await db!.knex.raw(
+        `UPDATE "${db!.schema}".np_files SET intake_batch_id = ? WHERE id = ?`,
+        [batchId, fileId],
+      );
+    };
+    const held = await upload(
+      ALICE.id!,
+      'held.txt',
+      new Date(Date.now() - 25 * 3600_000),
     );
-    const { issues } = await services.intake.confirm(ALICE, batch.batch.id, {});
-    expect(
-      (await services.attachments.list(ALICE, issues[0].id)).map(
-        (item) => item.id,
-      ),
-    ).toEqual([loose]);
-    expect(await services.attachments.list(ALICE, issues[1].id)).toEqual([]);
-
     const dropped = await upload(
       ALICE.id!,
       'dropped.txt',
       new Date(Date.now() - 25 * 3600_000),
     );
-    const cancelled = await services.intake.create(ALICE, {
-      source: 'paste',
-      rawContent: 'Something',
-      attachmentIds: [dropped],
-    });
-    const later = new Date(Date.now() + 1000);
-    expect(await services.attachments.purgeOrphans(later)).toBe(0);
-    await services.intake.cancel(ALICE, cancelled.batch.id);
-    expect(await services.attachments.purgeOrphans(later)).toBe(1);
+    await batch('batch-open', 'draft');
+    await batch('batch-cancelled', 'cancelled');
+    await inBatch(held, 'batch-open');
+    await inBatch(dropped, 'batch-cancelled');
+
+    expect(
+      await services.attachments.purgeOrphans(new Date(Date.now() + 1000)),
+    ).toBe(1);
     expect(removed).toEqual([{ disk: 'local', key: `objects/${dropped}.txt` }]);
+    expect((await rows(db!, 'np_files')).map((row) => row.id)).toEqual([held]);
   });
 
   it('hands the claimed run the attachments and serves agentContent only for its files (NP-111)', async () => {

@@ -1,17 +1,11 @@
-import { useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
-import { useMutation } from '@tanstack/react-query';
-import { HourglassIcon, PlusIcon, SparklesIcon } from 'lucide-react';
+import { HourglassIcon, PlusIcon } from 'lucide-react';
 import type { ReactElement } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 
 import { NpExecutor, NpStatusBadge } from '@/components/np-badges';
 import { NpTag } from '@/components/np-tag';
 import { Button } from '@/components/ui/button';
-import { Spinner } from '@/components/ui/spinner';
-import { toast } from '@/components/ui/toast';
-
-import { createIntakeBatch } from '../../api-intake.js';
 
 import type { StatusCatalogEntry, SubtaskSummary } from '../../types.js';
 import { groupSubtasksByStage } from './subtask-model.js';
@@ -53,8 +47,8 @@ function SubtaskRow({
 
 /**
  * Sub-issues grouped by stage (§J 2). A stage runs after every lower stage is terminal; "waiting for N" counts a
- * sub-issue's open blockers. New sub-issues open the `new-subtask` route dialog; "AI breakdown" turns the description
- * into sub-issue drafts (iteration 2 §E, `source: 'issue'`) and opens them on the batch entry page for review.
+ * sub-issue's open blockers. New sub-issues open the `new-subtask` route dialog; "Let the project manager break it down" opens the
+ * assistant drawer with this issue as context (NP-185).
  */
 export function SubtasksSection({
   issueId,
@@ -68,25 +62,10 @@ export function SubtasksSection({
   readonly issueLabel?: string;
   readonly subtasks: readonly SubtaskSummary[];
   readonly catalog: readonly StatusCatalogEntry[];
-  /** `issues/edit` (NP-161): without it, "AI breakdown" and "New sub-issue" do not render. */
+  /** `issues/edit` (NP-161): without it, "Let the project manager break it down" and "New sub-issue" do not render. */
   readonly canEdit?: boolean;
 }): ReactElement {
   const { t } = useTranslation();
-  const api = useApiClient();
-  const navigate = useNavigate();
-  const breakdown = useMutation({
-    mutationFn: () => createIntakeBatch(api, { source: 'issue', issueId }),
-    onSuccess: (detail) =>
-      void navigate(
-        `/issues/new?tab=ai&batch=${encodeURIComponent(detail.batch.id)}`,
-      ),
-    onError: () =>
-      toast.add({
-        type: 'error',
-        priority: 'high',
-        title: t('np.intake.parseFailed'),
-      }),
-  });
   const groups = groupSubtasksByStage(subtasks, catalog);
   const done = groups.reduce((total, group) => total + group.done, 0);
   const staged = groups.some((group) => group.stage !== null);
@@ -127,7 +106,6 @@ export function SubtasksSection({
         </h2>
         {canEdit ? (
           <div className='flex gap-1'>
-            {/* NP-185: the project manager's breakdown; "AI breakdown" below goes with intake in NP-186. */}
             <AskPmButton
               object={{
                 type: 'issue',
@@ -138,19 +116,6 @@ export function SubtasksSection({
               label={t('np.pmAssistant.breakdown')}
               variant='ghost'
             />
-            <Button
-              variant='ghost'
-              size='sm'
-              disabled={breakdown.isPending}
-              onClick={() => breakdown.mutate()}
-            >
-              {breakdown.isPending ? (
-                <Spinner data-icon='inline-start' />
-              ) : (
-                <SparklesIcon data-icon='inline-start' />
-              )}
-              {t('np.intake.aiBreakdown')}
-            </Button>
             <Button
               variant='ghost'
               size='sm'

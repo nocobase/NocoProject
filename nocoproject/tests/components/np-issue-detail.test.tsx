@@ -743,7 +743,9 @@ describe('issues/edit scope (NP-161)', () => {
     ).toBeNull();
     expect(screen.queryByRole('textbox', { name: 'Comment' })).toBeNull();
     expect(screen.queryByText('New sub-issue')).toBeNull();
-    expect(screen.queryByText('AI breakdown')).toBeNull();
+    expect(
+      screen.queryByText('Let the project manager break it down'),
+    ).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Remove NP-90 as a blocker' }),
     ).toBeNull();
@@ -775,7 +777,6 @@ describe('issues/edit scope (NP-161)', () => {
     ).toBeVisible();
     expect(screen.getByRole('textbox', { name: 'Comment' })).toBeVisible();
     expect(screen.getByText('New sub-issue')).toBeVisible();
-    expect(screen.getByText('AI breakdown')).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Remove NP-90 as a blocker' }),
     ).toBeVisible();

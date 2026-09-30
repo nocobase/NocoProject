@@ -134,75 +134,6 @@ const npIter2EnUS = {
     emptyDescription:
       'When a status change needs your approval, it appears here and in your inbox.',
   },
-  intake: {
-    title: 'Batch entry',
-    openDrawer: 'Batch entry',
-    parsedToast: 'Parsed into {{count}} drafts',
-    description:
-      'Paste a list, meeting notes or a CSV. It is split into draft issues you can edit before creating them.',
-    rawLabel: 'Text to split into issues',
-    rawPlaceholder:
-      '# Login\n- Design the form [high] #frontend\n  - Validate email\n- Rate-limit attempts @stage2',
-    rawHint:
-      'Headings become parent issues, list items become issues, indented items become sub-issues. [high], #label and @stage2 are read too.',
-    rawTooLong: 'The text is too long. Split it into smaller batches.',
-    parse: 'Split into drafts',
-    parsing: 'Splitting…',
-    parseFailed: 'Unable to split the text. Please try again.',
-    parseFallback:
-      'The AI parser was not available, so the text was split by rules. Check the drafts.',
-    aiBreakdown: 'AI breakdown',
-    issueSourceHint:
-      'These drafts become sub-issues of the issue they were broken out of.',
-    draftsTitle: 'Drafts ({{count}})',
-    rowLabel: 'Row {{position}}',
-    untitled: 'Untitled',
-    noParent: 'No parent',
-    defaultOwner: 'Batch owner',
-    indent: 'Make row {{position}} a sub-issue of the row above',
-    outdent: 'Move row {{position}} up a level',
-    removeRow: 'Remove row {{position}}',
-    rowProblems: 'Problems in row {{position}}',
-    addRow: 'Add row',
-    batchOwner: 'Owner of the new issues',
-    defaultExecutor: 'Executor for issues without one',
-    discard: 'Discard batch',
-    save: 'Save drafts',
-    confirm: 'Create {{count}} issues',
-    created: '{{count}} issues created',
-    fixProblems: 'Fix the problems shown in the table first.',
-    stateChanged: 'This batch was already confirmed or cancelled.',
-    notFound: 'This batch does not exist.',
-    columns: {
-      title: 'Title',
-      priority: 'Priority',
-      labels: 'Labels',
-      stage: 'Stage',
-      parent: 'Parent',
-      executor: 'Executor',
-      owner: 'Owner',
-      process: 'Process',
-      actions: 'Actions',
-    },
-    problems: {
-      titleRequired: 'Enter a title.',
-      titleTooLong: 'The title is longer than 200 characters.',
-      parentInvalid: 'The parent must be an earlier row.',
-      stageWithoutParent: 'A stage only applies to a sub-issue.',
-      stageInvalid: 'The stage must be a whole number.',
-      agentNoAccess: 'You cannot use this agent.',
-    },
-    parser: {
-      ai: 'Split by AI',
-      heuristic: 'Split by rules',
-    },
-    status: {
-      draft: 'Draft',
-      confirmed: 'Created',
-      cancelled: 'Discarded',
-      reverted: 'Reverted',
-    },
-  },
   reactions: {
     label: 'Reactions',
     add: 'Add reaction',
@@ -365,7 +296,7 @@ const npIter2EnUS = {
   settingsPage: {
     title: 'NocoProject',
     description:
-      'Workspace rules for pull requests, sub-issues, batch entry and costs.',
+      'Workspace rules for pull requests, sub-issues and costs.',
     loadFailed: 'Unable to load the settings',
     readOnly: 'Only workspace owners and admins can change these settings.',
     saved: 'Settings saved.',
@@ -375,11 +306,6 @@ const npIter2EnUS = {
     prMergedNone: 'Do nothing',
     autoExecute: 'Let agents run the sub-issues they create',
     autoExecuteHint: 'The default for new issues; each issue can change it.',
-    intakeParser: 'Batch entry parser',
-    intakeParserHint:
-      'Automatic uses the AI model when one is configured and falls back to rules.',
-    intakeParserAuto: 'Automatic',
-    intakeParserHeuristic: 'Rules only',
     modelPrices: 'Model prices',
     modelPricesHint:
       'US dollars per million tokens. The model may use * as a wildcard, such as claude-*.',
@@ -394,6 +320,7 @@ const npIter2EnUS = {
       outputPerM: 'Output',
       cacheReadPerM: 'Cache read',
       cacheWritePerM: 'Cache write',
+      actions: 'Actions',
     },
   },
   session: {
@@ -440,7 +367,6 @@ const npIter2EnUS = {
   },
   projectMore: {
     label: 'More project actions',
-    batchAdd: 'Batch add',
     delete: 'Delete project',
     deleteTitle: 'Delete {{name}}?',
     deleteDescription:

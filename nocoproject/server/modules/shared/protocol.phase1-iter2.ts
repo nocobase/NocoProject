@@ -466,15 +466,12 @@ export interface ModelPrice {
   readonly cacheWritePerM: number;
 }
 
-export type IntakeParserSetting = 'auto' | 'heuristic';
-
 /** `GET /np/settings` (systemSettings.settings; an omitted key takes its default value) */
 export interface WorkspaceSettingsView {
   readonly autoExecuteSubtasksDefault: boolean;
   /** A status key, or `'none'` to mean don't change status after a PR merges */
   readonly prMergedStatus: string;
   readonly modelPrices: readonly ModelPrice[];
-  readonly intakeParser: IntakeParserSetting;
   /** Read-only: the issue number prefix */
   readonly issuePrefix: string;
   /** Read-only: whether the current user can modify it (owner/admin) */
@@ -485,7 +482,6 @@ export interface UpdateWorkspaceSettingsRequest {
   readonly autoExecuteSubtasksDefault?: boolean;
   readonly prMergedStatus?: string;
   readonly modelPrices?: readonly ModelPrice[];
-  readonly intakeParser?: IntakeParserSetting;
 }
 
 // ---------- Issue detail and runs (§C, §D, §F, §I, §J) ----------

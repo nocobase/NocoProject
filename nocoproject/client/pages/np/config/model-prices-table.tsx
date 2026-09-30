@@ -80,7 +80,7 @@ export function ModelPricesTable({
               ))}
               <TableHead>
                 <span className='sr-only'>
-                  {t('np.intake.columns.actions')}
+                  {t('np.settingsPage.priceColumns.actions')}
                 </span>
               </TableHead>
             </TableRow>

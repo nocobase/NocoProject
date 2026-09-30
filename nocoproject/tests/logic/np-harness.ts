@@ -246,11 +246,8 @@ export type NpTestOptions = Partial<
   Pick<
     NpServiceDeps,
     | 'github'
-    | 'aiIntake'
-    | 'aiConfigured'
     | 'approvalGateway'
     | 'secrets'
-    | 'aiProcess'
     | 'fileObjects'
     | 'attachmentText'
     | 'mailer'

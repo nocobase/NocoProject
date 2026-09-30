@@ -298,7 +298,6 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
       autoExecuteSubtasksDefault: false,
       prMergedStatus: 'done',
       modelPrices: [],
-      intakeParser: 'auto',
       // Iteration 3 §C: the defaults until an owner/admin sets them (np-metrics.test.ts covers PATCH).
       metricThresholds: DEFAULT_METRIC_THRESHOLDS,
       // Iteration 4 §A (np-pm.test.ts covers PATCH).
@@ -326,7 +325,7 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
       }),
     ).toMatchObject({ stageRunLimit: 5, stageRunWindowHours: 12 });
     await expect(
-      services.workspaceSettings.update(BOB, { intakeParser: 'heuristic' }),
+      services.workspaceSettings.update(BOB, { prMergedStatus: 'done' }),
     ).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
@@ -343,7 +342,6 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
     const updated = await services.workspaceSettings.update(ALICE, {
       prMergedStatus: 'in_review',
       autoExecuteSubtasksDefault: true,
-      intakeParser: 'heuristic',
       modelPrices: [
         {
           provider: 'claude',
@@ -356,7 +354,6 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
     expect(updated).toMatchObject({
       prMergedStatus: 'in_review',
       autoExecuteSubtasksDefault: true,
-      intakeParser: 'heuristic',
       modelPrices: [
         {
           provider: 'claude',

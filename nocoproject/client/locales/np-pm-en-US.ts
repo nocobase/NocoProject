@@ -188,6 +188,8 @@ const npPmEnUS = {
         public: 'Everyone',
         private: 'Members only',
       },
+      untitled: 'Untitled',
+      defaultOwner: 'Default (me)',
       fields: {
         title: 'Title',
         description: 'Description',

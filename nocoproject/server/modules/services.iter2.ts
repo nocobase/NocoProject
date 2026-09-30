@@ -1,5 +1,5 @@
 /**
- * The iteration 2 modules (git, approval, intake, reactions, env, skills, usage, workspace settings) and the iteration
+ * The iteration 2 modules (git, approval, read-only intake history, reactions, env, skills, usage, workspace settings) and the iteration
  * 3 modules (knowledge, acceptance metrics, delivery decisions). Wired by `createNpServices` (`services.ts`); moved
  * out of that file unchanged to keep it under the file length limit.
  */
@@ -10,13 +10,11 @@ import { createGitConnectionService } from './git/connection.service.js';
 import type { GitHubClient } from './git/github-client.js';
 import { createPullRequestService } from './git/pull-request.service.js';
 import { createWebhookService } from './git/webhook.service.js';
-import { createHeuristicIntakeParser } from './intake/heuristic-parser.js';
 import { createIntakeService } from './intake/intake.service.js';
 import { createDeliveryService } from './issue/delivery.service.js';
 import { createKnowledgeService } from './knowledge/knowledge.service.js';
 import { createMetricsService } from './metrics/metrics.service.js';
 import type { NpServiceDeps, NpServices } from './services.js';
-import { buildProcessClassifier } from './services.iter4.js';
 import type { createActivityRecorder } from './shared/activity.js';
 import type { ApprovalHooks } from './shared/approval.js';
 import type { SecretBox } from './shared/crypto.js';
@@ -79,21 +77,7 @@ export function createIteration2Services(
       github,
     }),
     webhooks: createWebhookService({ ...flow, tx, ids, secrets, github }),
-    intake: createIntakeService({
-      tx,
-      ids,
-      users,
-      activity,
-      settings,
-      workflows,
-      issues: () => services.issues,
-      triggers: () => services.triggers,
-      heuristic: createHeuristicIntakeParser(),
-      ai: deps.aiIntake ?? null,
-      aiConfigured: deps.aiConfigured ?? (() => false),
-      classifier: buildProcessClassifier(null, undefined),
-      attachmentText: deps.attachmentText ?? null,
-    }),
+    intake: createIntakeService({ tx }),
     reactions: createReactionService({ tx, ids, activity }),
     agentEnv: createAgentEnvService({ tx, ids, users, secrets }),
     skills: createSkillService({ tx, ids, users }),

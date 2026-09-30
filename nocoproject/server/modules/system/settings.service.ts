@@ -3,7 +3,7 @@ import { EMPTY_ENTRIES } from './agent-entries.js';
 import { normalizeSignalRules } from './signal-rules.js';
 /**
  * The single `systemSettings` row: the issue prefix, the issue counter and (iteration 1) the `settings` json.
- * Iteration 2 adds `modelPrices` and `intakeParser` to the json, iteration 3 `metricThresholds`, iteration 4
+ * Iteration 2 adds `modelPrices` (and the `intakeParser` NP-186 retired) to the json, iteration 3 `metricThresholds`, iteration 4
  * `defaultProcess`, `pmAgentId` and `retrospectiveOnDone`, Phase 2 (NP-77) `stageRunLimit` and `stageRunWindowHours`,
  * Phase 2 signals `signalRules`; missing keys read as their defaults.
  */
@@ -19,7 +19,6 @@ import {
 } from '../shared/db.js';
 import type {
   DefaultProcess,
-  IntakeParserSetting,
   MetricThresholds,
   ModelPrice,
   SignalRules,
@@ -46,7 +45,6 @@ export interface WorkspaceSettings {
   /** PR merged → this status; `'none'` leaves the status alone (iteration 2). */
   readonly prMergedStatus: string;
   readonly modelPrices: readonly ModelPrice[];
-  readonly intakeParser: IntakeParserSetting;
   /** Iteration 3: acceptance metric thresholds (missing keys take the defaults). */
   readonly metricThresholds: MetricThresholds;
   /** Iteration 4: the process of a new issue that names none (`auto` = the classifier). */
@@ -67,7 +65,6 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   autoExecuteSubtasksDefault: false,
   prMergedStatus: 'done',
   modelPrices: [],
-  intakeParser: 'auto',
   metricThresholds: DEFAULT_METRIC_THRESHOLDS,
   defaultProcess: 'auto',
   pmAgentId: null,
@@ -161,10 +158,6 @@ function normalize(stored: Partial<WorkspaceSettings>): WorkspaceSettings {
     modelPrices: Array.isArray(stored.modelPrices)
       ? stored.modelPrices
       : DEFAULT_WORKSPACE_SETTINGS.modelPrices,
-    intakeParser:
-      stored.intakeParser === 'heuristic'
-        ? 'heuristic'
-        : DEFAULT_WORKSPACE_SETTINGS.intakeParser,
     metricThresholds: normalizeThresholds(stored.metricThresholds),
     defaultProcess:
       stored.defaultProcess === 'direct' ||

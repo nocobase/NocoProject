@@ -72,67 +72,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('new issue dialog tabs (iteration 4 §D)', () => {
-  it('remembers the last tab, and ?tab= overrides it', async () => {
-    const user = userEvent.setup();
+describe('new issue dialog (NP-186: the AI draft tab is gone)', () => {
+  it('opens the manual form with no tabs, and the retired ?tab=ai link lands on it', async () => {
     api.request.mockImplementation(answer(common()));
-    const first = await renderNp(<NewIssuePage />, {
-      url: '/issues/new',
-      path: '/issues/new',
-    });
-    expect(
-      await screen.findByRole('tab', { name: 'AI draft' }),
-    ).toHaveAttribute('aria-selected', 'true');
-    await user.click(screen.getByRole('tab', { name: 'Manual' }));
-    expect(await screen.findByRole('textbox', { name: 'Title' })).toBeVisible();
-    expect(window.localStorage.getItem('nocoproject:new-issue-tab')).toBe(
-      'manual',
-    );
-    first.unmount();
-
-    const second = await renderNp(<NewIssuePage />, {
-      url: '/issues/new',
-      path: '/issues/new',
-    });
-    expect(await screen.findByRole('tab', { name: 'Manual' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    second.unmount();
-
     await renderNp(<NewIssuePage />, {
-      url: '/issues/new?tab=ai',
+      url: '/issues/new?tab=ai&batch=b1',
       path: '/issues/new',
     });
-    expect(
-      await screen.findByRole('textbox', { name: 'Requirements' }),
-    ).toBeVisible();
-    // NP-151: no recent-batches list under the composer, and nothing asks for one.
-    expect(
-      screen.queryByRole('heading', { name: 'My recent batches' }),
-    ).toBeNull();
+    expect(await screen.findByRole('textbox', { name: 'Title' })).toBeVisible();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Requirements' })).toBeNull();
     expect(api.request).not.toHaveBeenCalledWith(
       expect.objectContaining({ path: 'np/intake/batches' }),
     );
   });
-
-  it('works when storage is unavailable', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('blocked');
-    });
-    api.request.mockImplementation(answer(common()));
-    await renderNp(<NewIssuePage />, {
-      url: '/issues/new',
-      path: '/issues/new',
-    });
-    expect(
-      await screen.findByRole('tab', { name: 'AI draft' }),
-    ).toHaveAttribute('aria-selected', 'true');
-    vi.restoreAllMocks();
-  });
 });
 
-describe('new issue dialog: manual tab (iteration 4 §B, §D)', () => {
+describe('new issue dialog: manual form (iteration 4 §B, §D)', () => {
   it('starts the process at the workspace default and sends it', async () => {
     const user = userEvent.setup();
     const posted: unknown[] = [];
@@ -146,7 +102,7 @@ describe('new issue dialog: manual tab (iteration 4 §B, §D)', () => {
       }),
     );
     await renderNp(<NewIssuePage />, {
-      url: '/issues/new?tab=manual',
+      url: '/issues/new',
       path: '/issues/new',
     });
     await user.type(
@@ -182,7 +138,7 @@ describe('new issue dialog: manual tab (iteration 4 §B, §D)', () => {
       }),
     );
     await renderNp(<NewIssuePage />, {
-      url: '/issues/new?tab=manual',
+      url: '/issues/new',
       path: '/issues/new',
     });
     await user.type(
@@ -225,7 +181,7 @@ describe('new issue dialog: manual tab (iteration 4 §B, §D)', () => {
       }),
     );
     const { container } = await renderNp(<NewIssuePage />, {
-      url: '/issues/new?tab=manual',
+      url: '/issues/new',
       path: '/issues/new',
     });
     await user.type(
@@ -272,7 +228,7 @@ describe('new issue dialog: manual tab (iteration 4 §B, §D)', () => {
     const user = userEvent.setup();
     api.request.mockImplementation(answer(common()));
     await renderNp(<NewIssuePage />, {
-      url: '/issues/new?tab=manual',
+      url: '/issues/new',
       path: '/issues/new',
     });
     await user.click(await screen.findByRole('combobox', { name: 'Executor' }));

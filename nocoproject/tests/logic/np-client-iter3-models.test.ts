@@ -362,17 +362,13 @@ describe('navigation helpers (§G)', () => {
     );
   });
 
-  it('sends old batch-entry links to the new issue dialog and cleans the query when it closes', () => {
-    // Iteration 4 §D replaced the drawer with the AI tab of "New issue".
-    expect(newIssueRedirectTarget('?batch=b1')).toBe(
-      '/issues/new?tab=ai&batch=b1',
-    );
+  it('sends old batch-entry links to the manual new issue dialog and cleans the query when it closes', () => {
+    // NP-186: batch entry is retired; the project stays, the batch does not.
+    expect(newIssueRedirectTarget('?batch=b1')).toBe('/issues/new');
     expect(newIssueRedirectTarget('?project=p%201&batch=b1')).toBe(
-      '/issues/new?tab=ai&project=p+1&batch=b1',
+      '/issues/new?project=p+1',
     );
-    expect(newIssueRedirectTarget('', 'p2')).toBe(
-      '/issues/new?tab=ai&project=p2',
-    );
+    expect(newIssueRedirectTarget('', 'p2')).toBe('/issues/new?project=p2');
     expect(newIssueCloseSearch('?view=board&tab=ai&batch=b1&project=p1')).toBe(
       '?view=board&project=p1',
     );

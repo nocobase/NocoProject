@@ -176,6 +176,8 @@ const npPmZhCN: NpPmResource = {
         public: '所有人',
         private: '仅成员',
       },
+      untitled: '未命名',
+      defaultOwner: '默认（我）',
       fields: {
         title: '标题',
         description: '描述',

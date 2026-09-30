@@ -19,6 +19,7 @@ const STATUS_BY_KIND: Readonly<Record<NpErrorKind, ContentfulStatusCode>> = {
   forbidden: 403,
   notFound: 404,
   conflict: 409,
+  gone: 410,
   upgradeRequired: 426,
   upstream: 502,
   timeout: 504,

@@ -74,8 +74,8 @@ export interface AttachmentService {
    */
   agentContent(issueId: string, fileId: string): Promise<AttachmentContent>;
   /**
-   * NP-183: the text of a docx / xlsx / pptx (and other readable) attachment, extracted on demand with the intake
-   * limits; null when it yields none or no reader is configured. 404 like `agentContent`.
+   * NP-183: the text of a docx / xlsx / pptx (and other readable) attachment, extracted on demand with the
+   * attachment text reader's limits; null when it yields none or no reader is configured. 404 like `agentContent`.
    */
   agentText(issueId: string, fileId: string): Promise<string | null>;
   /** Deletes uploads never attached to an issue and older than a day; answers how many. */

@@ -1,5 +1,5 @@
 /**
- * Text of the files attached on the AI draft tab (NP-78, np.newIssue.tabs.ai), for the AI intake parser. The configured model reads text
+ * Text of attached files for the project manager (NP-78 built it for the AI intake parser, NP-183 moved it to the conversation). The configured model reads text
  * only, so documents are turned into text here: plain-text formats are decoded as UTF-8, OOXML / OpenDocument / RTF /
  * PDF go through `officeparser` (the library the AI employee plugin's own document loader uses; the loader itself is
  * not exported). Legacy binary Office files, images and anything else are not read — the model only gets their names.

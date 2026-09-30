@@ -44,7 +44,7 @@ import {
   validateFileIds,
 } from '../attachment/attachment.service.js';
 import { parseUserMentions } from '../collaboration/mentions.js';
-import type { ProcessClassifier } from '../intake/process-classifier.js';
+import type { ProcessClassifier } from './process-classifier.js';
 import { setIssueLabels } from '../label/label.service.js';
 import { insertDependency } from '../subtask/dependency.service.js';
 import { resolveNewIssue, validateCreate } from './issue.create.js';
@@ -71,7 +71,7 @@ export { eventActor } from './issue.events.js';
 export type { IssueStatusResult } from './issue.status.js';
 
 export interface IssueService {
-  /** NP-183: `outer` joins the caller's transaction and uses the heuristic process classifier only. */
+  /** NP-183: `outer` joins the caller's transaction. */
   create(
     actor: Actor,
     input: CreateIssueRequestV4,
@@ -259,17 +259,11 @@ async function create(
   outer?: Tx,
 ): Promise<IssueV4> {
   validateCreate(input);
-  // Before the transaction: the classifier may make a model call (never inside a caller's transaction).
-  const selection = await selectProcess(
-    deps,
-    outer?.conn ?? deps.tx.read(),
-    {
-      process: input.process,
-      title: input.title,
-      description: input.description ?? '',
-    },
-    { userId: actor.id ?? '', useAi: !outer },
-  );
+  const selection = await selectProcess(deps, outer?.conn ?? deps.tx.read(), {
+    process: input.process,
+    title: input.title,
+    description: input.description ?? '',
+  });
   return deps.tx.run(async (tx) => {
     const viewer = await viewerOf(tx.conn, actor);
     requireEditIssues(viewer);

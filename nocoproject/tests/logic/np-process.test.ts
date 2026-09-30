@@ -1,18 +1,16 @@
 // @vitest-environment node
 /**
- * The design-first process (iteration-4 contract §B): the classifier (pure heuristics, the AI fallback), process
+ * The design-first process (iteration-4 contract §B): the classifier (pure heuristics), process
  * selection on creation and PATCH (`PROCESS_LOCKED`), the design gate for agents, the proposal endpoint, the
  * `design_review` decision card and its actions, approving (wakes the agent with `designApproved`) and sending back
- * (comment + analysis), the claim payload and intake passthrough — on a real PostgreSQL.
+ * (comment + analysis), the claim payload — on a real PostgreSQL.
  */
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   classifyHeuristic,
   createProcessClassifier,
-  parseProcessReply,
-  type AiProcessClassifier,
-} from '../../server/modules/intake/process-classifier.ts';
+} from '../../server/modules/issue/process-classifier.ts';
 import type { NpServices } from '../../server/modules/services.ts';
 import type {
   ClaimedRunPhase4Extras,
@@ -43,7 +41,7 @@ import {
   type ApiCall,
 } from './np-iter4-harness.ts';
 
-/** Long enough to escape the short-brief rule, with no design signal, so only the model can decide. */
+/** Long enough to escape the short-brief rule, with no design signal, so no rule matches. */
 const NEUTRAL =
   'Please make the tooltip appear on hover over the save button and hide it again on blur. '.repeat(
     3,
@@ -93,76 +91,14 @@ describe('process classifier (pure)', () => {
     ).toEqual({ process: 'direct', rule: null });
   });
 
-  it('reads the model reply', () => {
-    expect(parseProcessReply('{"process":"design_first"}')).toBe(
-      'design_first',
-    );
-    expect(parseProcessReply('```json\n{"process": "direct"}\n```')).toBe(
-      'direct',
-    );
-    expect(parseProcessReply([{ text: 'design_first' }])).toBe('design_first');
-    expect(parseProcessReply('no idea')).toBeNull();
-  });
-
-  it('asks the model only when no rule matched, and falls back on failure', async () => {
-    const calls: string[] = [];
-    const ai = (answer: () => Promise<'direct' | 'design_first' | null>) =>
-      ({
-        classify: async (input) => {
-          calls.push(input.title);
-          return answer();
-        },
-      }) satisfies AiProcessClassifier;
-    const options = { userId: 'u1', useAi: true };
-    const classifier = createProcessClassifier({
-      ai: ai(async () => 'design_first'),
-      aiConfigured: () => true,
-    });
+  it('classifies by the heuristic alone, without a model', async () => {
+    const classifier = createProcessClassifier();
     expect(
-      await classifier.classify(
-        { title: 'fix typo', description: '' },
-        options,
-      ),
+      await classifier.classify({ title: 'fix typo', description: '' }),
     ).toMatchObject({ process: 'direct', by: 'heuristic' });
     expect(
-      await classifier.classify(
-        { title: 'Tooltip', description: NEUTRAL },
-        options,
-      ),
-    ).toEqual({ process: 'design_first', by: 'ai', rule: null });
-    expect(calls).toEqual(['Tooltip']);
-    const failing = createProcessClassifier({
-      ai: ai(async () => {
-        throw new Error('The process classifier timed out.');
-      }),
-      aiConfigured: () => true,
-    });
-    expect(
-      await failing.classify(
-        { title: 'Tooltip', description: NEUTRAL },
-        options,
-      ),
+      await classifier.classify({ title: 'Tooltip', description: NEUTRAL }),
     ).toEqual({ process: 'direct', by: 'heuristic', rule: null });
-    const unconfigured = createProcessClassifier({
-      ai: ai(async () => 'design_first'),
-      aiConfigured: () => false,
-    });
-    expect(
-      (
-        await unconfigured.classify(
-          { title: 'Tooltip', description: NEUTRAL },
-          options,
-        )
-      ).by,
-    ).toBe('heuristic');
-    expect(
-      (
-        await classifier.classify(
-          { title: 'Tooltip', description: NEUTRAL },
-          { ...options, useAi: false },
-        )
-      ).by,
-    ).toBe('heuristic');
   });
 });
 
@@ -184,10 +120,7 @@ let coder: string;
 beforeEach(async () => {
   if (!db) return;
   await resetData(db);
-  services = buildServices(db.database, {
-    aiConfigured: () => true,
-    aiProcess: { classify: async () => 'design_first' },
-  }).services;
+  services = buildServices(db.database).services;
   await setRole(db, ALICE, 'member');
   await setRole(db, BOB, 'member');
   alice = browserApi4(services, ALICE);
@@ -260,15 +193,15 @@ describe.skipIf(!db)('process selection (PostgreSQL)', () => {
         ?.details,
     ).toEqual({ process: 'direct', by: 'heuristic', rule: 'fix_prefix' });
 
-    // No rule matched: the (fake) model decides.
-    const ai = await alice<Data<IssueV4>>('POST', '/np/issues', {
+    // No rule matched: the heuristic's routine default (NP-186 removed the model call).
+    const routine = await alice<Data<IssueV4>>('POST', '/np/issues', {
       title: 'Add a tooltip',
       description: NEUTRAL,
     });
-    expect(ai.body.data.process).toBe('design_first');
+    expect(routine.body.data.process).toBe('direct');
     expect(
-      (await activities(ai.body.data.id, 'process_selected'))[0]?.details,
-    ).toEqual({ process: 'design_first', by: 'ai' });
+      (await activities(routine.body.data.id, 'process_selected'))[0]?.details,
+    ).toEqual({ process: 'direct', by: 'heuristic' });
 
     await setRole(db!, ALICE, 'owner');
     await services.workspaceSettings.update(ALICE, {
@@ -543,73 +476,4 @@ describe.skipIf(!db)('design decisions (PostgreSQL)', () => {
   });
 });
 
-describe.skipIf(!db)('intake process passthrough (PostgreSQL)', () => {
-  it('writes the batch process into the drafts and confirms it', async () => {
-    const created = await alice<
-      Data<{
-        batch: { id: string };
-        drafts: { fields: { process?: string } }[];
-      }>
-    >('POST', '/np/intake/batches', {
-      source: 'paste',
-      rawContent: '- fix: typo on the landing page\n- Add a tooltip',
-      process: 'design_first',
-    });
-    expect(created.status).toBe(201);
-    expect(
-      created.body.data.drafts.map((draft) => draft.fields.process),
-    ).toEqual(['design_first', 'design_first']);
-    const batchId = created.body.data.batch.id;
-    const drafts = await alice<
-      Data<{ drafts: { validation: { errors: string[] } }[] }>
-    >('PUT', `/np/intake/batches/${batchId}/drafts`, {
-      drafts: [
-        {
-          position: 1,
-          parentPosition: null,
-          fields: { title: 'fix: typo', process: 'auto' },
-        },
-        {
-          position: 2,
-          parentPosition: null,
-          fields: { title: 'Add a tooltip', process: 'soon' },
-        },
-      ],
-    });
-    expect(drafts.body.data.drafts[1]!.validation.errors).toContain(
-      'process must be auto, direct or design_first',
-    );
-    await alice('PUT', `/np/intake/batches/${batchId}/drafts`, {
-      drafts: [
-        {
-          position: 1,
-          parentPosition: null,
-          fields: { title: 'fix: typo', process: 'auto' },
-        },
-        {
-          position: 2,
-          parentPosition: null,
-          fields: { title: 'Add a tooltip', process: 'design_first' },
-        },
-      ],
-    });
-    const confirmed = await alice<Data<{ issues: { id: string }[] }>>(
-      'POST',
-      `/np/intake/batches/${batchId}/confirm`,
-      {},
-    );
-    expect(confirmed.status).toBe(200);
-    const [first, second] = confirmed.body.data.issues;
-    const firstRow = (await rows(db!, 'issues', 'id = ?', [first!.id]))[0];
-    const secondRow = (await rows(db!, 'issues', 'id = ?', [second!.id]))[0];
-    expect(firstRow?.process).toBe('direct');
-    expect(secondRow?.process).toBe('design_first');
-    // Intake uses the heuristic only (the fake model would have said design_first).
-    expect(
-      (await activities(first!.id, 'process_selected'))[0]?.details,
-    ).toEqual({ process: 'direct', by: 'heuristic', rule: 'fix_prefix' });
-    expect(
-      (await activities(second!.id, 'process_selected'))[0]?.details,
-    ).toEqual({ process: 'design_first', by: 'user' });
-  });
-});
+describe.skipIf(!db)('intake process passthrough (PostgreSQL)', () => {});

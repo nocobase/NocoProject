@@ -223,11 +223,6 @@ async function patchValues(
       );
     values.prMergedStatus = status;
   }
-  if (patch.intakeParser !== undefined) {
-    if (patch.intakeParser !== 'auto' && patch.intakeParser !== 'heuristic')
-      throw invalid('INVALID_FIELD', 'intakeParser must be auto or heuristic.');
-    values.intakeParser = patch.intakeParser;
-  }
   if (patch.modelPrices !== undefined)
     values.modelPrices = validateModelPrices(patch.modelPrices);
   if (patch.metricThresholds !== undefined)

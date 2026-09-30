@@ -4,8 +4,7 @@
  * behind the conflict signal and, since NP-78, purges attachment uploads never attached to an issue within a day).
  *
  * Iteration 2: the secret key for stored secrets comes from the `nocoproject` configuration section
- * (`NOCOPROJECT_SECRET_KEY`), falling back to a key derived from `auth.secret` with a warning; the AI intake parser is
- * built from the AI employee plugin's agent factory when that plugin is registered.
+ * (`NOCOPROJECT_SECRET_KEY`), falling back to a key derived from `auth.secret` with a warning.
  *
  * Iteration 3 (docs/phase1/iteration-3-contract.md §A, §G): the settings items `np-members`, `np-settings` and
  * `np-github` are no longer registered — settings moved into the application's own `/config` page (page `np-config`).
@@ -22,10 +21,6 @@
  */
 import { Readable } from 'node:stream';
 
-import {
-  aiManagerToken,
-  type AIApplicationConfig,
-} from '@nocobase/app-plugin-ai-employee/server';
 import type { AuthConfig } from '@nocobase/app-plugin-authentication/server';
 import type { Application } from '@nocobase/app-server/application';
 import { driveManagerToken } from '@nocobase/app-server/drive';
@@ -57,11 +52,6 @@ import type { GitConnectionService } from '../modules/git/connection.service.js'
 import type { PullRequestMergeService } from '../modules/git/merge.service.js';
 import type { PullRequestService } from '../modules/git/pull-request.service.js';
 import type { WebhookService } from '../modules/git/webhook.service.js';
-import {
-  createAiIntakeParser,
-  type AiAgentFactory,
-} from '../modules/intake/ai-parser.js';
-import { createAiProcessClassifier } from '../modules/intake/process-classifier.js';
 import type { DesignService } from '../modules/issue/design.service.js';
 import type { ConversationService } from '../modules/pm/pm.conversations.js';
 import type { PmAgentService } from '../modules/pm/pm-agent.service.js';
@@ -260,7 +250,6 @@ export default class NpProvider extends ServiceProvider<Application> {
   public override register(): void {
     const { container } = this.app;
     container.singleton(npServicesToken, (resolver) => {
-      const ai = this.aiFactory();
       return createNpServices({
         database: resolver.resolve(databaseManagerToken),
         idGenerator: resolver.resolve(idGeneratorToken),
@@ -272,17 +261,12 @@ export default class NpProvider extends ServiceProvider<Application> {
         attachmentText: this.attachmentText(),
         onFileObjectError: (error) =>
           this.logError(error, 'NocoProject attachment object delete failed.'),
-        aiIntake: ai ? createAiIntakeParser(ai) : null,
-        aiProcess: ai ? createAiProcessClassifier(ai) : null,
         mailer: () => createNotificationMailer(this.app),
         accounts: () => createPluginAccounts(this.app),
         computerKeys: () => createPluginComputerKeys(this.app),
         roles: () => createBuiltinRoles(resolver.resolve(authorizationToken)),
         roleStore: () =>
           createPermissionSetRoles(resolver.resolve(authorizationToken)),
-        aiConfigured: () =>
-          (this.app.config.get<AIApplicationConfig>('ai')?.llmServices
-            ?.length ?? 0) > 0,
       });
     });
     bindModule(container, npProjectServiceToken, 'projects');
@@ -335,7 +319,7 @@ export default class NpProvider extends ServiceProvider<Application> {
     bindModule(container, npRoleServiceToken, 'businessRoles');
   }
 
-  /** NP-78: the AI draft tab's (np.newIssue.tabs.ai) files are read through the Drive manager, on the row's own disk, for the AI parser. */
+  /** NP-78: attached files are read through the Drive manager, on the row's own disk, for the project manager. */
   private attachmentText(): AttachmentTextReader | null {
     const { container } = this.app;
     if (!container.has(driveManagerToken)) return null;
@@ -374,35 +358,6 @@ export default class NpProvider extends ServiceProvider<Application> {
         (message) => this.logWarning(message),
       ),
     );
-  }
-
-  /**
-   * The AI intake parser and (iteration 4) the process classifier as one direct model call on the first enabled LLM
-   * service (runtime-extensions.md §"A direct model call"): no conversation, no tool loop. The plugin's agent path
-   * with a tool-bound `responseFormat` made DeepSeek answer with guesses, while the plain "reply with JSON"
-   * instruction is answered faithfully. Null when the plugin is not registered.
-   */
-  private aiFactory(): AiAgentFactory | null {
-    const { container } = this.app;
-    if (!container.has(aiManagerToken)) return null;
-    return {
-      // A direct call has no conversation, so there is no session to record.
-      createSession: async () => '',
-      createAgent: async ({ systemPrompt }) => ({
-        invoke: async ({ userMessages }) => {
-          const ai = container.resolve(aiManagerToken);
-          const model = await ai.llmProviderManager.resolveModel();
-          const { provider } = await ai.llmProviderManager.getLLMService(model);
-          const reply = (await provider.invoke({
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...userMessages,
-            ],
-          } as never)) as { content?: unknown } | null;
-          return { message: { content: reply?.content } };
-        },
-      }),
-    };
   }
 
   public override async boot(): Promise<void> {

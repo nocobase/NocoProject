@@ -258,7 +258,7 @@ function rowTitle(
     case 'issue.create':
       return typeof params.title === 'string' && params.title
         ? params.title
-        : t('np.intake.untitled');
+        : t('np.pmAssistant.plan.untitled');
     case 'project.create':
       return typeof params.name === 'string' ? params.name : '—';
     case 'decision.resolve':

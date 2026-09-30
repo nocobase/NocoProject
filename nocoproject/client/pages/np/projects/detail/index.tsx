@@ -53,8 +53,8 @@ import { AskPmButton } from '../../pm/assistant/pm-launchers.js';
  * The header carries the progress ring, name, status, lead, dates and workflow; three tabs (`?tab=`, because the
  * page's child routes are its dialogs) hold Overview (numbers, status distribution, description, properties,
  * repositories, members), Issues (the board, columns in workflow order, drag to change status) and Knowledge (documents
- * and pending agent proposals). "New issue" opens the issues page's dialog with the project preselected (one issue or
- * many, iteration 4 §D; the old `intake` child redirects there). The `resources/new` dialog renders in the outlet
+ * and pending agent proposals). "New issue" opens the issues page's dialog with the project preselected (the old
+ * `intake` child redirects there). The `resources/new` dialog renders in the outlet
  * beside the layer.
  */
 export default function ProjectDetailPage(): ReactElement {

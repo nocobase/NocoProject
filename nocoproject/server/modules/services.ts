@@ -28,14 +28,12 @@ import {
 } from './git/github-client.js';
 import { type PullRequestService } from './git/pull-request.service.js';
 import { type WebhookService } from './git/webhook.service.js';
-import type { AiIntakeParser } from './intake/ai-parser.js';
-import type { AiProcessClassifier } from './intake/process-classifier.js';
 import {
-  buildProcessClassifier,
   createIteration4Services,
   type Iteration4Services,
 } from './services.iter4.js';
 import { type IntakeService } from './intake/intake.service.js';
+import { createProcessClassifier } from './issue/process-classifier.js';
 import { type DeliveryService } from './issue/delivery.service.js';
 import { findIssue } from './issue/issue.records.js';
 import { type KnowledgeService } from './knowledge/knowledge.service.js';
@@ -243,16 +241,10 @@ export interface NpServiceDeps {
   readonly secrets?: SecretBox;
   /** Defaults to the fetch-based client. */
   readonly github?: GitHubClient;
-  /** The AI intake parser; null or absent = heuristic only. */
-  readonly aiIntake?: AiIntakeParser | null;
-  /** Whether an LLM service is configured (`ai.llmServices` not empty). */
-  readonly aiConfigured?: () => boolean;
-  /** Iteration 4: the AI process classifier; null or absent = heuristic only. */
-  readonly aiProcess?: AiProcessClassifier | null;
   /** NP-78: deletes stored attachment objects; the provider backs it with Drive. Absent = objects are kept (tests). */
   readonly fileObjects?: FileObjectStore;
   readonly onFileObjectError?: (error: unknown) => void;
-  /** NP-78: reads files attached on the AI draft tab (np.newIssue.tabs.ai) for the AI parser; absent = files are not read. */
+  /** NP-78: extracts the text of docx / xlsx / pptx attachments for the project manager; absent = files are not read. */
   readonly attachmentText?: AttachmentTextReader | null;
   /** NP-88: invitation email and account creation; absent = no email is sent, no account can be created. */
   readonly mailer?: () => InvitationMailer;
@@ -366,7 +358,7 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       workflows,
       triggers: () => services.triggers,
       approvals: () => services.approvals,
-      classifier: buildProcessClassifier(deps.aiProcess, deps.aiConfigured),
+      classifier: createProcessClassifier(),
     }),
     issueQueries: createIssueQueries({
       tx,
