@@ -29,6 +29,11 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
+import { UnsavedChangesBoundary } from '@/components/unsaved-changes';
+import {
+  useUnsavedChanges,
+  useUnsavedChangesGuard,
+} from '@/components/use-unsaved-changes';
 import { useRouteOverlay } from '@/components/use-route-overlay';
 
 import { createAgent, fetchRuntimes } from '../api.js';
@@ -39,6 +44,10 @@ import { SummaryField } from './summary-field.js';
 
 const FORM_ID = 'np-agent-new-form';
 const DEFAULT_MAX_CONCURRENT_RUNS = 6;
+const DEFAULT_CAPABILITIES: readonly AgentCapability[] = [
+  'context.read',
+  'comment.create',
+];
 
 type FieldName =
   'name' | 'summary' | 'instructions' | 'runtimeId' | 'maxConcurrentRuns';
@@ -48,6 +57,7 @@ export default function NewAgentPage(): ReactElement {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  const unsaved = useUnsavedChangesGuard();
   const handleSubmittingChange = (value: boolean): void => {
     submittingRef.current = value;
     setSubmitting(value);
@@ -58,10 +68,12 @@ export default function NewAgentPage(): ReactElement {
       title={t('np.agentForm.title')}
       description={t('np.agentForm.description')}
       className='sm:max-w-xl'
-      beforeClose={() => !submittingRef.current}
+      beforeClose={() => !submittingRef.current && unsaved.confirmDiscard()}
       footer={<NewAgentFooter submitting={submitting} />}
     >
-      <NewAgentBody onSubmittingChange={handleSubmittingChange} />
+      <UnsavedChangesBoundary guard={unsaved}>
+        <NewAgentBody onSubmittingChange={handleSubmittingChange} />
+      </UnsavedChangesBoundary>
     </RouteDialog>
   );
 }
@@ -86,8 +98,7 @@ function NewAgentBody({
   const [summary, setSummary] = useState('');
   const [instructions, setInstructions] = useState('');
   const [capabilities, setCapabilities] = useState<AgentCapability[]>([
-    'context.read',
-    'comment.create',
+    ...DEFAULT_CAPABILITIES,
   ]);
   const [runtimeId, setRuntimeId] = useState<string | null>(null);
   const [model, setModel] = useState('');
@@ -99,6 +110,17 @@ function NewAgentBody({
     useState<ReasoningEffort | null>(null);
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [formError, setFormError] = useState<string>();
+  const markSaved = useUnsavedChanges(
+    [name, description, summary, instructions, model].some((value) =>
+      value.trim(),
+    ) ||
+      capabilities.length !== DEFAULT_CAPABILITIES.length ||
+      capabilities.some((item) => !DEFAULT_CAPABILITIES.includes(item)) ||
+      runtimeId !== null ||
+      maxConcurrentRuns !== String(DEFAULT_MAX_CONCURRENT_RUNS) ||
+      kind !== 'coder' ||
+      reasoningEffort !== null,
+  );
 
   const runtime = runtimes.data?.find((item) => item.id === runtimeId);
   const runtimeItems = (runtimes.data ?? []).map((item) => ({
@@ -150,6 +172,7 @@ function NewAgentBody({
         title: t('np.agentForm.created', { name: agent.name }),
       });
       void queryClient.invalidateQueries({ queryKey: npKeys.agents });
+      markSaved();
       void close();
     } catch (error: unknown) {
       onSubmittingChange(false);
