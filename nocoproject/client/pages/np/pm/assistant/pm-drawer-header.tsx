@@ -57,10 +57,10 @@ export function PmDrawerHeader({
   const pmTitle = usePmTitle();
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState('');
-  // Mobile full-screen: 40px touch targets instead of the 28px desktop icon buttons.
+  // Click targets of at least 32px (40px on the mobile full-screen form) instead of the 28px icon-sm.
   const touchClass = compact
     ? "size-10 [&_svg:not([class*='size-'])]:size-5"
-    : undefined;
+    : "size-8 [&_svg:not([class*='size-'])]:size-4";
   const history = assistant.view === 'history';
   const target = switchTarget(choice.data, conversation);
   const shownTitle = history
