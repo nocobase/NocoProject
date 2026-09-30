@@ -17,6 +17,8 @@ import { canUseSetting, requireSetting, viewerOf } from '../shared/authz.js';
 import type { Conn, TxRunner } from '../shared/db.js';
 import { invalid } from '../shared/errors.js';
 import type {
+  AiFeatureSetting,
+  AiModelRef,
   MetricThresholds,
   ModelPrice,
   UpdateWorkspaceSettingsRequestV6,
@@ -27,6 +29,7 @@ import {
   METRIC_THRESHOLD_DIRECTIONS,
   METRIC_THRESHOLD_KEYS,
 } from '../shared/protocol.js';
+import { describeFeature, type AiModelCatalog } from '../intake/ai-features.js';
 import { validateBoolean } from '../shared/validate.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
 import type { SettingsService, WorkspaceSettings } from './settings.service.js';
@@ -196,6 +199,40 @@ function phase2Values(
     );
 }
 
+/** NP-205: `enabled`, `parser` and an optional `model` (null = the default model); all three are required. */
+export function validateAiFeature(
+  value: unknown,
+  field: string,
+): AiFeatureSetting {
+  const item = (value ?? {}) as Record<string, unknown>;
+  if (
+    typeof item.enabled !== 'boolean' ||
+    (item.parser !== 'auto' && item.parser !== 'heuristic')
+  )
+    throw invalid(
+      'INVALID_FIELD',
+      `${field} needs enabled (boolean) and parser (auto or heuristic).`,
+    );
+  let model: AiModelRef | null = null;
+  if (item.model !== undefined && item.model !== null) {
+    const ref = item.model as Record<string, unknown>;
+    if (
+      typeof ref.llmService !== 'string' ||
+      !ref.llmService ||
+      ref.llmService.length > 128 ||
+      typeof ref.model !== 'string' ||
+      !ref.model ||
+      ref.model.length > 256
+    )
+      throw invalid(
+        'INVALID_FIELD',
+        `${field}.model needs llmService and model.`,
+      );
+    model = { llmService: ref.llmService, model: ref.model };
+  }
+  return { enabled: item.enabled, parser: item.parser, model };
+}
+
 async function patchValues(
   conn: Conn,
   settings: SettingsService,
@@ -228,6 +265,9 @@ async function patchValues(
       throw invalid('INVALID_FIELD', 'intakeParser must be auto or heuristic.');
     values.intakeParser = patch.intakeParser;
   }
+  for (const key of ['intakeAi', 'breakdownAi'] as const)
+    if (patch[key] !== undefined)
+      values[key] = validateAiFeature(patch[key], key);
   if (patch.modelPrices !== undefined)
     values.modelPrices = validateModelPrices(patch.modelPrices);
   if (patch.metricThresholds !== undefined)
@@ -249,14 +289,22 @@ export function createWorkspaceSettingsService(deps: {
   tx: TxRunner;
   settings: SettingsService;
   workflows: WorkflowService;
+  aiModels: AiModelCatalog;
 }): WorkspaceSettingsService {
   async function view(
     conn: Conn,
     actor: Actor,
   ): Promise<WorkspaceSettingsViewV6> {
     await viewerOf(conn, actor);
+    const settings = await deps.settings.read(conn);
+    const aiModels = await deps.aiModels.list();
     return {
-      ...(await deps.settings.read(conn)),
+      ...settings,
+      aiModels,
+      aiEffective: {
+        intakeAi: describeFeature(settings.intakeAi, aiModels),
+        breakdownAi: describeFeature(settings.breakdownAi, aiModels),
+      },
       issuePrefix: await deps.settings.issuePrefix(conn),
       signalKinds: signalKindInfos(),
       canEdit: await canUseSetting(conn, actor, NP_SETTINGS.general, 'update'),

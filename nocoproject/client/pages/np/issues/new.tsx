@@ -5,6 +5,7 @@ import { useLocation, useSearchParams } from 'react-router';
 import { NpTabBar } from '@/components/np-route-tabs';
 import { RouteDialog } from '@/components/route-dialog';
 
+import { useAiFeatures } from '../use-ai-features.js';
 import { IntakeBatchView, IntakeComposer } from '../intake/intake-panels.js';
 import { ManualIssueFooter, ManualIssueForm } from './new-manual.js';
 import {
@@ -33,7 +34,9 @@ export default function NewIssuePage(): ReactElement {
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const [stored, setStored] = useState(() => readStoredNewIssueTab());
-  const tab = resolveNewIssueTab(params, stored);
+  const aiFeatures = useAiFeatures();
+  // NP-205: with the AI draft switched off in the settings only the manual form is left.
+  const tab = aiFeatures.intake ? resolveNewIssueTab(params, stored) : 'manual';
   const batchId = tab === 'ai' ? params.get('batch') : null;
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
@@ -78,16 +81,18 @@ export default function NewIssuePage(): ReactElement {
       }
     >
       <div className='space-y-4'>
-        <NpTabBar
-          idPrefix='np-new-issue'
-          label={t('np.newIssue.tabsLabel')}
-          value={tab}
-          onChange={changeTab}
-          tabs={[
-            { value: 'ai', label: t('np.newIssue.tabs.ai') },
-            { value: 'manual', label: t('np.newIssue.tabs.manual') },
-          ]}
-        />
+        {aiFeatures.intake ? (
+          <NpTabBar
+            idPrefix='np-new-issue'
+            label={t('np.newIssue.tabsLabel')}
+            value={tab}
+            onChange={changeTab}
+            tabs={[
+              { value: 'ai', label: t('np.newIssue.tabs.ai') },
+              { value: 'manual', label: t('np.newIssue.tabs.manual') },
+            ]}
+          />
+        ) : null}
         <div
           role='tabpanel'
           id={`np-new-issue-panel-${tab}`}

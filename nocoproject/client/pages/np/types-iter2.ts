@@ -332,12 +332,47 @@ export interface ModelPrice {
 
 export type IntakeParserSetting = 'auto' | 'heuristic';
 
+// NP-205 (copied from server/modules/shared/protocol.phase2-signals.ts)
+export interface AiModelRef {
+  readonly llmService: string;
+  readonly model: string;
+}
+export interface AiFeatureSetting {
+  readonly enabled: boolean;
+  readonly parser: IntakeParserSetting;
+  readonly model: AiModelRef | null;
+}
+export type AiFeatureKey = 'intakeAi' | 'breakdownAi';
+export type AiFeatureFallback = 'disabled' | 'rules_only' | 'no_model';
+export interface AiFeatureEffective {
+  readonly active: boolean;
+  readonly fallback: AiFeatureFallback | null;
+  readonly model:
+    | (AiModelRef & { readonly serviceTitle: string; readonly label: string })
+    | null;
+  readonly source: 'setting' | 'default' | null;
+}
+export interface AiModelOption {
+  readonly llmService: string;
+  readonly title: string;
+  readonly models: readonly {
+    readonly label: string;
+    readonly value: string;
+  }[];
+}
+
 /** `GET /np/settings`. Only the fields the settings page edits are typed; the rest is carried through untouched. */
 export interface WorkspaceSettings {
   readonly agentEntries?: AgentEntryBindings;
   readonly prMergedStatus?: string;
   readonly autoExecuteSubtasksDefault?: boolean;
   readonly intakeParser?: IntakeParserSetting;
+  /** NP-205: the new issue AI draft tab / classifier, and the sub-issue AI breakdown; each has its own switch, parser and model. */
+  readonly intakeAi?: AiFeatureSetting;
+  readonly breakdownAi?: AiFeatureSetting;
+  /** NP-205: the models the LLM services offer, and what each feature uses right now. */
+  readonly aiModels?: readonly AiModelOption[];
+  readonly aiEffective?: Record<AiFeatureKey, AiFeatureEffective>;
   readonly modelPrices?: readonly ModelPrice[];
   readonly issuePrefix?: string;
   /** Iteration 3 §C: the targets the acceptance metrics are held to. */
@@ -359,7 +394,8 @@ export type WorkspaceSettingsInput = Partial<
     WorkspaceSettings,
     | 'prMergedStatus'
     | 'autoExecuteSubtasksDefault'
-    | 'intakeParser'
+    | 'intakeAi'
+    | 'breakdownAi'
     | 'modelPrices'
     | 'metricThresholds'
     | 'defaultProcess'

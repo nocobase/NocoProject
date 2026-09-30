@@ -350,7 +350,35 @@ const npIter2ZhCN: NpIter2Resource = {
     prMergedNone: '不改变',
     autoExecute: '允许 Agent 自行执行它创建的子任务',
     autoExecuteHint: '新任务的默认值，每个任务可单独修改。',
-    intakeParser: '批量录入解析方式',
+    ai: {
+      intakeAi: '新建任务 AI 整理',
+      intakeAiHint:
+        '新建任务对话框的「AI 整理」标签，以及新任务的流程自动分类。直接调用模型，不走 Agent 运行，建议选速度快的模型。',
+      intakeAiEnabledHint: '关闭后，新建任务对话框只保留「手动」。',
+      breakdownAi: 'AI 拆解',
+      breakdownAiHint:
+        '任务详情子任务区的「AI 拆解」：把描述拆成子任务草稿。同样直接调用模型；需要来回澄清的复杂拆解请交给项目经理。',
+      breakdownAiEnabledHint: '关闭后，子任务区不再显示「AI 拆解」。',
+      intakeAiEnabled: '启用 AI 整理',
+      breakdownAiEnabled: '启用 AI 拆解',
+      parser: '解析方式',
+      model: '使用的模型',
+      modelHint: '选“默认模型”时使用 AI 服务里第一个启用的模型。',
+      defaultModel: '默认模型',
+      unavailableModel: '{{model}}（已不可用）',
+      usingModel: '当前生效的模型：{{model}}',
+      usingDefaultModel: '当前生效的模型：{{model}}（默认）',
+      fallback: {
+        rules_only: '当前仅用规则解析，不调用模型。',
+        no_model:
+          '还没有配置可用的 AI 模型，现在回退到规则解析。请在服务端配置 AI 服务后再选择模型。',
+        disabled: {
+          intakeAi:
+            '已关闭：新建任务对话框不显示「AI 整理」，流程分类只用规则。',
+          breakdownAi: '已关闭：子任务区不显示「AI 拆解」。',
+        },
+      },
+    },
     intakeParserHint: '自动：配置了 AI 模型时用 AI 解析，失败时回退到规则。',
     intakeParserAuto: '自动',
     intakeParserHeuristic: '仅规则',

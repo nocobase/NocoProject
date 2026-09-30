@@ -61,6 +61,8 @@ import {
   createAiIntakeParser,
   type AiAgentFactory,
 } from '../modules/intake/ai-parser.js';
+import { pickModel } from '../modules/intake/ai-features.js';
+import type { AiModelOption } from '../modules/shared/protocol.js';
 import { createAiProcessClassifier } from '../modules/intake/process-classifier.js';
 import type { DesignService } from '../modules/issue/design.service.js';
 import type { ConversationService } from '../modules/pm/pm.conversations.js';
@@ -280,6 +282,7 @@ export default class NpProvider extends ServiceProvider<Application> {
         roles: () => createBuiltinRoles(resolver.resolve(authorizationToken)),
         roleStore: () =>
           createPermissionSetRoles(resolver.resolve(authorizationToken)),
+        aiModels: { list: () => this.aiModelOptions() },
         aiConfigured: () =>
           (this.app.config.get<AIApplicationConfig>('ai')?.llmServices
             ?.length ?? 0) > 0,
@@ -388,10 +391,15 @@ export default class NpProvider extends ServiceProvider<Application> {
     return {
       // A direct call has no conversation, so there is no session to record.
       createSession: async () => '',
-      createAgent: async ({ systemPrompt }) => ({
+      createAgent: async ({ systemPrompt, model: chosen }) => ({
         invoke: async ({ userMessages }) => {
           const ai = container.resolve(aiManagerToken);
-          const model = await ai.llmProviderManager.resolveModel();
+          // NP-205: the chosen model while it is still enabled, else the plugin's default.
+          const enabled = await this.aiModelOptions();
+          const picked = pickModel(enabled, chosen ?? null);
+          const model = await ai.llmProviderManager.resolveModel(
+            picked?.ref ?? null,
+          );
           const { provider } = await ai.llmProviderManager.getLLMService(model);
           const reply = (await provider.invoke({
             messages: [
@@ -403,6 +411,23 @@ export default class NpProvider extends ServiceProvider<Application> {
         },
       }),
     };
+  }
+
+  /** NP-205: the enabled models of the AI plugin's LLM services; empty when the plugin is not registered. */
+  private async aiModelOptions(): Promise<AiModelOption[]> {
+    const { container } = this.app;
+    if (!container.has(aiManagerToken)) return [];
+    const services = await container
+      .resolve(aiManagerToken)
+      .llmProviderManager.listAllEnabledModels();
+    return services.map((service) => ({
+      llmService: service.llmService,
+      title: service.llmServiceTitle || service.llmService,
+      models: service.enabledModels.map((model) => ({
+        label: model.label || model.value,
+        value: model.value,
+      })),
+    }));
   }
 
   public override async boot(): Promise<void> {

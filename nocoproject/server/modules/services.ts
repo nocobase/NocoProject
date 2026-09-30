@@ -28,6 +28,7 @@ import {
 } from './git/github-client.js';
 import { type PullRequestService } from './git/pull-request.service.js';
 import { type WebhookService } from './git/webhook.service.js';
+import type { AiModelCatalog } from './intake/ai-features.js';
 import type { AiIntakeParser } from './intake/ai-parser.js';
 import type { AiProcessClassifier } from './intake/process-classifier.js';
 import {
@@ -247,6 +248,8 @@ export interface NpServiceDeps {
   readonly aiIntake?: AiIntakeParser | null;
   /** Whether an LLM service is configured (`ai.llmServices` not empty). */
   readonly aiConfigured?: () => boolean;
+  /** NP-205: the enabled models of the LLM services, for the model pickers and the feature checks. */
+  readonly aiModels?: AiModelCatalog;
   /** Iteration 4: the AI process classifier; null or absent = heuristic only. */
   readonly aiProcess?: AiProcessClassifier | null;
   /** NP-78: deletes stored attachment objects; the provider backs it with Drive. Absent = objects are kept (tests). */

@@ -29,7 +29,8 @@ import {
   statusLabelKey,
 } from '../constants.js';
 import { PropertySelect } from '../issues/detail/property-fields.js';
-import type { IntakeParserSetting, WorkspaceSettings } from '../types.js';
+import type { AiFeatureSetting, WorkspaceSettings } from '../types.js';
+import { AiFeatureFields } from './ai-feature-fields.js';
 import { ConfigSectionHeading } from './config-section.js';
 import { ModelPricesTable } from './model-prices-table.js';
 import { PmSettingsFields } from './pm-settings-fields.js';
@@ -42,9 +43,15 @@ import {
 import { ThresholdFields } from './threshold-fields.js';
 import { thresholdDraft, thresholdsFromDraft } from './thresholds-model.js';
 
+const DEFAULT_AI_FEATURE: AiFeatureSetting = {
+  enabled: true,
+  parser: 'auto',
+  model: null,
+};
+
 /**
  * Tab `/config/general` (iteration 2 §I settings, moved to the front end in iteration 3 §G): the status a merged PR
- * moves its issue to, whether new issues let agents run the sub-issues they create, how batch entry parses text, the
+ * moves its issue to, whether new issues let agents run the sub-issues they create, the two fast AI features (NP-205: new issue AI draft and AI breakdown, each with a switch, a parser and a model), the
  * model prices usage costs are estimated from, the metric thresholds (§C), and since iteration 4 the default process,
  * the project manager agent and the retrospective switch. Whoever may change the settings item `nocoproject.general`
  * (NP-117; owner/admin by default) edits — the server says so in `canEdit`; everyone else sees the values read-only.
@@ -113,8 +120,11 @@ function SettingsForm({
   const [autoExecute, setAutoExecute] = useState(
     settings.autoExecuteSubtasksDefault ?? false,
   );
-  const [intakeParser, setIntakeParser] = useState<IntakeParserSetting>(
-    settings.intakeParser ?? 'auto',
+  const [intakeAi, setIntakeAi] = useState<AiFeatureSetting>(
+    () => settings.intakeAi ?? DEFAULT_AI_FEATURE,
+  );
+  const [breakdownAi, setBreakdownAi] = useState<AiFeatureSetting>(
+    () => settings.breakdownAi ?? DEFAULT_AI_FEATURE,
   );
   const [prices, setPrices] = useState<PriceDraft[]>(() =>
     (settings.modelPrices ?? []).map(priceDraft),
@@ -138,7 +148,8 @@ function SettingsForm({
       updateWorkspaceSettings(api, {
         prMergedStatus,
         autoExecuteSubtasksDefault: autoExecute,
-        intakeParser,
+        intakeAi,
+        breakdownAi,
         modelPrices: modelPrices ?? [],
         ...(metricThresholds ? { metricThresholds } : {}),
         ...pmSettingsInput(pm),
@@ -203,30 +214,22 @@ function SettingsForm({
           onCheckedChange={setAutoExecute}
         />
       </Field>
-      <Field>
-        <FieldLabel htmlFor='np-settings-intake-parser'>
-          {t('np.settingsPage.intakeParser')}
-        </FieldLabel>
-        <PropertySelect
-          id='np-settings-intake-parser'
-          size='default'
-          disabled={!canEdit}
-          options={[
-            { value: 'auto', label: t('np.settingsPage.intakeParserAuto') },
-            {
-              value: 'heuristic',
-              label: t('np.settingsPage.intakeParserHeuristic'),
-            },
-          ]}
-          value={intakeParser}
-          onChange={(value) =>
-            setIntakeParser(value === 'heuristic' ? 'heuristic' : 'auto')
-          }
+      {(
+        [
+          ['intakeAi', intakeAi, setIntakeAi],
+          ['breakdownAi', breakdownAi, setBreakdownAi],
+        ] as const
+      ).map(([feature, draft, setDraft]) => (
+        <AiFeatureFields
+          key={feature}
+          feature={feature}
+          draft={draft}
+          models={settings.aiModels ?? []}
+          effective={settings.aiEffective?.[feature]}
+          canEdit={canEdit}
+          onChange={setDraft}
         />
-        <FieldDescription>
-          {t('np.settingsPage.intakeParserHint')}
-        </FieldDescription>
-      </Field>
+      ))}
       <PmSettingsFields draft={pm} canEdit={canEdit} onChange={setPm} />
       <ThresholdFields
         draft={thresholds}

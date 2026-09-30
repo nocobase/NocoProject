@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
 
 import { createIntakeBatch } from '../../api-intake.js';
+import { useAiFeatures } from '../../use-ai-features.js';
 
 import type { StatusCatalogEntry, SubtaskSummary } from '../../types.js';
 import { groupSubtasksByStage } from './subtask-model.js';
@@ -74,6 +75,7 @@ export function SubtasksSection({
   const { t } = useTranslation();
   const api = useApiClient();
   const navigate = useNavigate();
+  const aiFeatures = useAiFeatures();
   const breakdown = useMutation({
     mutationFn: () => createIntakeBatch(api, { source: 'issue', issueId }),
     onSuccess: (detail) =>
@@ -127,7 +129,7 @@ export function SubtasksSection({
         </h2>
         {canEdit ? (
           <div className='flex gap-1'>
-            {/* NP-185: the project manager's breakdown; "AI breakdown" below goes with intake in NP-186. */}
+            {/* NP-185: the project manager's breakdown, next to the fast "AI breakdown" (NP-205: its own setting). */}
             <AskPmButton
               object={{
                 type: 'issue',
@@ -138,19 +140,21 @@ export function SubtasksSection({
               label={t('np.pmAssistant.breakdown')}
               variant='ghost'
             />
-            <Button
-              variant='ghost'
-              size='sm'
-              disabled={breakdown.isPending}
-              onClick={() => breakdown.mutate()}
-            >
-              {breakdown.isPending ? (
-                <Spinner data-icon='inline-start' />
-              ) : (
-                <SparklesIcon data-icon='inline-start' />
-              )}
-              {t('np.intake.aiBreakdown')}
-            </Button>
+            {aiFeatures.breakdown ? (
+              <Button
+                variant='ghost'
+                size='sm'
+                disabled={breakdown.isPending}
+                onClick={() => breakdown.mutate()}
+              >
+                {breakdown.isPending ? (
+                  <Spinner data-icon='inline-start' />
+                ) : (
+                  <SparklesIcon data-icon='inline-start' />
+                )}
+                {t('np.intake.aiBreakdown')}
+              </Button>
+            ) : null}
             <Button
               variant='ghost'
               size='sm'

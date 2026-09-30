@@ -375,7 +375,38 @@ const npIter2EnUS = {
     prMergedNone: 'Do nothing',
     autoExecute: 'Let agents run the sub-issues they create',
     autoExecuteHint: 'The default for new issues; each issue can change it.',
-    intakeParser: 'Batch entry parser',
+    ai: {
+      intakeAi: 'New issue AI draft',
+      intakeAiHint:
+        'The AI draft tab of the new issue dialog and the automatic process classifier. One direct model call, no agent run, so pick a fast model.',
+      intakeAiEnabledHint:
+        'When off, the new issue dialog offers only the manual form.',
+      breakdownAi: 'AI breakdown',
+      breakdownAiHint:
+        'The AI breakdown in the sub-issue section: it turns the description into sub-issue drafts. Also one direct model call; leave breakdowns that need back-and-forth to the project manager.',
+      breakdownAiEnabledHint:
+        'When off, the sub-issue section no longer shows AI breakdown.',
+      intakeAiEnabled: 'Use AI draft',
+      breakdownAiEnabled: 'Use AI breakdown',
+      parser: 'Parser',
+      model: 'Model',
+      modelHint:
+        'Default model uses the first enabled model of the AI services.',
+      defaultModel: 'Default model',
+      unavailableModel: '{{model}} (no longer available)',
+      usingModel: 'Model in use: {{model}}',
+      usingDefaultModel: 'Model in use: {{model}} (default)',
+      fallback: {
+        rules_only: 'Only rules are used now; no model is called.',
+        no_model:
+          'No AI model is configured, so rules are used instead. Configure an AI service on the server, then choose a model.',
+        disabled: {
+          intakeAi:
+            'Off: the new issue dialog hides AI draft and the process classifier uses rules only.',
+          breakdownAi: 'Off: the sub-issue section hides AI breakdown.',
+        },
+      },
+    },
     intakeParserHint:
       'Automatic uses the AI model when one is configured and falls back to rules.',
     intakeParserAuto: 'Automatic',

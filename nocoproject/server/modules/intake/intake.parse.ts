@@ -4,8 +4,10 @@
  * labels) the AI parser is given.
  */
 import type { Conn } from '../shared/db.js';
+import type { AiFeatureKey, AiModelRef } from '../shared/protocol.js';
 import { str } from '../shared/db.js';
 import type { WorkflowService } from '../workflow/workflow.service.js';
+import { readAiFeature } from './ai-features.js';
 import type { IntakeDeps } from './intake.service.js';
 import type { IntakeParseInput, IntakeParseOutcome } from './parser.js';
 
@@ -14,16 +16,36 @@ function errorMessage(error: unknown): string {
   return text.slice(0, 500) || 'The AI parser failed.';
 }
 
-/** The AI parser is registered, an LLM service is configured and the workspace setting allows it (NP-120: refine too). */
+/** NP-205: a batch split from an issue is the AI breakdown; every other batch is the new issue AI draft tab. */
+export function featureOf(sourceIssueId: string | null): AiFeatureKey {
+  return sourceIssueId ? 'breakdownAi' : 'intakeAi';
+}
+
+/**
+ * The AI parser is registered and the feature's settings allow a model call: it is on, its parser is `auto` and an LLM
+ * service is configured (NP-120: refine too). `model` is the model to call.
+ */
+export async function aiState(
+  deps: IntakeDeps,
+  conn: Conn,
+  key: AiFeatureKey,
+): Promise<{ enabled: boolean; model: AiModelRef | null }> {
+  const state = await readAiFeature(
+    deps.settings,
+    deps.aiModels,
+    deps.aiConfigured,
+    conn,
+    key,
+  );
+  return { enabled: deps.ai !== null && state.useModel, model: state.model };
+}
+
 export async function aiEnabled(
   deps: IntakeDeps,
   conn: Conn,
+  key: AiFeatureKey,
 ): Promise<boolean> {
-  return (
-    deps.ai !== null &&
-    deps.aiConfigured() &&
-    (await deps.settings.read(conn)).intakeParser === 'auto'
-  );
+  return (await aiState(deps, conn, key)).enabled;
 }
 
 /** Runs the AI parser when it is available and allowed, falling back to the heuristic (never failing). */
@@ -32,12 +54,17 @@ export async function parseIntake(
   conn: Conn,
   input: IntakeParseInput,
   userId: string,
+  key: AiFeatureKey,
 ): Promise<IntakeParseOutcome> {
   let parseError: string | null = null;
   let aiSessionId: string | null = null;
-  if (deps.ai && (await aiEnabled(deps, conn))) {
+  const state = await aiState(deps, conn, key);
+  if (deps.ai && state.enabled) {
     try {
-      const result = await deps.ai.parseAs(input, userId);
+      const result = await deps.ai.parseAs(
+        { ...input, model: state.model },
+        userId,
+      );
       aiSessionId = result.sessionId || null;
       if (result.drafts.length > 0)
         return {

@@ -377,4 +377,44 @@ describe.skipIf(!db)('usage query and settings (PostgreSQL)', () => {
       ).prMergedStatus,
     ).toBe('none');
   });
+
+  it('keeps a switch, parser and model per AI feature (NP-205)', async () => {
+    expect(await services.workspaceSettings.view(BOB)).toMatchObject({
+      intakeAi: { enabled: true, parser: 'auto', model: null },
+      breakdownAi: { enabled: true, parser: 'auto', model: null },
+      // No LLM service in the test application: rules answer, and the page says why.
+      aiModels: [],
+      aiEffective: {
+        intakeAi: { active: false, fallback: 'no_model', model: null },
+        breakdownAi: { active: false, fallback: 'no_model', model: null },
+      },
+    });
+    await expect(
+      services.workspaceSettings.update(BOB, {
+        breakdownAi: { enabled: false, parser: 'auto', model: null },
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(
+      services.workspaceSettings.update(ALICE, {
+        intakeAi: { enabled: true, parser: 'smart' } as never,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_FIELD' });
+    const updated = await services.workspaceSettings.update(ALICE, {
+      breakdownAi: {
+        enabled: false,
+        parser: 'heuristic',
+        model: { llmService: 'fast', model: 'flash' },
+      },
+    });
+    expect(updated).toMatchObject({
+      // The other feature keeps its value.
+      intakeAi: { enabled: true, parser: 'auto', model: null },
+      breakdownAi: {
+        enabled: false,
+        parser: 'heuristic',
+        model: { llmService: 'fast', model: 'flash' },
+      },
+      aiEffective: { breakdownAi: { fallback: 'disabled' } },
+    });
+  });
 });

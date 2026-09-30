@@ -10,6 +10,7 @@
 import { z } from 'zod';
 
 import type {
+  AiModelRef,
   IntakeDraftFields,
   IntakeDraftInput,
 } from '../shared/protocol.js';
@@ -64,6 +65,8 @@ export interface AiAgentFactory {
     sessionId: string;
     userId: string;
     systemPrompt: string;
+    /** NP-205: the model to call; null or absent = the AI plugin's default. */
+    model?: AiModelRef | null;
   }): Promise<{
     invoke(request: {
       userMessages: { role: 'user'; content: string }[];
@@ -331,6 +334,7 @@ export function createAiIntakeParser(
     title: string,
     systemPrompt: string,
     content: string,
+    model: AiModelRef | null | undefined,
     signal?: AbortSignal,
   ) {
     const sessionId = await factory.createSession(userId, title);
@@ -338,6 +342,7 @@ export function createAiIntakeParser(
       sessionId,
       userId,
       systemPrompt,
+      model: model ?? null,
     });
     const timeout = AbortSignal.timeout(timeoutMs);
     const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -363,6 +368,7 @@ export function createAiIntakeParser(
         'NocoProject intake',
         intakeSystemPrompt(input),
         intakeUserMessage(input),
+        input.model,
         signal,
       );
       const response =
@@ -375,6 +381,7 @@ export function createAiIntakeParser(
         'NocoProject intake refine',
         intakeRefineSystemPrompt(input),
         intakeRefineUserMessage(input),
+        input.model,
         signal,
       );
       const response =

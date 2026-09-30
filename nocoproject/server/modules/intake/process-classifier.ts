@@ -16,7 +16,7 @@
  * `AiAgentFactory` the AI intake parser uses, see `server/providers/np.ts`), under a 30 second timeout; a failure,
  * a timeout or an unreadable reply falls back to the heuristic's `direct`. Intake batches use the heuristic only.
  */
-import type { IssueProcess } from '../shared/protocol.js';
+import type { AiModelRef, IssueProcess } from '../shared/protocol.js';
 import type { AiAgentFactory } from './ai-parser.js';
 
 export const PROCESS_CLASSIFY_TIMEOUT_MS = 30_000;
@@ -99,6 +99,7 @@ export interface AiProcessClassifier {
     input: ProcessClassifyInput,
     userId: string,
     signal?: AbortSignal,
+    model?: AiModelRef | null,
   ): Promise<IssueProcess | null>;
 }
 
@@ -137,7 +138,7 @@ export function createAiProcessClassifier(
   timeoutMs = PROCESS_CLASSIFY_TIMEOUT_MS,
 ): AiProcessClassifier {
   return {
-    async classify(input, userId, signal) {
+    async classify(input, userId, signal, model) {
       const sessionId = await factory.createSession(
         userId,
         'NocoProject process',
@@ -146,6 +147,7 @@ export function createAiProcessClassifier(
         sessionId,
         userId,
         systemPrompt: PROCESS_SYSTEM_PROMPT,
+        model: model ?? null,
       });
       const timeout = AbortSignal.timeout(timeoutMs);
       const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -176,7 +178,12 @@ export interface ProcessClassifier {
   /** The heuristic, then (only when no rule matched and `useAi`) the model; never throws. */
   classify(
     input: ProcessClassifyInput,
-    options: { readonly userId: string; readonly useAi: boolean },
+    options: {
+      readonly userId: string;
+      readonly useAi: boolean;
+      /** NP-205: the model of the intake AI feature; null = the plugin's default. */
+      readonly model?: AiModelRef | null;
+    },
   ): Promise<ProcessDecision>;
 }
 
@@ -195,7 +202,12 @@ export function createProcessClassifier(deps: {
       )
         return { ...heuristic, by: 'heuristic' };
       try {
-        const process = await deps.ai.classify(input, options.userId);
+        const process = await deps.ai.classify(
+          input,
+          options.userId,
+          undefined,
+          options.model,
+        );
         if (process) return { process, by: 'ai', rule: null };
       } catch {
         // Falls back to the heuristic below.

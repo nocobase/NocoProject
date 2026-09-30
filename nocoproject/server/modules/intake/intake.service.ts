@@ -55,7 +55,13 @@ import {
 } from './intake.attachments.js';
 import { confirmBatch } from './intake.confirm.js';
 import { ownBatch, requireStatus, storeDrafts } from './intake.access.js';
-import { aiEnabled, parseInput, parseIntake } from './intake.parse.js';
+import type { AiModelCatalog } from './ai-features.js';
+import {
+  aiEnabled,
+  featureOf,
+  parseInput,
+  parseIntake,
+} from './intake.parse.js';
 import { refineDrafts } from './intake.refine.js';
 import {
   draftsOf,
@@ -107,6 +113,8 @@ export interface IntakeDeps {
   readonly ai: AiIntakeParser | null;
   /** True when `ai.llmServices` is not empty. */
   readonly aiConfigured: () => boolean;
+  /** NP-205: the enabled models of the LLM services; null = only the plugin's default model is known. */
+  readonly aiModels: AiModelCatalog | null;
   /** Iteration 4: the process of each confirmed draft (heuristic only). */
   readonly classifier: ProcessClassifier;
   /** NP-78: reads attached files for the AI parser; null = files travel with the batch unread. */
@@ -201,6 +209,7 @@ async function create(
         : {}),
     },
     viewer.userId,
+    featureOf(origin.sourceIssueId),
   );
   const drafts =
     outcome.drafts.length === 0 && !origin.rawContent.trim()
@@ -276,7 +285,7 @@ async function create(
     drafts: await draftsOf(read, id),
     parser: outcome.parser,
     attachments: await intakeBatchAttachments(read, id),
-    aiRefine: await aiEnabled(deps, read),
+    aiRefine: await aiEnabled(deps, read, featureOf(origin.sourceIssueId)),
   };
 }
 
@@ -290,7 +299,7 @@ export function createIntakeService(deps: IntakeDeps): IntakeService {
         batch,
         drafts: await draftsOf(conn, id),
         attachments: await intakeBatchAttachments(conn, id),
-        aiRefine: await aiEnabled(deps, conn),
+        aiRefine: await aiEnabled(deps, conn, featureOf(batch.sourceIssueId)),
       };
     },
     putDrafts: (actor, id, drafts) =>
