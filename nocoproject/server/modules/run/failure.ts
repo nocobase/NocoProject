@@ -9,7 +9,9 @@ import { now } from '../shared/db.js';
 import { notFound, conflict } from '../shared/errors.js';
 import type { IdSource } from '../shared/ids.js';
 import {
+  BUILTIN_RETRYABLE_FAILURE_REASONS,
   RETRYABLE_FAILURE_REASONS,
+  type RuntimeTypeFailureReason,
   SESSION_POISONING_FAILURE_REASONS,
   type DaemonFailRequest,
   type DaemonReportPhase1Extras,
@@ -20,6 +22,7 @@ import {
 import {
   EXECUTING_STATUSES,
   findRun,
+  type RunV1,
   isTerminalRunStatus,
   revokeRunTokens,
   transitionRun,
@@ -27,7 +30,7 @@ import {
 import { checkoutReport, emitRunStatus } from './run.service.js';
 import { upsertSession } from './sessions.js';
 
-const FAILURE_REASONS: readonly FailureReason[] = [
+const FAILURE_REASONS: readonly string[] = [
   'runtimeOffline',
   'queuedExpired',
   'runtimeRecovery',
@@ -50,6 +53,20 @@ const FAILURE_REASONS: readonly FailureReason[] = [
   'agentError.emptyOutput',
   'agentError.agentTimeout',
   'agentError.unknown',
+  // NP-219 (protocol-runtime-types.md §6.7): built-in runs only.
+  ...([
+    'builtinUnavailable',
+    'agentError.stepLimit',
+  ] satisfies RuntimeTypeFailureReason[]),
+];
+
+/**
+ * NP-219: a built-in run retries only what another model call may change (§6.7), plus a run lost to a restart; never a
+ * timeout, so a slow run is not paid for twice.
+ */
+const BUILTIN_RETRYABLE: readonly string[] = [
+  ...BUILTIN_RETRYABLE_FAILURE_REASONS,
+  'runtimeRecovery',
 ];
 
 /** Unknown reason codes are recorded as `agentError.unknown` rather than rejected. */
@@ -148,8 +165,12 @@ export async function failRunInTx(
 
   const collaborators = deps.collaborators();
   const maxAttempts = maxAttemptsFor(run, reason);
+  const retryable =
+    (run as RunV1).runtimeType === 'builtin'
+      ? BUILTIN_RETRYABLE.includes(reason)
+      : isRetryable(reason);
   const retried =
-    isRetryable(reason) && run.attempt < maxAttempts
+    retryable && run.attempt < maxAttempts
       ? (await collaborators.scheduleRetry(tx, run, maxAttempts, reason)) !==
         null
       : false;

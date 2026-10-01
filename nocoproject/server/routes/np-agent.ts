@@ -46,41 +46,46 @@ import {
   npRunTokenServiceToken,
 } from '../providers/np.js';
 
+/**
+ * The `/np/agent` router behind the run-token guard. NP-219: the built-in executor's tools call it in process
+ * (`server/providers/np-builtin-agent.ts`), so built-in and daemon agents go through the same routes and checks.
+ */
+export function createNpAgentRouter(app: Application): Hono {
+  const { container } = app;
+  return guarded(
+    [runTokenAuth(container.resolve(npRunTokenServiceToken))],
+    createAgentApiRoutes({
+      issues: container.resolve(npIssueServiceToken),
+      queries: container.resolve(npIssueQueriesToken),
+      comments: container.resolve(npCommentServiceToken),
+      agentIssues: container.resolve(npAgentIssueServiceToken),
+      pullRequests: container.resolve(npPullRequestServiceToken),
+    }),
+    createAgentDesignRoutes(container.resolve(npDesignServiceToken)),
+    createAgentAttachmentRoutes({
+      queries: container.resolve(npIssueQueriesToken),
+      attachments: container.resolve(npAttachmentServiceToken),
+    }),
+    createAgentUploadRoutes({
+      queries: container.resolve(npIssueQueriesToken),
+      store: agentUploadStore(app),
+    }),
+    createAgentKnowledgeRoutes(container.resolve(npKnowledgeServiceToken)),
+    createAgentPmRoutes(container.resolve(npPmServiceToken), {
+      act: container.resolve(npPmActServiceToken),
+      conversations: container.resolve(npPmConversationsToken),
+      plans: container.resolve(npPmPlanServiceToken),
+    }),
+    createAgentChecklistRoutes(container.resolve(npChecklistServiceToken)),
+    createAgentWorkflowRoutes(
+      container.resolve(npWorkflowProposalServiceToken),
+    ),
+  ) as unknown as Hono;
+}
+
 export const npAgentRoutes: AppApiRouteContribution<Application> =
   defineApiRoutes((app) => {
-    const { container } = app;
     const router = new Hono();
-    router.route(
-      '/np/agent',
-      guarded(
-        [runTokenAuth(container.resolve(npRunTokenServiceToken))],
-        createAgentApiRoutes({
-          issues: container.resolve(npIssueServiceToken),
-          queries: container.resolve(npIssueQueriesToken),
-          comments: container.resolve(npCommentServiceToken),
-          agentIssues: container.resolve(npAgentIssueServiceToken),
-          pullRequests: container.resolve(npPullRequestServiceToken),
-        }),
-        createAgentDesignRoutes(container.resolve(npDesignServiceToken)),
-        createAgentAttachmentRoutes({
-          queries: container.resolve(npIssueQueriesToken),
-          attachments: container.resolve(npAttachmentServiceToken),
-        }),
-        createAgentUploadRoutes({
-          queries: container.resolve(npIssueQueriesToken),
-          store: agentUploadStore(app),
-        }),
-        createAgentKnowledgeRoutes(container.resolve(npKnowledgeServiceToken)),
-        createAgentPmRoutes(container.resolve(npPmServiceToken), {
-          act: container.resolve(npPmActServiceToken),
-          conversations: container.resolve(npPmConversationsToken),
-          plans: container.resolve(npPmPlanServiceToken),
-        }),
-        createAgentChecklistRoutes(container.resolve(npChecklistServiceToken)),
-        createAgentWorkflowRoutes(
-          container.resolve(npWorkflowProposalServiceToken),
-        ),
-      ),
-    );
+    router.route('/np/agent', createNpAgentRouter(app));
     return router;
   });

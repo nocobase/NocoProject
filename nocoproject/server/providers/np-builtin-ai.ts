@@ -1,4 +1,7 @@
 /**
+ * The NocoBase AI plugin's public server API for NocoProject's own model calls: the AI intake parser and process
+ * classifier (`createAiFactory`), and NP-219's built-in runtimes.
+ *
  * NP-219: built-in runtimes on the NocoBase AI plugin's public server API only (protocol-runtime-types.md §11.1,
  * ADR-0010). The catalog comes from `llmServiceManager.listLLMServices()` and `llmProviderManager.listAllEnabledModels()`,
  * the connectivity check from `getLLMService(...).provider.testFlight()`. Nothing here reads or writes the plugin's
@@ -9,6 +12,8 @@ import {
   type AIApplicationConfig,
 } from '@nocobase/app-plugin-ai-employee/server';
 import type { Application } from '@nocobase/app-server/application';
+
+import type { AiAgentFactory } from '../modules/intake/ai-parser.js';
 
 import type {
   BuiltinAi,
@@ -109,4 +114,33 @@ export async function aiModelsConfigured(app: Application): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * (Moved from `np.ts`.) The AI intake parser and (iteration 4) the process classifier as one direct model call on the first enabled LLM
+ * service (runtime-extensions.md §"A direct model call"): no conversation, no tool loop. The plugin's agent path
+ * with a tool-bound `responseFormat` made DeepSeek answer with guesses, while the plain "reply with JSON"
+ * instruction is answered faithfully. Null when the plugin is not registered.
+ */
+export function createAiFactory(app: Application): AiAgentFactory | null {
+  const { container } = app;
+  if (!container.has(aiManagerToken)) return null;
+  return {
+    // A direct call has no conversation, so there is no session to record.
+    createSession: async () => '',
+    createAgent: async ({ systemPrompt }) => ({
+      invoke: async ({ userMessages }) => {
+        const ai = container.resolve(aiManagerToken);
+        const model = await ai.llmProviderManager.resolveModel();
+        const { provider } = await ai.llmProviderManager.getLLMService(model);
+        const reply = (await provider.invoke({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...userMessages,
+          ],
+        } as never)) as { content?: unknown } | null;
+        return { message: { content: reply?.content } };
+      },
+    }),
+  };
 }

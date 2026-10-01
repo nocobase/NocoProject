@@ -36,6 +36,11 @@ import {
   runInputs,
 } from './input.js';
 import { upsertSession } from './sessions.js';
+import { emitRunStatus, emitWorkAvailable } from './run.notify.js';
+import { insertRunUsage } from './run.usage.js';
+
+// Moved out to keep this file within the size limit; imported from here by the other run modules.
+export { emitRunStatus, emitWorkAvailable, insertRunUsage };
 
 export interface TriggerRecordInput {
   /** Iteration 4 adds `designApproved` and `retrospective`, Phase 2 `stageEntered` and `signal`, NP-183 `planExecuted`. */
@@ -100,32 +105,6 @@ export interface RunServiceDeps {
   readonly ids: IdSource;
   /** Iteration 4: records `retrospective_done` when a retrospective run completes. */
   readonly activity?: ActivityRecorder;
-}
-
-/** Emits the invalidation events every run status change produces. */
-export function emitRunStatus(
-  tx: Tx,
-  run: { id: string; subjectId: string },
-  status: RunStatus,
-): void {
-  tx.emit({
-    type: 'run.status',
-    runId: run.id,
-    issueId: run.subjectId,
-    status,
-  });
-  tx.emit({ type: 'issue.changed', issueId: run.subjectId });
-  tx.emit({ type: 'agents.changed' });
-}
-
-/** Tells the daemon that owns `runtimeId` that there is work to claim. */
-export async function emitWorkAvailable(
-  tx: Tx,
-  runtimeId: string | null,
-): Promise<void> {
-  const userId = await runtimeOwnerOf(tx.conn, runtimeId);
-  if (userId && runtimeId)
-    tx.emit({ type: 'daemon.workAvailable', userId, runtimeId });
 }
 
 export async function insertTriggers(
@@ -271,7 +250,8 @@ async function enqueue(
         { id: created.id, subjectId: input.subjectId },
         created.status,
       );
-      if (created.status === 'queued') await emitWorkAvailable(tx, runtimeId);
+      if (created.status === 'queued')
+        await emitWorkAvailable(tx, runtimeId, created.id);
       return { runId: created.id, coalesced: false };
     } catch (error) {
       // Lost the race to a concurrent enqueue of the same key: coalesce into the run it created.
@@ -379,28 +359,8 @@ async function complete(
       poisoned: false,
       ...checkout,
     });
-    if (input.usage) {
-      await tx.conn.query
-        .insertInto('runUsage')
-        .values({
-          id: deps.ids.next(),
-          runId,
-          provider: input.usage.provider,
-          model: input.usage.model ?? null,
-          inputTokens: Math.max(0, Math.trunc(input.usage.inputTokens || 0)),
-          outputTokens: Math.max(0, Math.trunc(input.usage.outputTokens || 0)),
-          cacheReadTokens: Math.max(
-            0,
-            Math.trunc(input.usage.cacheReadTokens ?? 0),
-          ),
-          cacheWriteTokens: Math.max(
-            0,
-            Math.trunc(input.usage.cacheWriteTokens ?? 0),
-          ),
-          createdAt: now(),
-        })
-        .execute();
-    }
+    if (input.usage)
+      await insertRunUsage(tx.conn, deps.ids, runId, input.usage);
     if (deps.activity) await markRetrospectiveDone(tx, deps.activity, run);
     emitRunStatus(tx, run, 'completed');
     return (await findRun(tx.conn, runId)) ?? run;
@@ -434,7 +394,11 @@ async function requestCancel(
       cancelledById: actor.id,
     });
     if (requested) {
-      const userId = await runtimeOwnerOf(tx.conn, run.runtimeId);
+      // NP-219: the built-in executor polls `cancelRequestedAt` itself; no daemon runs it.
+      const userId =
+        run.runtimeType === 'builtin'
+          ? null
+          : await runtimeOwnerOf(tx.conn, run.runtimeId);
       if (userId) tx.emit({ type: 'daemon.cancelRequested', userId, runId });
       tx.emit({ type: 'issue.changed', issueId: run.subjectId });
     }

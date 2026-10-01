@@ -404,3 +404,50 @@ export async function renameBuiltinRuntime(
     tx.emit({ type: 'agents.changed' });
   });
 }
+
+/**
+ * After a built-in run (§4.2, §6.7): a successful run clears `check_failed` and counts as seen; a run that failed
+ * because the service is unusable (authentication, quota, network, server errors, unavailable) sets `check_failed`.
+ */
+export async function recordBuiltinRunOutcome(
+  tx: TxRunner,
+  runtimeId: string | null,
+  ok: boolean,
+): Promise<void> {
+  if (!runtimeId) return;
+  await tx.run(async (unit) => {
+    const row = await unit.conn.query
+      .selectFrom('runtimes')
+      .select(['id', 'runtimeType', 'status', 'statusReason'])
+      .where('id', '=', runtimeId)
+      .executeTakeFirst();
+    if (row?.runtimeType !== 'builtin') return;
+    const timestamp = now();
+    if (ok) {
+      const recovered = statusReasonOf(row.statusReason) === 'check_failed';
+      await unit.conn.query
+        .updateTable('runtimes')
+        .set({
+          lastSeenAt: timestamp,
+          ...(recovered ? { status: 'online', statusReason: null } : {}),
+          updatedAt: timestamp,
+        })
+        .where('id', '=', runtimeId)
+        .execute();
+      if (recovered) unit.emit({ type: 'agents.changed' });
+      return;
+    }
+    if (statusReasonOf(row.statusReason) !== null && row.status === 'offline')
+      return;
+    await unit.conn.query
+      .updateTable('runtimes')
+      .set({
+        status: 'offline',
+        statusReason: 'check_failed',
+        updatedAt: timestamp,
+      })
+      .where('id', '=', runtimeId)
+      .execute();
+    unit.emit({ type: 'agents.changed' });
+  });
+}

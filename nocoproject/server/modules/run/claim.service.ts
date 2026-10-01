@@ -183,7 +183,8 @@ async function claimOneInTx(
   return { runId: row.id, token };
 }
 
-async function buildClaimedRun(
+/** The claim payload of `runId` (also the built-in executor's input, NP-219). */
+export async function buildClaimedRun(
   deps: ClaimDeps,
   runId: string,
   token: string,
