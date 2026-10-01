@@ -442,6 +442,8 @@ export interface CreateAgentInput extends AgentConfiguration {
   // Phase 1 iteration 4 (§C)
   readonly kind?: AgentKind;
   readonly reasoningEffort?: ReasoningEffort | null;
+  /** NP-219: required by the server; set once, never changed. */
+  readonly runtimeType: 'computer' | 'builtin';
 }
 
 /** `PATCH /np/agents/:id` (§H). */

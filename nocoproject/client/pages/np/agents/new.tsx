@@ -164,6 +164,8 @@ function NewAgentBody({
         instructions: instructions.trim(),
         capabilities,
         runtimeId: runtime.id,
+        // NP-219: this form only offers computer runtimes until it asks for the type first (NP-222).
+        runtimeType: 'computer',
         provider: runtime.provider,
         model: model.trim() || undefined,
         maxConcurrentRuns: Number(maxConcurrentRuns),
