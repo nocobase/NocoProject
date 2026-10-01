@@ -11,6 +11,24 @@ import type {
 } from '../../server/modules/runtime/builtin-ai.ts';
 import type { Actor } from '../../server/modules/shared/activity.ts';
 import type { AgentCapability } from '../../server/modules/shared/protocol.capabilities.ts';
+import type {
+  BuiltinAgentEngine,
+  BuiltinEngineSource,
+  BuiltinRunRequest,
+  BuiltinStreamEvent,
+  BuiltinUsage,
+} from '../../server/modules/builtin/builtin.engine.ts';
+import type {
+  AgentApi,
+  BuiltinToolbox,
+  ToolResult,
+} from '../../server/modules/builtin/builtin.toolbox.ts';
+import {
+  createAgentApiRoutes,
+  runTokenAuth,
+} from '../../server/modules/run/agent-api.routes.ts';
+import { guarded } from '../../server/modules/shared/http.ts';
+import { inProcessAgentApi } from '../../server/providers/np-builtin-agent.ts';
 
 export interface FakeAi {
   /** null: the plugin is not registered. */
@@ -99,4 +117,90 @@ export async function createBuiltinAgent(
     capabilities: options.capabilities ?? ['context.read', 'comment.create'],
   });
   return agent.id;
+}
+
+// ---------- Built-in runs (protocol-runtime-types.md §6) ----------
+
+export interface ScriptContext {
+  readonly request: BuiltinRunRequest;
+  /** Calls one of the run's tools as the plugin would. */
+  tool(name: string, args?: Record<string, unknown>): Promise<ToolResult>;
+}
+
+export type Script = (
+  context: ScriptContext,
+) => AsyncGenerator<BuiltinStreamEvent, void, void>;
+
+export interface FakeEngine {
+  script: Script;
+  usage: BuiltinUsage;
+  readonly sessions: { userId: string; title: string; sessionId: string }[];
+  readonly requests: BuiltinRunRequest[];
+  readonly results: ToolResult[];
+  readonly source: BuiltinEngineSource;
+}
+
+/** Rejects like the plugin when the run's signal fires. */
+export function aborted(signal: AbortSignal): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    const fail = () =>
+      reject(Object.assign(new Error('aborted'), { code: 'ABORTED' }));
+    if (signal.aborted) fail();
+    else signal.addEventListener('abort', fail, { once: true });
+  });
+}
+
+export function fakeEngine(toolbox: () => BuiltinToolbox): FakeEngine {
+  let next = 0;
+  const fake: FakeEngine = {
+    script: async function* () {
+      yield { type: 'content', content: 'Done.' };
+    },
+    usage: {
+      inputTokens: 120,
+      outputTokens: 30,
+      cacheReadTokens: 10,
+      reported: true,
+    },
+    sessions: [],
+    requests: [],
+    results: [],
+    source: () => engine,
+  };
+  const engine: BuiltinAgentEngine = {
+    async createSession({ userId, title }) {
+      next += 1;
+      const sessionId = `session-${next}`;
+      fake.sessions.push({ userId, title, sessionId });
+      return sessionId;
+    },
+    run(request) {
+      fake.requests.push(request);
+      return fake.script({
+        request,
+        tool: async (name, args = {}) => {
+          const result = await toolbox().invoke(request.sessionId, name, args);
+          fake.results.push(result);
+          return result;
+        },
+      });
+    },
+    usage: async () => fake.usage,
+  };
+  return fake;
+}
+
+/** The agent API router a daemon's CLI calls, in process (the routes the built-in tools need). */
+export function testAgentApi(services: NpServices): AgentApi {
+  const router = guarded(
+    [runTokenAuth(services.runTokens)],
+    createAgentApiRoutes({
+      issues: services.issues,
+      queries: services.issueQueries,
+      comments: services.comments,
+      agentIssues: services.agentIssues,
+      pullRequests: services.pullRequests,
+    }),
+  );
+  return inProcessAgentApi(() => router as never);
 }

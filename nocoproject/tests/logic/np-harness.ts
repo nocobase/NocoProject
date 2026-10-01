@@ -256,6 +256,11 @@ export type NpTestOptions = Partial<
     | 'mailer'
     | 'accounts'
     | 'builtinAi'
+    | 'builtinEngine'
+    | 'agentApi'
+    | 'builtinConfig'
+    | 'builtinTimers'
+    | 'onBuiltinError'
   >
 >;
 

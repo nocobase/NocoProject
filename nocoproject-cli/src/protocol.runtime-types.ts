@@ -99,3 +99,53 @@ export interface MetricsCostRuntimeTypeFields {
 export interface PmConversationAgentRuntimeFields extends RuntimeTypeFields {
   readonly statusReason: BuiltinStatusReason | null;
 }
+
+/**
+ * The tools a built-in agent's run may call, by capability (§7; the parallel of `AGENT_COMMANDS`). The names are the
+ * ones registered with the AI plugin; a capability a built-in agent cannot hold has none.
+ */
+export const AGENT_TOOLS: Record<AgentCapability, readonly string[]> = {
+  'context.read': [
+    'np_context',
+    'np_issue_get',
+    'np_comment_list',
+    'np_issue_children',
+    'np_attachment_text',
+    'np_kb_list',
+    'np_kb_get',
+    'np_workflow_list',
+    'np_workflow_get',
+    'np_skill_file',
+  ],
+  'workspace.read': [
+    'np_pm_projects',
+    'np_pm_issues',
+    'np_pm_issue',
+    'np_pm_inbox',
+    'np_pm_metrics',
+    'np_pm_knowledge',
+    'np_pm_agents',
+    'np_pm_runs',
+    'np_pm_run_events',
+    'np_pm_prs',
+  ],
+  'comment.create': ['np_comment_add'],
+  'knowledge.propose': ['np_kb_propose'],
+  'subtask.create': ['np_issue_create'],
+  'dependency.write': ['np_dependency_add', 'np_dependency_remove'],
+  'issue.status.write': ['np_issue_status'],
+  'design.propose': ['np_design_proposal'],
+  'checklist.write': ['np_checklist'],
+  'workflow.propose': ['np_workflow_propose'],
+  'member.act': [
+    'np_pm_act',
+    'np_pm_plan_create',
+    'np_pm_plan_get',
+    'np_pm_plan_discard',
+    'np_pm_title',
+  ],
+  'issue.execute': [],
+  'pullRequest.link': [],
+  'repo.read': [],
+  'attachment.upload': [],
+};

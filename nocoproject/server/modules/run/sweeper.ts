@@ -31,6 +31,8 @@ export interface SweepResult {
   readonly runningOrphaned: number;
   readonly deferredPromoted: number;
   readonly queuedExpired: number;
+  /** NP-219: built-in runs whose process stopped renewing their lease (a restart). */
+  readonly builtinRecovered: number;
 }
 
 export interface SweeperService {
@@ -213,6 +215,34 @@ async function promoteDeferred(deps: SweeperDeps, now: Date): Promise<number> {
   return count;
 }
 
+/** How long a running built-in run's lease may be expired before the run counts as lost (seconds). */
+export const BUILTIN_LOST_AFTER_SECONDS = 60;
+
+/**
+ * NP-219 (protocol-runtime-types.md §6.3): a running built-in run renews its lease every 15 seconds; one whose lease
+ * expired more than a minute ago lost its process (a restart) and fails with the retryable `runtimeRecovery`.
+ */
+async function failLostBuiltinRuns(
+  deps: SweeperDeps,
+  now: Date,
+): Promise<number> {
+  const lost = (
+    await deps.tx
+      .read()
+      .query.selectFrom('runs')
+      .selectAll()
+      .where('status', '=', 'running')
+      .where('runtimeType', '=', 'builtin')
+      .where('leaseExpiresAt', '<', ago(now, BUILTIN_LOST_AFTER_SECONDS))
+      .limit(500)
+      .execute()
+  ).map(mapRun);
+  let count = 0;
+  for (const run of lost)
+    if (await failRun(deps, run, 'runtimeRecovery', ['running'])) count += 1;
+  return count;
+}
+
 /** Queued runs whose agent's runtime no longer exists can never be claimed (the claim joins on it). */
 async function expireQueuedWithoutRuntime(deps: SweeperDeps): Promise<number> {
   const queued = (
@@ -274,6 +304,7 @@ async function sweep(
   const runningOrphaned = await failOrphanedRunning(deps, now);
   const deferredPromoted = await promoteDeferred(deps, now);
   const queuedExpired = await expireQueuedWithoutRuntime(deps);
+  const builtinRecovered = await failLostBuiltinRuns(deps, now);
   return {
     runtimesOffline,
     dispatchedTimedOut,
@@ -281,6 +312,7 @@ async function sweep(
     runningOrphaned,
     deferredPromoted,
     queuedExpired,
+    builtinRecovered,
   };
 }
 

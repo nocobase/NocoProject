@@ -12,8 +12,6 @@
  * knowledge base, the acceptance metrics and the delivery decisions (`createIteration3Services`); iteration 4 the
  * process classifier, the design decisions and the project manager (`services.iter4.ts`).
  */
-import type { DatabaseManager } from '@nocobase/db';
-import type { IdGeneratorService } from '@nocobase/snowflake';
 
 import {
   createAgentService,
@@ -22,14 +20,9 @@ import {
 import { type AgentEnvService } from './agent/env.service.js';
 import { type ReactionService } from './collaboration/reaction.service.js';
 import { type GitConnectionService } from './git/connection.service.js';
-import {
-  createFetchGitHubClient,
-  type GitHubClient,
-} from './git/github-client.js';
+import { createFetchGitHubClient } from './git/github-client.js';
 import { type PullRequestService } from './git/pull-request.service.js';
 import { type WebhookService } from './git/webhook.service.js';
-import type { AiIntakeParser } from './intake/ai-parser.js';
-import type { AiProcessClassifier } from './intake/process-classifier.js';
 import {
   buildProcessClassifier,
   createIteration4Services,
@@ -42,11 +35,7 @@ import { type KnowledgeService } from './knowledge/knowledge.service.js';
 import { type MetricsService } from './metrics/metrics.service.js';
 import type { ApprovalGateway, ApprovalHooks } from './shared/approval.js';
 import { resolveApproverIds } from './shared/authz.js';
-import {
-  createSecretBox,
-  resolveSecretKey,
-  type SecretBox,
-} from './shared/crypto.js';
+import { createSecretBox, resolveSecretKey } from './shared/crypto.js';
 import type { Tx } from './shared/db.js';
 import type { DomainEvent } from './shared/events.js';
 import { type SkillService } from './skill/skill.service.js';
@@ -64,11 +53,9 @@ import {
   createMemberService,
   type MemberService,
 } from './member/member.service.js';
-import type { RoleAssignments, RoleStore } from './member/member.roles.js';
 import { createRoleService, type RoleService } from './member/roles.service.js';
 import {
   createInvitationService,
-  type InvitationAccounts,
   type InvitationService,
 } from './member/invitation.service.js';
 import {
@@ -80,10 +67,7 @@ import {
   type ComputerKeys,
   type ComputerService,
 } from './computer/computer.service.js';
-import {
-  unconfiguredMailer,
-  type InvitationMailer,
-} from './member/invitation.mail.js';
+import { unconfiguredMailer } from './member/invitation.mail.js';
 import {
   createInboxService,
   type InboxService,
@@ -144,7 +128,9 @@ import {
   createRuntimeService,
   type RuntimeService,
 } from './runtime/runtime.service.js';
-import type { BuiltinAiSource } from './runtime/builtin-ai.js';
+import type { BuiltinExecutor } from './builtin/builtin.executor.js';
+import type { BuiltinToolbox } from './builtin/builtin.toolbox.js';
+import { createBuiltinModules } from './services.builtin.js';
 import { createActivityRecorder } from './shared/activity.js';
 import { createTxRunner, type TxRunner } from './shared/db.js';
 import { createDomainEventBus, type DomainEventBus } from './shared/events.js';
@@ -160,11 +146,9 @@ import {
   type TriggerService,
 } from './trigger/trigger.service.js';
 
-import type { AttachmentTextReader } from './attachment/attachment-text.js';
 import {
   createAttachmentService,
   type AttachmentService,
-  type FileObjectStore,
 } from './attachment/attachment.service.js';
 
 export interface NpServices {
@@ -228,60 +212,14 @@ export interface NpServices {
   readonly daemonWakeups: DaemonWakeups;
   // NP-153.
   readonly businessRoles: RoleService;
+  // NP-219.
+  readonly builtinToolbox: BuiltinToolbox;
+  readonly builtinExecutor: BuiltinExecutor;
 }
 
-/** What an alternative approval gateway gets to build itself (tests: the in-memory double). */
-export interface ApprovalGatewayContext {
-  readonly tx: TxRunner;
-  readonly hooks: () => ApprovalHooks;
-}
-
-export interface NpServiceDeps {
-  readonly database: DatabaseManager;
-  readonly idGenerator: IdGeneratorService;
-  readonly bus?: DomainEventBus;
-  /** Defaults to a random process-local key (tests); the provider passes the configured one. */
-  readonly secrets?: SecretBox;
-  /** Defaults to the fetch-based client. */
-  readonly github?: GitHubClient;
-  /** The AI intake parser; null or absent = heuristic only. */
-  readonly aiIntake?: AiIntakeParser | null;
-  /** Whether an LLM service is configured (`ai.llmServices` not empty). */
-  readonly aiConfigured?: () => boolean | Promise<boolean>;
-  /** Iteration 4: the AI process classifier; null or absent = heuristic only. */
-  readonly aiProcess?: AiProcessClassifier | null;
-  /** NP-78: deletes stored attachment objects; the provider backs it with Drive. Absent = objects are kept (tests). */
-  readonly fileObjects?: FileObjectStore;
-  readonly onFileObjectError?: (error: unknown) => void;
-  /** NP-78: reads files attached on the AI draft tab (np.newIssue.tabs.ai) for the AI parser; absent = files are not read. */
-  readonly attachmentText?: AttachmentTextReader | null;
-  /** NP-214: the application's base path, prefixed to the `contentUrl` of comment files. Absent = none (tests). */
-  readonly contentBasePath?: () => string;
-  /** NP-88: invitation email and account creation; absent = no email is sent, no account can be created. */
-  readonly mailer?: () => InvitationMailer;
-  readonly accounts?: () => InvitationAccounts | null;
-  /** NP-150: the computer credential store; the provider backs it with the API Keys plugin. Absent = none can be issued. */
-  readonly computerKeys?: () => ComputerKeys;
-  /**
-   * NP-117: where member roles are stored. The provider backs it with the built-in permission sets; the service tests
-   * pass a double over `members.role`.
-   */
-  readonly roles: () => RoleAssignments;
-  /**
-   * NP-153: the permission sets behind the business roles of `/config/members`. Absent (service tests) = role
-   * management answers 409 `ROLES_UNAVAILABLE`.
-   */
-  readonly roleStore?: () => RoleStore;
-  /**
-   * NP-219: the AI plugin's LLM services, for built-in runtimes and agents (`runtime/builtin-ai.ts`); the provider
-   * backs it with the plugin's `aiManagerToken`. Absent = the plugin is not registered.
-   */
-  readonly builtinAi?: BuiltinAiSource;
-  /** Replaces the database approval gateway (the replacement checklist test). */
-  readonly approvalGateway?: (
-    context: ApprovalGatewayContext,
-  ) => ApprovalGateway;
-}
+// The dependencies of `createNpServices` live in `services.deps.ts` (size limit); re-exported for its callers.
+export type { ApprovalGatewayContext, NpServiceDeps } from './services.deps.js';
+import type { NpServiceDeps } from './services.deps.js';
 
 /** A status that moved (or became terminal) cancels the issue's stale approval requests. */
 async function cancelStaleApprovals(
@@ -474,7 +412,26 @@ export function createNpServices(deps: NpServiceDeps): NpServices {
       roles: deps.roles,
       store: deps.roleStore ?? unavailableRoles,
     }),
-  } satisfies NpServices);
+  } satisfies Omit<NpServices, 'builtinToolbox' | 'builtinExecutor'>);
+  Object.assign(
+    services,
+    createBuiltinModules(
+      {
+        tx,
+        ids,
+        users,
+        workflows,
+        secrets,
+        ai: deps.builtinAi,
+        engine: deps.builtinEngine,
+        agentApi: deps.agentApi,
+        config: deps.builtinConfig,
+        timers: deps.builtinTimers,
+        onError: deps.onBuiltinError,
+      },
+      services,
+    ),
+  );
 
   return services;
 }

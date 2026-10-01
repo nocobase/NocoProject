@@ -79,6 +79,11 @@ export type DomainEvent =
       readonly runId: string;
     }
   | {
+      /** NP-219: a built-in run is queued; the server's built-in executor claims it (never a daemon). */
+      readonly type: 'builtin.workAvailable';
+      readonly runId?: string;
+    }
+  | {
       readonly type: 'issue.created';
       readonly issueId: string;
       readonly actor: EventActor;

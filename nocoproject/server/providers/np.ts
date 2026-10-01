@@ -5,7 +5,10 @@
  *
  * Iteration 2: the secret key for stored secrets comes from the `nocoproject` configuration section
  * (`NOCOPROJECT_SECRET_KEY`), falling back to a key derived from `auth.secret` with a warning; the AI intake parser is
- * built from the AI employee plugin's agent factory when that plugin is registered.
+ * built from the AI employee plugin's agent factory when that plugin is registered (`np-builtin-ai.ts`).
+ *
+ * NP-219: built-in runtimes and runs on the AI plugin (`np-builtin-agent.ts`): the catalog and engine handed to the
+ * services, the `np_*` tools registered at `boot`, the built-in executor kicked at start and on every sweeper tick.
  *
  * Iteration 3 (docs/phase1/iteration-3-contract.md §A, §G): the settings items `np-members`, `np-settings` and
  * `np-github` are no longer registered — settings moved into the application's own `/config` page (page `np-config`).
@@ -22,7 +25,6 @@
  */
 import { Readable } from 'node:stream';
 
-import { aiManagerToken } from '@nocobase/app-plugin-ai-employee/server';
 import type { AuthConfig } from '@nocobase/app-plugin-authentication/server';
 import type { Application } from '@nocobase/app-server/application';
 import { driveManagerToken } from '@nocobase/app-server/drive';
@@ -39,7 +41,9 @@ import {
 } from '@nocobase/service-provider';
 
 import type { NocoProjectConfig } from '../config/nocoproject.js';
-import { aiModelsConfigured, createBuiltinAiSource } from './np-builtin-ai.js';
+import { NpBuiltinRuns } from './np-builtin-agent.js';
+import { createAiFactory } from './np-builtin-ai.js';
+
 import type { AgentService } from '../modules/agent/agent.service.js';
 import type {
   AttachmentService,
@@ -55,10 +59,7 @@ import type { GitConnectionService } from '../modules/git/connection.service.js'
 import type { PullRequestMergeService } from '../modules/git/merge.service.js';
 import type { PullRequestService } from '../modules/git/pull-request.service.js';
 import type { WebhookService } from '../modules/git/webhook.service.js';
-import {
-  createAiIntakeParser,
-  type AiAgentFactory,
-} from '../modules/intake/ai-parser.js';
+import { createAiIntakeParser } from '../modules/intake/ai-parser.js';
 import { createAiProcessClassifier } from '../modules/intake/process-classifier.js';
 import type { DesignService } from '../modules/issue/design.service.js';
 import type { ConversationService } from '../modules/pm/pm.conversations.js';
@@ -254,11 +255,15 @@ export default class NpProvider extends ServiceProvider<Application> {
   private sweeping = false;
   private releaseAuthorization: (() => void)[] = [];
   private reconciling: Promise<void> = Promise.resolve();
+  /** NP-219: built-in runtimes and runs on the AI plugin (`np-builtin-agent.ts`). */
+  private readonly builtin = new NpBuiltinRuns(this.app, (error, message) =>
+    this.logError(error, message),
+  );
 
   public override register(): void {
     const { container } = this.app;
     container.singleton(npServicesToken, (resolver) => {
-      const ai = this.aiFactory();
+      const ai = createAiFactory(this.app);
       return createNpServices({
         database: resolver.resolve(databaseManagerToken),
         idGenerator: resolver.resolve(idGeneratorToken),
@@ -279,9 +284,7 @@ export default class NpProvider extends ServiceProvider<Application> {
         roles: () => createBuiltinRoles(resolver.resolve(authorizationToken)),
         roleStore: () =>
           createPermissionSetRoles(resolver.resolve(authorizationToken)),
-        // NP-219: an enabled service with an enabled model, the built-in runtimes' test (np-builtin-ai.ts).
-        aiConfigured: () => aiModelsConfigured(this.app),
-        builtinAi: createBuiltinAiSource(this.app),
+        ...this.builtin.serviceDeps(),
       });
     });
     bindModule(container, npProjectServiceToken, 'projects');
@@ -375,37 +378,9 @@ export default class NpProvider extends ServiceProvider<Application> {
     );
   }
 
-  /**
-   * The AI intake parser and (iteration 4) the process classifier as one direct model call on the first enabled LLM
-   * service (runtime-extensions.md §"A direct model call"): no conversation, no tool loop. The plugin's agent path
-   * with a tool-bound `responseFormat` made DeepSeek answer with guesses, while the plain "reply with JSON"
-   * instruction is answered faithfully. Null when the plugin is not registered.
-   */
-  private aiFactory(): AiAgentFactory | null {
-    const { container } = this.app;
-    if (!container.has(aiManagerToken)) return null;
-    return {
-      // A direct call has no conversation, so there is no session to record.
-      createSession: async () => '',
-      createAgent: async ({ systemPrompt }) => ({
-        invoke: async ({ userMessages }) => {
-          const ai = container.resolve(aiManagerToken);
-          const model = await ai.llmProviderManager.resolveModel();
-          const { provider } = await ai.llmProviderManager.getLLMService(model);
-          const reply = (await provider.invoke({
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...userMessages,
-            ],
-          } as never)) as { content?: unknown } | null;
-          return { message: { content: reply?.content } };
-        },
-      }),
-    };
-  }
-
   public override async boot(): Promise<void> {
     const { container } = this.app;
+    await this.builtin.boot(container.resolve(npServicesToken));
     if (container.has(authorizationToken)) {
       const authz = container.resolve(authorizationToken);
       this.releaseAuthorization.push(
@@ -438,13 +413,7 @@ export default class NpProvider extends ServiceProvider<Application> {
 
   public override async start(): Promise<void> {
     if (this.app.container.has(authorizationToken)) await this.reconcileRoles();
-    // NP-219 (protocol-runtime-types.md §4.2): one connectivity check per built-in runtime, off the start path.
-    void this.app.container
-      .resolve(npRuntimeServiceToken)
-      .checkAllBuiltin()
-      .catch((error: unknown) =>
-        this.logError(error, 'NocoProject built-in runtime check failed.'),
-      );
+    this.builtin.start(this.app.container.resolve(npServicesToken));
     this.cron = createCronJobManager();
     this.cron.addJob({
       cronTime: SWEEP_CRON_TIME,
@@ -455,6 +424,8 @@ export default class NpProvider extends ServiceProvider<Application> {
 
   public override async shutdown(): Promise<void> {
     for (const release of this.releaseAuthorization.splice(0)) release();
+    if (this.app.container.has(npServicesToken))
+      await this.builtin.shutdown(this.app.container.resolve(npServicesToken));
     await this.reconciling;
     this.cron?.close();
     this.cron = undefined;
@@ -478,6 +449,7 @@ export default class NpProvider extends ServiceProvider<Application> {
       await this.app.container
         .resolve(npAttachmentServiceToken)
         .purgeOrphans(now);
+      this.builtin.tick(this.app.container.resolve(npServicesToken));
     } catch (error) {
       this.logError(error, 'NocoProject sweeper pass failed.');
     } finally {

@@ -19,6 +19,14 @@ export interface NocoProjectConfig {
   readonly secretKey?: string;
   readonly attachmentDisk?: string;
   readonly attachmentMaxFileSize?: number;
+  /**
+   * NP-219 built-in runs (`config.yml` only): how many this process executes at once (default 4) and the wall-clock
+   * limit of one run in seconds (default 600).
+   */
+  readonly builtin?: {
+    readonly maxConcurrent?: number;
+    readonly timeoutSeconds?: number;
+  };
 }
 
 const nocoproject: AppConfigFactory<NocoProjectConfig> = defineAppConfig({
