@@ -3,7 +3,7 @@
  * attached to the comment (or thread reply) with `attachmentIds`; every refusal posts no comment.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -29,6 +29,9 @@ beforeAll(async () => {
   writeFileSync(join(dir, 'reply.md'), 'See `login page.png`.');
   writeFileSync(join(dir, 'login page.png'), PNG);
   writeFileSync(join(dir, 'test.log'), 'line 1\nline 2\n');
+  writeFileSync(join(dir, 'kilo.bin'), Buffer.alloc(1025));
+  writeFileSync(join(dir, 'locked.log'), 'secret');
+  chmodSync(join(dir, 'locked.log'), 0o000);
   mkdirSync(join(dir, 'folder'));
 });
 afterAll(async () => mock.stop());
@@ -36,6 +39,7 @@ beforeEach(() => {
   mock.uploads.denied = false;
   mock.uploads.legacy = false;
   mock.uploads.maxFileSize = 1024 * 1024;
+  mock.uploads.proxyLimit = false;
 });
 
 function run(args: string[]): Promise<{ code: number | null; out: string; err: string }> {
@@ -89,6 +93,8 @@ describe('issue comment add --attach', () => {
       [['--attach', 'test.log', '--attach', 'folder'], 'NOT_A_FILE'],
       [['--attach', 'test.log', '--attach', join(dir, 'test.log')], 'DUPLICATE_ATTACHMENT'],
       [Array.from({ length: 11 }, (_, i) => ['--attach', `f${i}.txt`]).flat(), 'TOO_MANY_ATTACHMENTS'],
+      // root reads any file, so this case only holds for an ordinary user
+      ...(process.getuid?.() === 0 ? [] : [[['--attach', 'test.log', '--attach', 'locked.log'], 'FILE_NOT_READABLE'] as [string[], string]]),
     ];
     for (const [args, code] of cases) {
       const r = await run(comment(...args, '--json'));
@@ -107,8 +113,26 @@ describe('issue comment add --attach', () => {
     expect(r.code).toBe(5);
     expect(r.err.trim()).toBe(`error: attachment too large: ${join(dir, 'login page.png')} is 8 B; the server accepts at most 4 B. No comment was posted.`);
     const j = await run(comment('--attach', 'login page.png', '--json'));
-    expect(JSON.parse(j.out).error).toMatchObject({ code: 'ATTACHMENT_TOO_LARGE', exitCode: 5 });
+    expect(JSON.parse(j.out).error).toMatchObject({ code: 'ATTACHMENT_TOO_LARGE', exitCode: 5, details: { maxFileSize: 4 } });
+    // Sizes that round alike are shown in bytes.
+    mock.uploads.maxFileSize = 1024;
+    const close = await run(comment('--attach', 'kilo.bin'));
+    expect(close.err).toContain('kilo.bin is 1025 bytes; the server accepts at most 1024 bytes.');
+    // A proxy's own 413 page carries neither the code nor the limit.
+    mock.uploads.proxyLimit = true;
+    const proxy = await run(comment('--attach', 'test.log'));
+    expect(proxy.code).toBe(5);
+    expect(proxy.err.trim()).toBe(`error: attachment too large: ${join(dir, 'test.log')} is 14 B; that is over the server’s limit. No comment was posted.`);
     expect(commentCalls()).toBe(comments);
+  });
+
+  it('adds "No comment was posted" to any other refusal', async () => {
+    const r = await run(['issue', 'comment', 'add', 'NP-10', '--content-file', 'reply.md', '--attach', 'test.log', '--json']);
+    expect(r.code).toBe(3);
+    const error = JSON.parse(r.out).error as { code: string; message: string };
+    expect(error.code).toBe('ISSUE_NOT_IN_RUN');
+    expect(error.message).toMatch(/^uploading .*test\.log failed: .*ISSUE_NOT_IN_RUN.*\. No comment was posted\.$/);
+    expect(mock.callsTo(/POST \/np\/agent\/issues\/i10\/comments/)).toHaveLength(0);
   });
 
   it('names the missing capability and posts nothing (exit 3)', async () => {
@@ -116,10 +140,12 @@ describe('issue comment add --attach', () => {
     const comments = commentCalls();
     const r = await run(comment('--attach', 'test.log', '--json'));
     expect(r.code).toBe(3);
-    const error = JSON.parse(r.out).error as { code: string; message: string };
-    expect(error.code).toBe('CAPABILITY_DENIED');
-    expect(error.message).toContain('"Upload comment attachments" capability (attachment.upload)');
-    expect(error.message).toContain('No comment was posted.');
+    const error = JSON.parse(r.out).error as { code: string; message: string; details: unknown };
+    expect(error).toMatchObject({ code: 'CAPABILITY_DENIED', details: { capability: 'attachment.upload' } });
+    const text = await run(comment('--attach', 'test.log'));
+    expect(text.err.trim()).toBe(
+      'error: this run may not upload attachments (capability attachment.upload). An admin grants "Upload comment attachments" to the agent, and a grant applies from its next run; post the comment without --attach meanwhile. No comment was posted.',
+    );
     expect(commentCalls()).toBe(comments);
   });
 
@@ -128,6 +154,8 @@ describe('issue comment add --attach', () => {
     const r = await run(comment('--attach', 'test.log', '--json'));
     expect(r.code).toBe(4);
     expect(JSON.parse(r.out).error.code).toBe('ATTACHMENT_UPLOAD_UNSUPPORTED');
+    const text = await run(comment('--attach', 'test.log'));
+    expect(text.err.trim()).toBe('error: this NocoProject server does not accept attachments from agents yet; post the comment without --attach. No comment was posted.');
   });
 });
 

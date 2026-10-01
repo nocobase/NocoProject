@@ -1,7 +1,8 @@
 /**
  * NP-214 agent uploads for the mock server: `POST /np/agent/issues/:id/uploads` (multipart, field `file`) and the
  * `attachmentIds` a comment attaches. Switches answer like the real server would: `denied` (the agent lacks
- * `attachment.upload`), `legacy` (a server before NP-214, whose guard names no capability) and `maxFileSize` (413).
+ * `attachment.upload`), `legacy` (a server before NP-214, whose guard names no capability), `maxFileSize` (413) and
+ * `proxyLimit` (a proxy's own 413 page, without a code or the limit).
  */
 import type { IncomingMessage } from 'node:http';
 import type { AgentAttachmentInfo } from '../../src/protocol.js';
@@ -19,10 +20,12 @@ export class MockUploads {
   denied = false;
   legacy = false;
   maxFileSize = 1024 * 1024;
+  proxyLimit = false;
   readonly files = new Map<string, MockUpload>();
   private seq = 0;
 
   async upload(issueId: string, runId: string, runIssueId: string, req: IncomingMessage, body: Buffer, send: Send): Promise<void> {
+    if (this.proxyLimit) return send(413, '<html><body>413 Request Entity Too Large</body></html>');
     if (this.legacy) return send(403, { code: 'CAPABILITY_DENIED', message: 'This agent endpoint has no capability assignment.' });
     if (this.denied) return send(403, { code: 'CAPABILITY_DENIED', message: 'Capability required: attachment.upload', details: { capability: 'attachment.upload' } });
     if (issueId !== runIssueId) return send(403, { code: 'ISSUE_NOT_IN_RUN', message: 'A run token may only write to its own issue.' });
